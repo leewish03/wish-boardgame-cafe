@@ -745,6 +745,8 @@ const ChatInputRow = styled.form`
 // =========================================================================
 
 export default function LoveLetterApp() {
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+
   // Auth & User
   const [user, setUser] = useState(null);
   const [demoName, setDemoName] = useState('');
@@ -782,7 +784,7 @@ export default function LoveLetterApp() {
 
   // Initialize Socket.io
   useEffect(() => {
-    const socket = io(window.location.origin, {
+    const socket = io(BACKEND_URL || window.location.origin, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
     });
@@ -899,7 +901,7 @@ export default function LoveLetterApp() {
 
   const handleGoogleLoginCallback = async (response) => {
     try {
-      const res = await fetch('/api/auth/google', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: response.credential }),
@@ -918,7 +920,7 @@ export default function LoveLetterApp() {
   const handleDemoLogin = async () => {
     const name = demoName.trim() || `플레이어_${Math.floor(Math.random() * 900 + 100)}`;
     try {
-      const res = await fetch('/api/auth/google', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
