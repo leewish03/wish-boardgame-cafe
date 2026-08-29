@@ -1,8 +1,8 @@
 {
-  "name": "love-letter-online",
+  "name": "wish-boardgame-cafe",
   "version": "1.0.0",
   "type": "module",
-  "description": "Love Letter Online Board Game with Voice Chat and STT",
+  "description": "Wish Boardgame Cafe - Online Multiplayer Board Game Platform with Voice Chat & STT",
   "main": "server.js",
   "scripts": {
     "dev": "vite",

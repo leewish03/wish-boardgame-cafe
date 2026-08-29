@@ -1237,15 +1237,15 @@ export default function LoveLetterApp() {
     return (
       <Container>
         <Header>
-          <Brand>💌 <span>러브레터 온라인</span></Brand>
+          <Brand>🎲 ☕ <span>Wish Boardgame Cafe</span></Brand>
         </Header>
         <AuthOverlay>
           <AuthCard>
-            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>💌</div>
-            <AuthTitle>러브레터 온라인</AuthTitle>
+            <div style={{ fontSize: '3.2rem', marginBottom: '12px' }}>🎲 ☕</div>
+            <AuthTitle>Wish Boardgame Cafe</AuthTitle>
             <AuthSubtitle>
-              친구들과 브라우저에서 바로 즐기는 실시간 보드게임!<br />
-              실시간 WebRTC 음성 통화 및 한국어 STT 자막 지원
+              친구들과 온라인으로 모여 즐기는 실시간 멀티 보드게임 카페!<br />
+              WebRTC 음성 통화 및 한국어 실시간 STT 자막 지원
             </AuthSubtitle>
 
             {/* Google Login GIS Button */}
@@ -1258,13 +1258,13 @@ export default function LoveLetterApp() {
                 빠른 테스트를 위한 닉네임 로그인
               </div>
               <Input
-                placeholder="닉네임 입력 (예: 공주러버)"
+                placeholder="닉네임 입력 (예: 보드게임왕)"
                 value={demoName}
                 onChange={(e) => setDemoName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleDemoLogin()}
               />
               <Button $variant="secondary" onClick={handleDemoLogin}>
-                게스트로 즉시 시작
+                게스트로 즉시 입장
               </Button>
             </div>
           </AuthCard>
@@ -1280,7 +1280,7 @@ export default function LoveLetterApp() {
     return (
       <Container>
         <Header>
-          <Brand>💌 <span>러브레터 온라인</span></Brand>
+          <Brand>🎲 ☕ <span>Wish Boardgame Cafe</span></Brand>
           <HeaderControls>
             <UserBadge>
               <img src={user.picture} alt={user.name} />
@@ -1293,12 +1293,31 @@ export default function LoveLetterApp() {
         </Header>
         <AuthOverlay>
           <LobbyCard>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, textAlign: 'center' }}>게임 로비</h2>
+            <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>카페 로비 (게임 선택)</h2>
+              <p style={{ fontSize: '0.85rem', color: THEME.textMuted, marginTop: '4px' }}>
+                플레이할 보드게임을 선택하고 방을 생성하세요.
+              </p>
+            </div>
+
+            {/* Multi Game Selection Bar */}
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+              <div style={{ background: 'linear-gradient(135deg, #742a2a, #9b2c2c)', border: '2px solid #ecc94b', borderRadius: '12px', padding: '10px 14px', color: '#fff', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                💌 러브레터 (활성화)
+              </div>
+              <div style={{ background: THEME.surfaceLight, border: `1px solid ${THEME.border}`, borderRadius: '12px', padding: '10px 14px', color: THEME.textMuted, fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.6 }}>
+                👑 달무티 (준비 중)
+              </div>
+              <div style={{ background: THEME.surfaceLight, border: `1px solid ${THEME.border}`, borderRadius: '12px', padding: '10px 14px', color: THEME.textMuted, fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.6 }}>
+                🕵️ 라이어 게임 (준비 중)
+              </div>
+            </div>
+
             <LobbyGrid>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>새로운 방 만들기</h3>
                 <p style={{ fontSize: '0.85rem', color: THEME.textMuted }}>
-                  새 방을 만들고 친구를 초대하세요. AI 봇과 함께 1인 플레이도 가능합니다.
+                  새 게임 방을 만들고 친구를 초대하세요. AI 봇과 함께 1인 플레이도 가능합니다.
                 </p>
                 <Button onClick={handleCreateRoom}>
                   <Sparkles size={18} /> 방 생성하기
@@ -1335,7 +1354,7 @@ export default function LoveLetterApp() {
     return (
       <Container>
         <Header>
-          <Brand>💌 <span>러브레터 온라인</span></Brand>
+          <Brand>🎲 ☕ <span>Wish Boardgame Cafe</span></Brand>
           <HeaderControls>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: THEME.surfaceLight, padding: '6px 12px', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 700 }}>
               방 코드: <span style={{ color: THEME.accentGold, letterSpacing: '1px' }}>{roomState.code}</span>
@@ -1358,7 +1377,10 @@ export default function LoveLetterApp() {
         <AuthOverlay>
           <LobbyCard>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>대기실 ({roomState.players.length}/{roomState.maxPlayers}명)</h2>
+              <div>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>대기실 ({roomState.players.length}/{roomState.maxPlayers}명)</h2>
+                <span style={{ fontSize: '0.8rem', color: THEME.accentGold }}>🎮 게임: 💌 러브레터 (Love Letter)</span>
+              </div>
               {isHost && <span style={{ fontSize: '0.8rem', color: THEME.accentGold, fontWeight: 700 }}>👑 당신이 방장입니다</span>}
             </div>
 
@@ -1436,9 +1458,9 @@ export default function LoveLetterApp() {
       {/* Top Header with Voice & Controls */}
       <Header>
         <Brand>
-          💌 <span>러브레터</span>
-          <span style={{ fontSize: '0.8rem', color: THEME.textMuted, fontWeight: 500 }}>
-            (방: {roomState.code})
+          🎲 ☕ <span>Wish Boardgame Cafe</span>
+          <span style={{ fontSize: '0.8rem', color: THEME.accentGold, fontWeight: 600 }}>
+            [💌 러브레터 / 방: {roomState.code}]
           </span>
         </Brand>
 

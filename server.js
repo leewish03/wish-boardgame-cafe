@@ -916,7 +916,7 @@ app.get('*', (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`=========================================`);
-  console.log(`💌 Love Letter Game Server running on port ${PORT}`);
+  console.log(`🎲 ☕ Wish Boardgame Cafe Server running on port ${PORT}`);
   console.log(`- API URL: http://localhost:${PORT}/api/health`);
   console.log(`=========================================`);
 });

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: love-letter-online
+    name: wish-boardgame-cafe
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
