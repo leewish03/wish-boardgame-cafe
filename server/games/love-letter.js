@@ -424,6 +424,24 @@ export function executePlayCard(io, room, userId, payload) {
     logAction(room, `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`);
   }
 
+  // Broadcast Action Showcase to all players in the room
+  const showcasePayload = {
+    actorId: player.id,
+    actorNickname: player.nickname,
+    actorAvatar: player.avatarUrl,
+    card: {
+      id: card.id,
+      name: card.name,
+      value: card.value,
+      desc: card.desc,
+    },
+    targetId: target?.id || (card.value === 5 ? (targetUserId === player.id ? player.id : target?.id) : null),
+    targetNickname: target?.nickname || (card.value === 5 && targetUserId === player.id ? player.nickname : null),
+    guessValue: guessValue ? Number(guessValue) : null,
+    guessCardName: guessValue ? CARD_DEFS[Number(guessValue)]?.name : null,
+  };
+  io.to(room.code).emit('game:action-showcase', showcasePayload);
+
   broadcastRoomState(io, room.code);
 
   // Check round transition

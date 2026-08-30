@@ -65,6 +65,17 @@ const turnGlow = keyframes`
   100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
 `;
 
+const turnPulse = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2);
+    border-color: ${THEME.gold};
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(245, 158, 11, 0.8), 0 0 35px rgba(245, 158, 11, 0.45);
+    border-color: ${THEME.goldLight};
+  }
+`;
+
 const targetPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.8); border-color: ${THEME.goldLight}; }
   70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); border-color: ${THEME.gold}; }
@@ -248,8 +259,27 @@ const OpponentSeat = styled.div`
     $isTurn &&
     !$isTargetable &&
     css`
-      box-shadow: 0 0 14px rgba(245, 158, 11, 0.5);
+      animation: ${turnPulse} 1.6s infinite ease-in-out;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(9, 9, 11, 0.95) 100%);
     `}
+`;
+
+const ThinkingBadge = styled.div`
+  position: absolute;
+  top: -8px;
+  background: linear-gradient(135deg, ${THEME.gold} 0%, #b45309 100%);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: ${THEME.radius.full};
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.6);
+  white-space: nowrap;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  animation: ${turnGlow} 1.5s infinite;
 `;
 
 const AvatarWrapper = styled.div`
@@ -557,6 +587,11 @@ const MyPlayArea = styled.section`
   flex-shrink: 0;
   z-index: 30;
   position: relative;
+  transition: background 0.3s ease;
+  background: ${({ $isMyTurn }) =>
+    $isMyTurn
+      ? 'radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.16) 0%, transparent 75%)'
+      : 'transparent'};
 `;
 
 const MyStatusBar = styled.div`
@@ -613,17 +648,19 @@ const CardMotion = styled(motion.div)`
     $isSelected
       ? `0 0 20px rgba(245, 158, 11, 0.8), 0 8px 24px rgba(0, 0, 0, 0.8)`
       : `0 6px 18px rgba(0, 0, 0, 0.6)`};
-  cursor: ${({ $canPlay, $isRestricted }) =>
-    $canPlay && !$isRestricted ? 'pointer' : 'not-allowed'};
+  cursor: ${({ $canPlay, $isRestricted, $isMyTurn }) =>
+    $canPlay && !$isRestricted && $isMyTurn ? 'pointer' : 'not-allowed'};
   position: relative;
   overflow: hidden;
   user-select: none;
   box-sizing: border-box;
   transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-12px)' : 'translateY(0)')};
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease, filter 0.25s ease;
 
-  opacity: ${({ $isRestricted }) => ($isRestricted ? 0.45 : 1)};
-  filter: ${({ $isRestricted }) => ($isRestricted ? 'grayscale(80%)' : 'none')};
+  opacity: ${({ $isRestricted, $isMyTurn }) =>
+    $isRestricted ? 0.4 : $isMyTurn ? 1 : 0.45};
+  filter: ${({ $isRestricted, $isMyTurn }) =>
+    $isRestricted ? 'grayscale(80%)' : $isMyTurn ? 'none' : 'grayscale(40%)'};
 
   ${({ $isForced }) =>
     $isForced &&
@@ -642,6 +679,84 @@ const CardMotion = styled(motion.div)`
     );
     pointer-events: none;
   }
+`;
+
+// =========================================================================
+// Real-Time Action Showcase Components
+// =========================================================================
+
+const ShowcaseBackdrop = styled(motion.div)`
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+`;
+
+const ShowcaseCardBox = styled(motion.div)`
+  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  border: 2px solid ${({ $color }) => $color || THEME.gold};
+  border-radius: ${THEME.radius.xl};
+  padding: 14px 18px;
+  box-shadow: 0 0 40px ${({ $color }) => `${$color}77` || 'rgba(245, 158, 11, 0.7)'}, 0 20px 50px rgba(0, 0, 0, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 230px;
+  max-width: 85vw;
+  box-sizing: border-box;
+`;
+
+const ShowcaseHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+  text-align: center;
+`;
+
+const ShowcaseCardVisual = styled.div`
+  width: 100px;
+  height: 132px;
+  border-radius: ${THEME.radius.lg};
+  background-color: ${THEME.card};
+  border: 2px solid ${({ $color }) => $color || THEME.gold};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at top left,
+      ${({ $color }) => `${$color}33`} 0%,
+      transparent 70%
+    );
+  }
+`;
+
+const ShowcaseFooter = styled.div`
+  font-size: 11px;
+  font-weight: 700;
+  color: ${THEME.goldLight};
+  text-align: center;
+  line-height: 1.3;
 `;
 
 const CardHeaderRow = styled.div`
@@ -795,10 +910,32 @@ export default function LoveLetterBoard({
   // Floating Action Toast state
   const [activeToast, setActiveToast] = useState(null);
 
+  // Real-Time Action Showcase state
+  const [actionShowcase, setActionShowcase] = useState(null);
+
   const isMyTurn = roomState?.turnPlayerId === currentUser?.id;
   const myPlayer = roomState?.players?.find((p) => p.id === currentUser?.id);
   const opponents = roomState?.players?.filter((p) => p.id !== currentUser?.id) || [];
   const currentTurnPlayer = roomState?.players?.find((p) => p.id === roomState?.turnPlayerId);
+
+  // Listen for Real-Time Action Showcase broadcast from server
+  useEffect(() => {
+    if (!socket) return;
+    let timer = null;
+    const handleActionShowcase = (data) => {
+      setActionShowcase(data);
+      sfx.playCardPlay();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setActionShowcase(null);
+      }, 1800);
+    };
+    socket.on('game:action-showcase', handleActionShowcase);
+    return () => {
+      socket.off('game:action-showcase', handleActionShowcase);
+      if (timer) clearTimeout(timer);
+    };
+  }, [socket]);
 
   // Auto-dismissing Floating Toast on action log update
   useEffect(() => {
@@ -1094,6 +1231,7 @@ export default function LoveLetterBoard({
                 }}
               >
                 {isTargetable && <TargetBadge>🎯 터치하여 지목</TargetBadge>}
+                {isTurn && !isTargetable && <ThinkingBadge>⏳ 생각 중...</ThinkingBadge>}
 
                 <AvatarWrapper>
                   <AvatarImg
@@ -1223,7 +1361,7 @@ export default function LoveLetterBoard({
         {/* ========================================================= */}
         {/* AREA 3: My Play & Hand Area (45% Height - 38px) */}
         {/* ========================================================= */}
-        <MyPlayArea>
+        <MyPlayArea $isMyTurn={isMyTurn}>
           {/* My Minimal Status Bar */}
           <MyStatusBar>
             <MyStatusLeft>
@@ -1280,6 +1418,7 @@ export default function LoveLetterBoard({
                     $isSelected={isSelected}
                     $isRestricted={isRestricted}
                     $isForced={isForced}
+                    $isMyTurn={isMyTurn}
                     $canPlay={isMyTurn && !myPlayer.isEliminated}
                     initial={{ y: 30, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -1829,6 +1968,74 @@ export default function LoveLetterBoard({
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* ========================================================= */}
+      {/* 11. REAL-TIME CARD ACTION SHOWCASE MODAL */}
+      {/* ========================================================= */}
+      <AnimatePresence>
+        {actionShowcase && (
+          <ShowcaseBackdrop
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ShowcaseCardBox
+              $color={CARD_DATA[actionShowcase.card.value]?.color}
+              initial={{ scale: 0.7, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.8, y: -20, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+            >
+              <ShowcaseHeader>
+                <span>
+                  {actionShowcase.actorNickname === currentUser?.nickname
+                    ? '👤 [나]'
+                    : `🤖 [${actionShowcase.actorNickname}]`}
+                </span>
+                <span style={{ color: THEME.gold }}>님이 카드 사용!</span>
+              </ShowcaseHeader>
+
+              <ShowcaseCardVisual $color={CARD_DATA[actionShowcase.card.value]?.color}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: CARD_DATA[actionShowcase.card.value]?.color }}>
+                    {actionShowcase.card.value}
+                  </span>
+                  <span style={{ fontSize: '9px', fontWeight: 800, color: CARD_DATA[actionShowcase.card.value]?.color }}>
+                    {CARD_DATA[actionShowcase.card.value]?.nameEn}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '32px' }}>
+                  {CARD_DATA[actionShowcase.card.value]?.icon}
+                </div>
+
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>
+                  {actionShowcase.card.name}
+                </div>
+              </ShowcaseCardVisual>
+
+              <ShowcaseFooter>
+                {actionShowcase.targetNickname && (
+                  <div>
+                    🎯 대상: <strong style={{ color: '#fff' }}>[{actionShowcase.targetNickname}]</strong>
+                  </div>
+                )}
+                {actionShowcase.guessCardName && (
+                  <div style={{ color: THEME.emerald, marginTop: '2px' }}>
+                    🔮 추측: [{actionShowcase.guessValue}. {actionShowcase.guessCardName}]
+                  </div>
+                )}
+                {!actionShowcase.targetNickname && !actionShowcase.guessCardName && (
+                  <div style={{ color: THEME.mutedForeground }}>
+                    {actionShowcase.card.desc}
+                  </div>
+                )}
+              </ShowcaseFooter>
+            </ShowcaseCardBox>
+          </ShowcaseBackdrop>
+        )}
+      </AnimatePresence>
     </BoardContainer>
   );
 }
