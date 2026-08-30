@@ -31,6 +31,7 @@ import {
   Crosshair,
   Info,
   X,
+  Settings,
 } from 'lucide-react';
 
 // =========================================================================
@@ -94,20 +95,19 @@ const BoardContainer = styled.div`
   box-sizing: border-box;
 `;
 
-// 1줄 고정 미니멀 네비바 (48px)
+// 1줄 고정 초미니멀 네비바 (38px)
 const TopNavBar = styled.header`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  min-height: 48px;
-  max-height: 48px;
-  padding: 0 12px;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  padding: 0 10px;
   background-color: rgba(9, 9, 11, 0.95);
   border-bottom: 1px solid ${THEME.border};
   backdrop-filter: blur(8px);
   z-index: 100;
-  gap: 8px;
   flex-shrink: 0;
   box-sizing: border-box;
 `;
@@ -117,16 +117,6 @@ const NavLeft = styled.div`
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-`;
-
-const GameTitle = styled.div`
-  font-size: 13px;
-  font-weight: 800;
-  color: ${THEME.foreground};
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
 `;
 
 const NavControls = styled.div`
@@ -140,8 +130,8 @@ const NavIconButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: ${THEME.radius.md};
   background-color: transparent;
   border: 1px solid transparent;
@@ -165,17 +155,17 @@ const NavIconButton = styled.button`
 `;
 
 // =========================================================================
-// Main Game Table Area (100dvh - 48px)
+// Main Game Table Area (100dvh - 38px)
 // =========================================================================
 
 const TableArea = styled.main`
   flex: 1;
-  height: calc(100dvh - 48px);
-  max-height: calc(100dvh - 48px);
+  height: calc(100dvh - 38px);
+  max-height: calc(100dvh - 38px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 6px 10px;
   position: relative;
   background: radial-gradient(
     ellipse at center,
@@ -446,7 +436,7 @@ const CenterTableArea = styled.section`
   align-items: center;
   justify-content: center;
   padding: 2px 8px;
-  gap: 6px;
+  gap: 8px;
   position: relative;
   box-sizing: border-box;
   flex-shrink: 0;
@@ -463,14 +453,14 @@ const CenterTurnBanner = styled.div`
     $isMyTurn ? 'rgba(245, 158, 11, 0.18)' : 'rgba(9, 9, 11, 0.85)'};
   border: 1.5px solid
     ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
-  padding: 4px 14px;
+  padding: 5px 16px;
   border-radius: ${THEME.radius.full};
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: ${({ $isMyTurn }) => ($isMyTurn ? THEME.goldLight : THEME.foreground)};
   animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
   box-shadow: ${({ $isMyTurn }) =>
-    $isMyTurn ? '0 0 16px rgba(245, 158, 11, 0.45)' : 'none'};
+    $isMyTurn ? '0 0 18px rgba(245, 158, 11, 0.5)' : 'none'};
   white-space: nowrap;
   max-width: 92%;
   overflow: hidden;
@@ -478,95 +468,59 @@ const CenterTurnBanner = styled.div`
   backdrop-filter: blur(8px);
 `;
 
-const CenterInfoRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  max-width: 380px;
-  box-sizing: border-box;
-`;
-
 const DeckSlot = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background-color: rgba(9, 9, 11, 0.85);
-  border: 1px solid ${THEME.gold};
-  border-radius: ${THEME.radius.md};
-  padding: 3px 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  flex-shrink: 0;
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.lg};
+  padding: 5px 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition: transform 0.15s;
+
+  &:hover {
+    transform: scale(1.04);
+  }
 `;
 
 const MiniDeckCardVisual = styled.div`
-  width: 22px;
-  height: 30px;
-  border-radius: 3px;
+  width: 24px;
+  height: 34px;
+  border-radius: 4px;
   background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
   border: 1px solid ${THEME.gold};
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 13px;
+  box-shadow: 1.5px 1.5px 0 rgba(245, 158, 11, 0.5);
+`;
+
+const FloatingToast = styled(motion.div)`
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(9, 9, 11, 0.95);
+  border: 1px solid ${THEME.gold};
+  border-radius: ${THEME.radius.full};
+  padding: 5px 14px;
   font-size: 11px;
-  box-shadow: 1px 1px 0 rgba(245, 158, 11, 0.5);
-`;
-
-const RemovedCardsSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  background-color: rgba(9, 9, 11, 0.75);
-  border: 1px dashed rgba(245, 158, 11, 0.35);
-  border-radius: ${THEME.radius.md};
-  padding: 3px 6px;
-  flex-shrink: 0;
-`;
-
-const RemovedCardsRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 2px;
-`;
-
-const RemovedCardChip = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  background-color: ${({ $color }) => `${$color}22`};
-  border: 1px solid ${({ $color }) => $color};
-  border-radius: 2px;
-  padding: 0 3px;
-  font-size: 9px;
   font-weight: 700;
-  color: ${({ $color }) => $color};
-`;
-
-const RecentActionChip = styled.div`
-  flex: 1;
-  min-width: 0;
+  color: ${THEME.foreground};
   display: flex;
   align-items: center;
-  gap: 4px;
-  background-color: rgba(9, 9, 11, 0.9);
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.md};
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: ${THEME.foreground};
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+  z-index: 80;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 90%;
   overflow: hidden;
-
-  span.log-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: inline-block;
-    width: 100%;
-  }
+  text-overflow: ellipsis;
+  backdrop-filter: blur(8px);
 `;
 
 const TargetingBanner = styled.div`
@@ -588,17 +542,17 @@ const TargetingBanner = styled.div`
 `;
 
 // =========================================================================
-// 3. My Play & Hand Area (50% Height - 48px)
+// 3. My Play & Hand Area (45% Height - 38px)
 // =========================================================================
 
 const MyPlayArea = styled.section`
-  height: calc(50% - 48px);
-  max-height: calc(50% - 48px);
+  height: calc(45% - 38px);
+  max-height: calc(45% - 38px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 10px 8px;
+  padding: 2px 10px 6px;
   box-sizing: border-box;
   flex-shrink: 0;
   z-index: 30;
@@ -610,11 +564,8 @@ const MyStatusBar = styled.div`
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 600px;
-  background-color: rgba(9, 9, 11, 0.85);
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.full};
-  padding: 4px 12px;
+  max-width: 500px;
+  padding: 0 4px;
   box-sizing: border-box;
   font-size: 11px;
 `;
@@ -841,10 +792,24 @@ export default function LoveLetterBoard({
   // Forfeit Confirmation Modal
   const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
 
+  // Floating Action Toast state
+  const [activeToast, setActiveToast] = useState(null);
+
   const isMyTurn = roomState?.turnPlayerId === currentUser?.id;
   const myPlayer = roomState?.players?.find((p) => p.id === currentUser?.id);
   const opponents = roomState?.players?.filter((p) => p.id !== currentUser?.id) || [];
   const currentTurnPlayer = roomState?.players?.find((p) => p.id === roomState?.turnPlayerId);
+
+  // Auto-dismissing Floating Toast on action log update
+  useEffect(() => {
+    if (roomState?.lastActionLog) {
+      setActiveToast(roomState.lastActionLog);
+      const timer = setTimeout(() => {
+        setActiveToast(null);
+      }, 2600);
+      return () => clearTimeout(timer);
+    }
+  }, [roomState?.lastActionLog]);
 
   // Selected card object
   const selectedCard =
@@ -1062,42 +1027,16 @@ export default function LoveLetterBoard({
   return (
     <BoardContainer>
       {/* ========================================================= */}
-      {/* 1. TOP NAVIGATION BAR (44px Fixed Single-Row) */}
+      {/* 1. TOP NAVIGATION BAR (38px Ultra-Slim) */}
       {/* ========================================================= */}
       <TopNavBar>
         <NavLeft>
-          <GameTitle>
-            <span>💌</span> 러브레터
-          </GameTitle>
-          <Badge $variant="gold" style={{ padding: '1px 5px', fontSize: '10px', height: '18px' }}>
-            R{roomState?.roundNumber || 1}
-          </Badge>
-          <Badge
-            $variant="outline"
-            style={{ padding: '1px 5px', fontSize: '10px', height: '18px', cursor: 'pointer' }}
-            onClick={handleCopyCode}
-            title="방 코드 복사"
-          >
-            {copiedCode ? <Check size={11} color={THEME.emerald} /> : <Copy size={11} />}
-            <span style={{ marginLeft: '3px', letterSpacing: '0.5px' }}>{roomState?.code}</span>
+          <Badge $variant="gold" style={{ padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
+            Round {roomState?.roundNumber || 1}/{roomState?.targetTokens || 4}
           </Badge>
         </NavLeft>
 
         <NavControls>
-          <NavIconButton
-            onClick={webrtc?.toggleMic}
-            title={webrtc?.isMicOn ? '마이크 끄기' : '마이크 켜기'}
-          >
-            {webrtc?.isMicOn ? <Mic size={15} color={THEME.emerald} /> : <MicOff size={15} />}
-          </NavIconButton>
-
-          <NavIconButton
-            onClick={webrtc?.toggleSpeaker}
-            title={webrtc?.isSpeakerOn ? '스피커 끄기' : '스피커 켜기'}
-          >
-            {webrtc?.isSpeakerOn ? <Volume2 size={15} /> : <VolumeX size={15} color={THEME.rose} />}
-          </NavIconButton>
-
           <NavIconButton
             onClick={stt?.toggleSTT}
             title={stt?.isSTTEnabled ? '한국어 자막 끄기' : '한국어 자막 켜기'}
@@ -1106,17 +1045,10 @@ export default function LoveLetterBoard({
           </NavIconButton>
 
           <NavIconButton
-            onClick={toggleSFX}
-            title={sfxEnabled ? '효과음 끄기' : '효과음 켜기'}
-          >
-            <span style={{ fontSize: '13px' }}>{sfxEnabled ? '🎵' : '🔇'}</span>
-          </NavIconButton>
-
-          <NavIconButton
             onClick={() => setDrawerOpen(true)}
-            title="게임 기록 및 카드 가이드"
+            title="방 설정 및 가이드"
           >
-            <Scroll size={15} />
+            <Settings size={15} color={THEME.goldLight} />
           </NavIconButton>
 
           <NavIconButton
@@ -1130,7 +1062,7 @@ export default function LoveLetterBoard({
       </TopNavBar>
 
       {/* ========================================================= */}
-      {/* 2. MAIN FELT TABLE AREA (100dvh - 44px) */}
+      {/* 2. MAIN FELT TABLE AREA (100dvh - 38px) */}
       {/* ========================================================= */}
       <TableArea>
         {/* ========================================================= */}
@@ -1209,12 +1141,27 @@ export default function LoveLetterBoard({
         {/* AREA 2: Center Table (25% Height) */}
         {/* ========================================================= */}
         <CenterTableArea>
-          {/* Row 1: Big Clear Turn Banner */}
+          {/* Floating Action Toast */}
+          <AnimatePresence>
+            {activeToast && (
+              <FloatingToast
+                initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+              >
+                <span>💬</span>
+                <span>{activeToast}</span>
+              </FloatingToast>
+            )}
+          </AnimatePresence>
+
+          {/* Big Clear Turn Banner */}
           <CenterTurnBanner $isMyTurn={isMyTurn}>
             {isMyTurn ? (
               <>
                 <Sparkles size={14} color={THEME.goldLight} />
-                <span>👑 [내 턴] 카드를 터치하여 선택하세요</span>
+                <span>👑 [내 턴] 카드를 선택하세요</span>
               </>
             ) : (
               <>
@@ -1224,49 +1171,34 @@ export default function LoveLetterBoard({
             )}
           </CenterTurnBanner>
 
-          {/* Row 2: Deck Slot + Action Log Balanced Row */}
-          <CenterInfoRow>
-            {/* Deck & 2-Player Removed Cards */}
-            <DeckSlot>
-              <MiniDeckCardVisual>💌</MiniDeckCardVisual>
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                <span style={{ fontSize: '9px', color: THEME.gold, fontWeight: 700 }}>
-                  남은 덱
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 800 }}>
-                  {roomState?.deckCount || 0}장
-                </span>
-              </div>
-            </DeckSlot>
-
-            {/* 2-Player Game Open Set Aside Cards */}
-            {(roomState?.setAsideOpenCards || []).length > 0 && (
-              <RemovedCardsSection>
-                <span style={{ fontSize: '8px', color: THEME.gold, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                  2인 제외:
-                </span>
-                <RemovedCardsRow>
-                  {roomState.setAsideOpenCards.map((card, idx) => {
-                    const meta = CARD_DATA[card.value] || {};
-                    return (
-                      <RemovedCardChip key={idx} $color={meta.color}>
-                        <span>{meta.icon}</span>
-                        <span>{card.value}</span>
-                      </RemovedCardChip>
-                    );
-                  })}
-                </RemovedCardsRow>
-              </RemovedCardsSection>
-            )}
-
-            {/* 1-Line Recent Action Chip */}
-            <RecentActionChip onClick={() => setDrawerOpen(true)} title="게임 로그 보기">
-              <span style={{ color: THEME.gold, flexShrink: 0 }}>💬</span>
-              <span className="log-text">
-                {roomState?.lastActionLog || '새 게임을 시작합니다.'}
+          {/* Centered Deck Slot */}
+          <DeckSlot
+            onClick={() => setDrawerOpen(true)}
+            title="남은 덱 카드 수 (탭하여 카드 가이드 열기)"
+          >
+            <MiniDeckCardVisual>💌</MiniDeckCardVisual>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+              <span style={{ fontSize: '10px', color: THEME.gold, fontWeight: 700 }}>
+                남은 덱
               </span>
-            </RecentActionChip>
-          </CenterInfoRow>
+              <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                {roomState?.deckCount || 0}장
+              </span>
+            </div>
+            {(roomState?.setAsideOpenCards || []).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginLeft: '6px', borderLeft: `1px solid ${THEME.border}`, paddingLeft: '6px' }}>
+                <span style={{ fontSize: '9px', color: THEME.mutedForeground }}>제외:</span>
+                {roomState.setAsideOpenCards.map((card, idx) => {
+                  const meta = CARD_DATA[card.value] || {};
+                  return (
+                    <span key={idx} style={{ fontSize: '9px', fontWeight: 800, color: meta.color }}>
+                      {meta.icon}{card.value}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </DeckSlot>
 
           {/* Active Direct Targeting Banner Overlay */}
           {isTargetingMode && (
@@ -1289,23 +1221,22 @@ export default function LoveLetterBoard({
         </CenterTableArea>
 
         {/* ========================================================= */}
-        {/* AREA 3: My Play & Hand Area (50% Height - 48px) */}
+        {/* AREA 3: My Play & Hand Area (45% Height - 38px) */}
         {/* ========================================================= */}
         <MyPlayArea>
-          {/* My Status & Discard Pile Summary Bar */}
+          {/* My Minimal Status Bar */}
           <MyStatusBar>
             <MyStatusLeft>
-              <span style={{ fontWeight: 700 }}>👤 나 ({currentUser?.nickname})</span>
-              <Badge $variant="gold" style={{ padding: '1px 5px', fontSize: '10px' }}>
+              <Badge $variant="gold" style={{ padding: '1px 6px', fontSize: '10px', fontWeight: 700 }}>
                 ⭐ {myPlayer?.tokens || 0}/{roomState?.targetTokens || 4}개
               </Badge>
               {myPlayer?.isProtected && (
-                <Badge $variant="emerald" style={{ padding: '1px 5px', fontSize: '10px' }}>
+                <Badge $variant="emerald" style={{ padding: '1px 6px', fontSize: '10px' }}>
                   🌸 보호막 활성
                 </Badge>
               )}
               {myPlayer?.isEliminated && (
-                <Badge $variant="rose" style={{ padding: '1px 5px', fontSize: '10px' }}>
+                <Badge $variant="rose" style={{ padding: '1px 6px', fontSize: '10px' }}>
                   ☠️ 탈락
                 </Badge>
               )}
@@ -1324,7 +1255,7 @@ export default function LoveLetterBoard({
                 </Button>
               )}
 
-              <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>내 버린패:</span>
+              <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>내 낸 패:</span>
               <DiscardPileStack
                 discardPile={myPlayer?.discardPile}
                 onOpenHistory={handleOpenDiscardHistory}
@@ -1391,7 +1322,7 @@ export default function LoveLetterBoard({
           {/* 2-Step Action Control Bar */}
           <ActionControlBar>
             {isMyTurn && !myPlayer?.isEliminated ? (
-              selectedCard ? (
+              selectedCard && (
                 <Button
                   $variant="gold"
                   $size="default"
@@ -1409,39 +1340,18 @@ export default function LoveLetterBoard({
                     ✨ [{selectedCard.name} ({selectedCard.value})] 카드 사용하기
                   </span>
                 </Button>
-              ) : (
-                <div
-                  style={{
-                    fontSize: '12px',
-                    color: THEME.goldLight,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <Info size={14} />
-                  <span>사용할 손패 카드를 터치하여 선택하세요</span>
-                </div>
               )
-            ) : (
+            ) : myPlayer?.isEliminated ? (
               <div
                 style={{
-                  fontSize: '12px',
-                  color: THEME.mutedForeground,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
+                  fontSize: '11px',
+                  color: THEME.rose,
+                  fontWeight: 600,
                 }}
               >
-                <span>⏳</span>
-                <span>
-                  {myPlayer?.isEliminated
-                    ? '이번 라운드에서 탈락하였습니다. 다음 라운드를 기다려주세요.'
-                    : `[${currentTurnPlayer?.nickname || '상대방'}] 님의 플레이 대기 중...`}
-                </span>
+                ☠️ 이번 라운드 탈락 (다음 라운드 대기 중)
               </div>
-            )}
+            ) : null}
           </ActionControlBar>
         </MyPlayArea>
       </TableArea>
@@ -1738,33 +1648,105 @@ export default function LoveLetterBoard({
       </Dialog>
 
       {/* ========================================================= */}
-      {/* 8. SIDE DRAWER (Action Logs & Card Guide) */}
+      {/* 8. SIDE DRAWER (Settings, Room Info, Action Logs & Guide) */}
       {/* ========================================================= */}
       <SideDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title="📜 게임 기록 및 카드 가이드"
+        title="⚙️ 방 설정 및 게임 가이드"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Room Info & Invite Code */}
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: THEME.secondary,
+              borderRadius: THEME.radius.md,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '11px', color: THEME.mutedForeground }}>방 코드 (터치하여 복사)</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: THEME.goldLight, letterSpacing: '1px' }}>
+                {roomState?.code}
+              </div>
+            </div>
+            <Button $variant="outline" $size="sm" onClick={handleCopyCode} style={{ height: '30px' }}>
+              {copiedCode ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
+              <span style={{ marginLeft: '4px' }}>{copiedCode ? '복사됨' : '복사'}</span>
+            </Button>
+          </div>
+
+          {/* Voice & Sound Controls */}
           <div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: THEME.gold, marginBottom: '8px' }}>
-              액션 히스토리
+            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '8px' }}>
+              🎛️ 음성 통화 및 사운드 설정
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <Button
+                $variant={webrtc?.isMicOn ? 'emerald' : 'outline'}
+                $size="sm"
+                onClick={webrtc?.toggleMic}
+                style={{ height: '36px', fontSize: '12px' }}
+              >
+                {webrtc?.isMicOn ? <Mic size={14} /> : <MicOff size={14} />}
+                <span style={{ marginLeft: '4px' }}>마이크 {webrtc?.isMicOn ? 'ON' : 'OFF'}</span>
+              </Button>
+
+              <Button
+                $variant={webrtc?.isSpeakerOn ? 'secondary' : 'outline'}
+                $size="sm"
+                onClick={webrtc?.toggleSpeaker}
+                style={{ height: '36px', fontSize: '12px' }}
+              >
+                {webrtc?.isSpeakerOn ? <Volume2 size={14} /> : <VolumeX size={14} color={THEME.rose} />}
+                <span style={{ marginLeft: '4px' }}>스피커 {webrtc?.isSpeakerOn ? 'ON' : 'OFF'}</span>
+              </Button>
+
+              <Button
+                $variant={sfxEnabled ? 'secondary' : 'outline'}
+                $size="sm"
+                onClick={toggleSFX}
+                style={{ height: '36px', fontSize: '12px' }}
+              >
+                <span>{sfxEnabled ? '🎵' : '🔇'}</span>
+                <span style={{ marginLeft: '4px' }}>효과음 {sfxEnabled ? 'ON' : 'OFF'}</span>
+              </Button>
+
+              <Button
+                $variant={stt?.isSTTEnabled ? 'emerald' : 'outline'}
+                $size="sm"
+                onClick={stt?.toggleSTT}
+                style={{ height: '36px', fontSize: '12px' }}
+              >
+                <MessageSquare size={14} />
+                <span style={{ marginLeft: '4px' }}>STT 자막 {stt?.isSTTEnabled ? 'ON' : 'OFF'}</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Action History Log */}
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '6px' }}>
+              📜 전체 액션 히스토리
             </div>
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '6px',
-                maxHeight: '180px',
+                gap: '4px',
+                maxHeight: '140px',
                 overflowY: 'auto',
-                fontSize: '12px',
+                fontSize: '11px',
               }}
             >
               {(roomState?.actionLogs || []).map((log) => (
                 <div
                   key={log.id}
                   style={{
-                    padding: '6px 8px',
+                    padding: '5px 8px',
                     backgroundColor: THEME.secondary,
                     borderRadius: THEME.radius.sm,
                     color: THEME.foreground,
@@ -1776,22 +1758,23 @@ export default function LoveLetterBoard({
             </div>
           </div>
 
+          {/* 1~8 Card Guide */}
           <div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: THEME.gold, marginBottom: '8px' }}>
-              러브레터 1~8번 카드 가이드
+            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '6px' }}>
+              🃏 러브레터 1~8번 카드 가이드
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '11px' }}>
               {Object.values(CARD_DATA).map((c) => (
                 <div
                   key={c.value}
                   style={{
-                    padding: '6px 10px',
+                    padding: '5px 8px',
                     backgroundColor: THEME.secondary,
                     borderRadius: THEME.radius.md,
                     borderLeft: `3px solid ${c.color}`,
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: c.color, marginBottom: '2px' }}>
+                  <div style={{ fontWeight: 800, color: c.color, marginBottom: '1px' }}>
                     {c.icon} {c.value}. {c.name} ({c.nameEn}) - 총 {c.count}장
                   </div>
                   <div style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
