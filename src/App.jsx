@@ -128,6 +128,7 @@ const BrandLogo = styled.div`
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: 72% 25%;
       image-rendering: pixelated;
     }
   }
@@ -156,6 +157,7 @@ const MonogramSeal = styled.div`
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: 72% 25%;
     image-rendering: pixelated;
   }
 
@@ -196,8 +198,8 @@ const MainContent = styled.main`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: ${({ $isGame }) => ($isGame ? 'flex-start' : 'center')};
-  padding: ${({ $isGame }) => ($isGame ? '0' : '36px 16px')};
+  justify-content: ${({ $isEntry }) => ($isEntry ? 'center' : 'flex-start')};
+  padding: ${({ $isGame }) => ($isGame ? '0' : '28px 16px')};
   max-width: ${({ $isGame }) => ($isGame ? '100%' : '1080px')};
   width: 100%;
   margin: 0 auto;
@@ -669,7 +671,7 @@ export default function App() {
         </AppHeader>
       )}
 
-      <MainContent $isGame={screen === 'game'}>
+      <MainContent $isGame={screen === 'game'} $isEntry={screen === 'entry'}>
         {/* ========================================================= */}
         {/* SCREEN 1: Entry / Nickname Input */}
         {/* ========================================================= */}
@@ -753,8 +755,8 @@ export default function App() {
         {/* SCREEN 2: Lobby (Tabs + Game Cards Grid) */}
         {/* ========================================================= */}
         {screen === 'lobby' && (
-          <div style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '20px' }}>
               <TabsList>
                 <TabsTrigger
                   $active={activeTab === 'games'}
@@ -771,7 +773,7 @@ export default function App() {
               </TabsList>
             </div>
 
-            <TabsContent>
+            <TabsContent style={{ marginTop: '0', width: '100%' }}>
               {activeTab === 'games' && (
                 <GameGrid>
                   {/* Game 1: Love Letter (Live) */}
@@ -859,29 +861,32 @@ export default function App() {
               )}
 
               {activeTab === 'join' && (
-                <Card style={{ maxWidth: '460px', margin: '30px auto' }}>
-                  <CardHeader>
-                    <CardTitle>초대 코드로 입장</CardTitle>
-                    <CardDescription>
-                      공유받은 6자리 살롱 코드를 입력하세요.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <Input
-                        type="text"
-                        placeholder="예: 7BK9XP"
-                        value={joinCodeInput}
-                        onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-                        maxLength={6}
-                        style={{ fontSize: '18px', textAlign: 'center', letterSpacing: '6px', fontWeight: 800, fontFamily: THEME.font.mono }}
-                      />
-                      <Button type="submit" $variant="default" $size="lg" $fullWidth disabled={joinCodeInput.length < 4}>
-                        살롱 입장하기
-                      </Button>
-                    </form>
-                  </CardContent>
-                </Card>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', minHeight: '380px' }}>
+                  <Card style={{ maxWidth: '460px', width: '100%', padding: '8px' }}>
+                    <CardHeader style={{ textAlign: 'center' }}>
+                      <CardTitle style={{ justifyContent: 'center' }}>초대 코드로 입장</CardTitle>
+                      <CardDescription>
+                        공유받은 6자리 살롱 코드를 입력하세요.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <Input
+                          type="text"
+                          placeholder="예: 7BK9XP"
+                          value={joinCodeInput}
+                          onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                          maxLength={6}
+                          style={{ fontSize: '20px', textAlign: 'center', letterSpacing: '6px', fontWeight: 800, fontFamily: THEME.font.mono }}
+                          autoFocus
+                        />
+                        <Button type="submit" $variant="default" $size="lg" $fullWidth disabled={joinCodeInput.length < 4}>
+                          살롱 입장하기
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
             </TabsContent>
           </div>
