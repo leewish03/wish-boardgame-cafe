@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "start": "node server.js",
     "prod": "vite build && node server.js",
-    "test": "node tests/love_letter_rules.test.js && node tests/reconnection.test.js"
+    "test": "node tests/run_all_tests.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

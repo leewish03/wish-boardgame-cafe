@@ -347,17 +347,26 @@ export function initRoomManager(io) {
     });
 
     // 4. Ready Toggle
-    socket.on('room:ready', (payload) => {
+    socket.on('room:ready', (payload, callback) => {
       const mapping = socketToUser[socket.id];
-      if (!mapping) return;
+      if (!mapping) {
+        if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
+        return;
+      }
       const { roomCode, userId } = mapping;
       const room = rooms[roomCode];
-      if (!room || room.gameState !== 'LOBBY') return;
+      if (!room || room.gameState !== 'LOBBY') {
+        if (typeof callback === 'function') callback({ success: false, error: '로비 상태가 아님' });
+        return;
+      }
 
       const player = room.players.find((p) => p.id === userId);
       if (player && player.id !== room.hostId) {
         player.isReady = payload?.isReady !== undefined ? !!payload.isReady : !player.isReady;
         broadcastRoomState(io, roomCode);
+        if (typeof callback === 'function') callback({ success: true, isReady: player.isReady });
+      } else {
+        if (typeof callback === 'function') callback({ success: true, isReady: true });
       }
     });
 
