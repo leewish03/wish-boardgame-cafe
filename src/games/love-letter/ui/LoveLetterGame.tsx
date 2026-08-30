@@ -1,13 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { GameHud } from './GameHud';
 import { OpponentRail } from './OpponentRail';
 import { ActionStage } from './ActionStage';
 import { PlayerHand } from './PlayerHand';
 import { GuessSelector } from './GuessSelector';
+import { DiscardHistoryModal } from './DiscardHistoryModal';
+import { PriestSecretModal } from './PriestSecretModal';
+import { RoundResultModal } from './RoundResultModal';
+import { MatchResultModal } from './MatchResultModal';
+import { PauseOverlay } from './PauseOverlay';
 import { SpatialMotionStage } from '../presentation/SpatialMotionStage';
 import { useActionTimeline } from '../presentation/useActionTimeline';
-import { GameState, CardValue, PlayerId } from '../../../../packages/love-letter-core/src/types';
+import { sfx } from '../../../shared/sfx';
+import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
 import { calculateRemainingCards } from '../../../../packages/love-letter-core/src/selectors';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 
@@ -20,10 +26,14 @@ interface LoveLetterGameProps {
   isMicOn?: boolean;
   isSpeakerOn?: boolean;
   isSTTActive?: boolean;
+  isPaused?: boolean;
+  pausedPlayerName?: string;
   onToggleMic?: () => void;
   onToggleSpeaker?: () => void;
   onToggleSTT?: () => void;
   onPlayCard: (cardId: string, targetId?: string, guessValue?: number) => void;
+  onStartNextRound?: () => void;
+  onForfeit?: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -36,10 +46,14 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   isMicOn,
   isSpeakerOn,
   isSTTActive,
+  isPaused = false,
+  pausedPlayerName,
   onToggleMic,
   onToggleSpeaker,
   onToggleSTT,
   onPlayCard,
+  onStartNextRound,
+  onForfeit,
   onLeaveRoom,
 }) => {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -47,11 +61,30 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [isGuessOpen, setIsGuessOpen] = useState(false);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
 
+  // Modals state
+  const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
+  const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
+
   const { currentAction } = useActionTimeline();
 
   const me = gameState.players.find(p => p.id === myUserId);
   const opponents = gameState.players.filter(p => p.id !== myUserId);
   const isMyTurn = gameState.currentTurnPlayerId === myUserId && !me?.isEliminated;
+
+  // Sound effects on state transitions
+  useEffect(() => {
+    if (isMyTurn) {
+      sfx.playTurnAlert();
+    }
+  }, [isMyTurn]);
+
+  useEffect(() => {
+    if (gameState.matchState === 'ROUND_END') {
+      sfx.playRoundWin();
+    } else if (gameState.matchState === 'GAME_OVER') {
+      sfx.playMatchWin();
+    }
+  }, [gameState.matchState]);
 
   const selectedCard = useMemo(() => {
     return myHand.find(c => c.id === selectedCardId);
@@ -81,11 +114,13 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
     setSelectedCardId(cardId);
     setSelectedTargetId(null);
+    sfx.playCardDeal();
 
     const meta = CARD_DEFINITIONS[card.value as CardValue];
     if (!meta.needsTarget) {
       onPlayCard(cardId);
       setSelectedCardId(null);
+      sfx.playCardPlay();
     }
   };
 
@@ -100,6 +135,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       onPlayCard(selectedCardId, targetId);
       setSelectedCardId(null);
       setSelectedTargetId(null);
+      sfx.playCardPlay();
     }
   };
 
@@ -109,9 +145,22 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     setIsGuessOpen(false);
     setSelectedCardId(null);
     setSelectedTargetId(null);
+    sfx.playCardPlay();
+  };
+
+  const handleInspectDiscards = (playerId: string) => {
+    const player = gameState.players.find(p => p.id === playerId);
+    if (player) {
+      setInspectingPlayer({
+        name: player.nickname,
+        discards: player.discardPile || [],
+      });
+    }
   };
 
   const turnPlayer = gameState.players.find(p => p.id === gameState.currentTurnPlayerId);
+  const roundWinner = gameState.players.find(p => p.id === gameState.roundWinnerId);
+  const matchWinner = gameState.players.find(p => p.id === gameState.matchWinnerId);
 
   return (
     <BoardSurface>
@@ -140,6 +189,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         speakingUsers={speakingUsers}
         userSubtitles={userSubtitles}
         onSelectTarget={handleSelectTarget}
+        onInspectDiscards={handleInspectDiscards}
       />
 
       <ActionStage
@@ -156,12 +206,47 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onPlayCardDrag={handleSelectCard}
       />
 
+      {/* Modals & Dialogs */}
       <GuessSelector
         isOpen={isGuessOpen}
         targetPlayerName={opponents.find(p => p.id === selectedTargetId)?.nickname || '상대방'}
         remainingCounts={remainingCounts}
         onSelectGuess={handleConfirmGuess}
         onCancel={() => setIsGuessOpen(false)}
+      />
+
+      <DiscardHistoryModal
+        isOpen={!!inspectingPlayer}
+        playerName={inspectingPlayer?.name || ''}
+        discardPile={inspectingPlayer?.discards || []}
+        onClose={() => setInspectingPlayer(null)}
+      />
+
+      <PriestSecretModal
+        isOpen={!!priestSecret}
+        targetPlayerName={priestSecret?.targetName || ''}
+        secretCard={priestSecret?.card || null}
+        onClose={() => setPriestSecret(null)}
+      />
+
+      <RoundResultModal
+        isOpen={gameState.matchState === 'ROUND_END'}
+        roundNumber={gameState.roundNumber}
+        winnerName={roundWinner?.nickname || '승자'}
+        isHost={me?.isHost || false}
+        onNextRound={() => onStartNextRound && onStartNextRound()}
+      />
+
+      <MatchResultModal
+        isOpen={gameState.matchState === 'GAME_OVER'}
+        championName={matchWinner?.nickname || '우승자'}
+        onReturnToLobby={onLeaveRoom}
+      />
+
+      <PauseOverlay
+        isPaused={isPaused}
+        pausedPlayerName={pausedPlayerName}
+        onForfeit={() => onForfeit && onForfeit()}
       />
     </BoardSurface>
   );

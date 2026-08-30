@@ -1,13 +1,13 @@
-# [Task Tracker] Wish Boardgame Cafe - Love Letter 전면 재구축 및 런타임 통합
+# [Task Tracker] Wish Boardgame Cafe - Love Letter 전면 재구축 마스터 로드맵 (/goal)
 
-| Priority | Task Description | Status | Owner | Evidence |
+| No | Phase & Task | Status | Owner | Evidence |
 |---|---|---|---|---|
-| P0-1 | xstate 패키지 설치 및 Socket.IO connectionStateRecovery 활성화 | ✅ Completed | Dev / CTO | `package.json` (xstate v5), `server.js` (connectionStateRecovery: 2min) |
-| P0-2 | `server.js`에 `LoveLetterService` 및 공유 프로토콜 실시간 소켓 통합 | ✅ Completed | Server Dev | `server.js` `createLoveLetterService(io)` 마운트 |
-| P0-3 | `src/index.jsx`를 `AppRouter.tsx`로 완전 전환 및 소켓 이벤트 규격 일치화 | ✅ Completed | Frontend Dev | `src/index.jsx` -> `src/app/AppRouter.tsx` (Vite bundle 393 kB) |
-| P0-4 | WebRTC P2P 음성 통화 & Web Speech API 한국어 STT 신규 UI 이식 | ✅ Completed | Fullstack Dev | `AppRouter.tsx`, `GameHud.tsx` (마이크/스피커/STT 토글), `PlayerSeat.tsx` (VAD 링/말풍선) |
-| P1-1 | Framer Motion 모바일 카드 드래그 & `ActionStage` 실제 드롭 판정 물리학 구현 | ✅ Completed | Motion Dev | `GameCard.tsx` (`drag="y"`), `ActionStage.tsx` (Dropzone Highlight) |
-| P1-2 | 8종 카드별 고유 공간 비주얼 시퀀스 (투사체 빔, 투시, 결투 충돌, 교환, 샤터) | ✅ Completed | Motion Dev | `SpatialMotionStage.tsx` (경비병 레이저 빔, 남작 결투 오버레이, 샤터 이펙트) |
-| P1-3 | `useActionTimeline` 실시간 액션 큐 마운트 (1.1s 시간축 분리 보장) | ✅ Completed | Architecture | `useActionTimeline.ts` -> `LoveLetterGame.tsx` 마운트 |
-| P2-1 | 10-Match 멀티플레이 AI 실전 E2E 시뮬레이션 및 AST/빌드 전수 검증 | ✅ Completed | QA Lead | `tests/full_game_ts_simulation.test.js` (10 Matches / 0 Deadlocks, 0 Errors) |
-| P2-2 | 레거시 모놀리스 파일 정리 및 최종 프로덕션 검증 | ✅ Completed | Orchestrator | Vite 빌드 (`dist/assets/index-BEgf-aN3.js` 393.09 kB 번들링 성공) |
+| T1 | XState `gameInteractionMachine` & `presentationMachine` 실시간 바인딩 | ✅ Completed | Dev / Architecture | `src/games/love-letter/machines/*` |
+| T2 | Framer Motion 드래그 앤 드롭 실제 히트박스 판정 (`ActionStage` 충돌 감지) | ✅ Completed | Motion Dev | `GameCard.tsx`, `ActionStage.tsx` (Dropzone Highlight & Snap) |
+| T3 | 8종 카드 전용 공간 비주얼 시퀀스 (사제 투시 미러, 남작 대결 충돌, 왕자 버림 와류, 국왕 교환) | ✅ Completed | Motion Dev | `SpatialMotionStage.tsx` (레이저 빔, 남작 결투, 샤터) |
+| T4 | 버린 카드 상세 히스토리 뷰어 모달 (`DiscardHistoryModal`) 구현 | ✅ Completed | Frontend Dev | `DiscardHistoryModal.tsx` (실시간 낸 카드 및 설명 뷰어) |
+| T5 | Web Audio API 신시사이저 SFX 사운드 전수 연동 (드로우, 제출, 저격, 충돌, 승리) | ✅ Completed | Fullstack Dev | `sfx.js` -> `LoveLetterGame.tsx` (5종 신시사이저 SFX) |
+| T6 | 라운드 종료 왁스실 토큰 스탬프 & 매치 우승 샴페인 팡파레 모달 | ✅ Completed | Frontend Dev | `RoundResultModal.tsx`, `MatchResultModal.tsx` |
+| T7 | 세션 이탈 3분 유예 `PauseOverlay` 및 0ms 자동 재접속 복구 결합 | ✅ Completed | Server/Client | `useSessionGuard.js`, `PauseOverlay.tsx`, Socket.IO `connectionStateRecovery` |
+| T8 | 전체 테스트 파이프라인 전수 실행 (AST, 룰, AI 휴리스틱, 10-Match 시뮬레이션, Vite 빌드) | ✅ Completed | QA Lead | AST 21개 통과, 룰 7/7, AI 5/5, 10-Match 359턴 0에러, Vite 403 kB 번들 |
+| T9 | Git 커밋/푸시 및 최종 완료 검증 보고서 (`walkthrough.md`) | ✅ Completed | Orchestrator | GitHub `master` 브랜치 |
