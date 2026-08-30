@@ -13,7 +13,7 @@ export const fadeIn = keyframes`
 `;
 
 export const zoomIn = keyframes`
-  from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 `;
 
@@ -23,118 +23,134 @@ export const slideInRight = keyframes`
 `;
 
 export const slideUp = keyframes`
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
 `;
 
 export const pulseRing = keyframes`
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
-  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(5, 150, 105, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(4, 120, 87, 0.6); }
+  70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(4, 120, 87, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(4, 120, 87, 0); }
 `;
 
 export const goldGlow = keyframes`
-  0% { box-shadow: 0 0 5px rgba(212, 175, 55, 0.4); }
-  50% { box-shadow: 0 0 18px rgba(212, 175, 55, 0.85); }
-  100% { box-shadow: 0 0 5px rgba(212, 175, 55, 0.4); }
+  0% { box-shadow: 0 0 4px rgba(197, 160, 89, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(197, 160, 89, 0.75); }
+  100% { box-shadow: 0 0 4px rgba(197, 160, 89, 0.4); }
 `;
 
 // =========================================================================
-// 1. Button Component (Marble & Metal Touch)
+// 1. Button Component (Obsidian Slate & Brushed Brass)
 // =========================================================================
 
 const buttonVariants = {
   default: css`
-    background-color: ${THEME.primary};
-    color: ${THEME.primaryForeground};
-    font-weight: 600;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+    background: ${THEME.gradients.obsidianButton};
+    color: #ffffff;
+    font-family: ${THEME.font.serif};
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid #1e293b;
+    box-shadow: 0 4px 12px rgba(9, 13, 22, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     &:hover {
-      background-color: #1e293b;
-      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.3);
+      background: #000000;
+      border-color: ${THEME.gold};
+      box-shadow: 0 6px 18px rgba(9, 13, 22, 0.35), 0 0 12px rgba(197, 160, 89, 0.3);
+      color: ${THEME.goldLight};
     }
   `,
   secondary: css`
-    background-color: ${THEME.secondary};
-    color: ${THEME.secondaryForeground};
-    border: 1px solid ${THEME.border};
-    &:hover {
-      background-color: #e2e8f0;
-    }
-  `,
-  outline: css`
-    border: 1px solid ${THEME.border};
     background-color: #ffffff;
     color: ${THEME.foreground};
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    border: 1px solid ${THEME.border};
+    font-weight: 600;
     &:hover {
       background-color: ${THEME.secondary};
       border-color: #cbd5e1;
+    }
+  `,
+  outline: css`
+    border: 1.5px solid ${THEME.borderGold};
+    background-color: rgba(255, 255, 255, 0.9);
+    color: ${THEME.foreground};
+    font-family: ${THEME.font.serif};
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    &:hover {
+      background-color: #ffffff;
+      border-color: ${THEME.goldAntique};
+      box-shadow: 0 4px 12px rgba(197, 160, 89, 0.2);
     }
   `,
   ghost: css`
     background-color: transparent;
     color: ${THEME.foreground};
     &:hover {
-      background-color: ${THEME.secondary};
+      background-color: rgba(15, 23, 42, 0.05);
     }
   `,
   destructive: css`
     background-color: ${THEME.destructive};
-    color: ${THEME.destructiveForeground};
+    color: #ffffff;
+    font-weight: 700;
     &:hover {
-      background-color: #9f1239;
+      background-color: #881337;
     }
   `,
   emerald: css`
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
     color: #ffffff;
     font-weight: 700;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.25);
     &:hover {
-      filter: brightness(1.08);
-      box-shadow: 0 4px 14px rgba(5, 150, 105, 0.45);
+      filter: brightness(1.06);
     }
   `,
   burgundy: css`
     background: ${THEME.gradients.burgundySeal};
     color: #ffffff;
     border: 1px solid ${THEME.gold};
+    font-family: ${THEME.font.serif};
     font-weight: 700;
-    box-shadow: 0 2px 8px rgba(123, 24, 54, 0.35);
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 12px rgba(99, 19, 38, 0.3);
     &:hover {
       filter: brightness(1.1);
-      box-shadow: 0 4px 14px rgba(123, 24, 54, 0.55);
+      box-shadow: 0 6px 16px rgba(99, 19, 38, 0.45);
     }
   `,
   gold: css`
     background: ${THEME.gradients.goldShimmer};
-    color: #0f172a;
+    color: #090d16;
+    font-family: ${THEME.font.serif};
     font-weight: 800;
-    box-shadow: 0 2px 10px rgba(212, 175, 55, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.06em;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 4px 14px rgba(197, 160, 89, 0.35);
     &:hover {
-      filter: brightness(1.08);
-      box-shadow: 0 4px 16px rgba(212, 175, 55, 0.6);
+      filter: brightness(1.06);
+      box-shadow: 0 6px 20px rgba(197, 160, 89, 0.55);
     }
   `,
 };
 
 const buttonSizes = {
   default: css`
-    height: 38px;
-    padding: 0 16px;
-    font-size: 14px;
+    height: 42px;
+    padding: 0 20px;
+    font-size: 13.5px;
   `,
   sm: css`
-    height: 30px;
-    padding: 0 10px;
-    font-size: 12px;
+    height: 32px;
+    padding: 0 12px;
+    font-size: 11.5px;
     border-radius: ${THEME.radius.sm};
   `,
   lg: css`
-    height: 44px;
-    padding: 0 24px;
+    height: 48px;
+    padding: 0 28px;
     font-size: 15px;
     border-radius: ${THEME.radius.md};
   `,
@@ -142,7 +158,7 @@ const buttonSizes = {
     height: 36px;
     width: 36px;
     padding: 0;
-    border-radius: ${THEME.radius.md};
+    border-radius: ${THEME.radius.sm};
   `,
 };
 
@@ -152,12 +168,10 @@ export const Button = styled.button`
   justify-content: center;
   gap: 8px;
   white-space: nowrap;
-  border-radius: ${THEME.radius.md};
-  font-family: ${THEME.font.sans};
-  font-weight: 600;
+  border-radius: ${THEME.radius.sm};
   border: none;
   cursor: pointer;
-  transition: all 0.15s ease-in-out;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none;
   user-select: none;
 
@@ -172,7 +186,7 @@ export const Button = styled.button`
   }
 
   &:active {
-    transform: scale(0.98);
+    transform: scale(0.985);
   }
 
   ${({ $variant = 'default' }) => buttonVariants[$variant] || buttonVariants.default}
@@ -181,19 +195,31 @@ export const Button = styled.button`
 `;
 
 // =========================================================================
-// 2. Card Components (Marble Slab)
+// 2. Marble Slab / Card Components (Double Hairline Brass Inlay)
 // =========================================================================
 
 export const Card = styled.div`
-  border-radius: ${THEME.radius.xl};
-  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.lg};
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
+  background-position: center;
   color: ${THEME.foreground};
+  border: 1px solid #dcdfe4;
   box-shadow: ${THEME.shadows.marbleSlab};
   overflow: hidden;
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+
+  /* Double Hairline Brass Inlay Frame */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 1px solid rgba(197, 160, 89, 0.45);
+    border-radius: calc(${THEME.radius.lg} - 3px);
+    pointer-events: none;
+  }
 
   ${({ $hoverable }) =>
     $hoverable &&
@@ -202,7 +228,7 @@ export const Card = styled.div`
       &:hover {
         border-color: ${THEME.gold};
         box-shadow: ${THEME.shadows.marbleCardHover};
-        transform: translateY(-2px);
+        transform: translateY(-3px);
       }
     `}
 
@@ -210,7 +236,7 @@ export const Card = styled.div`
     $active &&
     css`
       border-color: ${THEME.gold};
-      box-shadow: ${THEME.shadows.goldNeon};
+      box-shadow: 0 0 0 1px ${THEME.gold}, ${THEME.shadows.goldNeon};
     `}
 `;
 
@@ -218,14 +244,17 @@ export const CardHeader = styled.div`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: ${({ $padding = '20px' }) => $padding};
+  padding: ${({ $padding = '24px' }) => $padding};
+  position: relative;
+  z-index: 2;
 `;
 
 export const CardTitle = styled.h3`
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-family: ${THEME.font.serif};
+  font-size: 1.3rem;
+  font-weight: 800;
   line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.04em;
   margin: 0;
   color: ${THEME.foreground};
   display: flex;
@@ -237,31 +266,35 @@ export const CardDescription = styled.p`
   font-size: 0.875rem;
   color: ${THEME.mutedForeground};
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
 `;
 
 export const CardContent = styled.div`
-  padding: ${({ $padding = '0 20px 20px 20px' }) => $padding};
+  padding: ${({ $padding = '0 24px 24px 24px' }) => $padding};
+  position: relative;
+  z-index: 2;
 `;
 
 export const CardFooter = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px 20px 20px;
-  gap: 10px;
+  padding: 0 24px 24px 24px;
+  gap: 12px;
+  position: relative;
+  z-index: 2;
 `;
 
 // =========================================================================
-// 3. Dialog / Modal (Polished Marble Modal)
+// 3. Dialog / Modal (Polished Marble Slab Modal)
 // =========================================================================
 
 const DialogOverlayWrapper = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background-color: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(8px);
+  background-color: rgba(9, 13, 22, 0.75);
+  backdrop-filter: blur(10px);
   animation: ${fadeIn} 0.2s ease-out;
   display: flex;
   align-items: center;
@@ -276,19 +309,30 @@ const DialogContentWrapper = styled.div`
   max-height: 90vh;
   overflow-y: auto;
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 1.5px solid ${THEME.border};
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
+  border: 1.5px solid #dcdfe4;
   border-radius: ${THEME.radius.xl};
-  padding: 24px;
-  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.25), 0 0 20px rgba(212, 175, 55, 0.2);
-  animation: ${zoomIn} 0.2s ease-out;
+  padding: 28px;
+  box-shadow: 0 30px 70px rgba(9, 13, 22, 0.35), 0 0 25px rgba(197, 160, 89, 0.25);
+  animation: ${zoomIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: ${THEME.foreground};
+
+  /* Double Hairline Brass Inlay */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border: 1px solid rgba(197, 160, 89, 0.5);
+    border-radius: calc(${THEME.radius.xl} - 4px);
+    pointer-events: none;
+  }
 `;
 
 const CloseButton = styled.button`
   position: absolute;
-  right: 16px;
-  top: 16px;
+  right: 18px;
+  top: 18px;
   background: transparent;
   border: none;
   color: ${THEME.mutedForeground};
@@ -299,6 +343,7 @@ const CloseButton = styled.button`
   padding: 6px;
   border-radius: ${THEME.radius.sm};
   transition: all 0.15s;
+  z-index: 10;
 
   &:hover {
     color: ${THEME.foreground};
@@ -311,11 +356,15 @@ export const DialogHeader = styled.div`
   flex-direction: column;
   gap: 6px;
   margin-bottom: 20px;
+  position: relative;
+  z-index: 2;
 `;
 
 export const DialogTitle = styled.h2`
-  font-size: 1.25rem;
+  font-family: ${THEME.font.serif};
+  font-size: 1.3rem;
   font-weight: 800;
+  letter-spacing: 0.03em;
   margin: 0;
   color: ${THEME.foreground};
   display: flex;
@@ -327,7 +376,7 @@ export const DialogDescription = styled.p`
   font-size: 0.875rem;
   color: ${THEME.mutedForeground};
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 `;
 
 export const DialogFooter = styled.div`
@@ -335,6 +384,8 @@ export const DialogFooter = styled.div`
   justify-content: flex-end;
   gap: 10px;
   margin-top: 24px;
+  position: relative;
+  z-index: 2;
 `;
 
 export function Dialog({ open, onClose, children, maxWidth = '480px' }) {
@@ -359,16 +410,17 @@ export function Dialog({ open, onClose, children, maxWidth = '480px' }) {
 
 export const TabsList = styled.div`
   display: inline-flex;
-  height: 42px;
+  height: 44px;
   align-items: center;
   justify-content: flex-start;
-  border-radius: ${THEME.radius.lg};
-  background-color: ${THEME.muted};
+  border-radius: ${THEME.radius.sm};
+  background-color: #ffffff;
   border: 1px solid ${THEME.border};
   padding: 4px;
   gap: 4px;
   color: ${THEME.mutedForeground};
   width: ${({ $fullWidth }) => ($fullWidth ? '100%' : 'auto')};
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.04);
 `;
 
 export const TabsTrigger = styled.button`
@@ -377,21 +429,23 @@ export const TabsTrigger = styled.button`
   justify-content: center;
   gap: 6px;
   white-space: nowrap;
-  border-radius: ${THEME.radius.md};
-  padding: 6px 14px;
-  font-size: 0.875rem;
-  font-weight: 600;
+  border-radius: calc(${THEME.radius.sm} - 2px);
+  padding: 6px 16px;
+  font-family: ${THEME.font.serif};
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   flex: ${({ $fullWidth }) => ($fullWidth ? '1' : 'none')};
 
-  background-color: ${({ $active }) => ($active ? '#ffffff' : 'transparent')};
-  color: ${({ $active }) => ($active ? THEME.foreground : THEME.mutedForeground)};
-  box-shadow: ${({ $active }) => ($active ? '0 2px 6px rgba(15, 23, 42, 0.1)' : 'none')};
+  background-color: ${({ $active }) => ($active ? THEME.primary : 'transparent')};
+  color: ${({ $active }) => ($active ? '#ffffff' : THEME.mutedForeground)};
+  box-shadow: ${({ $active }) => ($active ? '0 2px 8px rgba(9, 13, 22, 0.25)' : 'none')};
 
   &:hover {
-    color: ${THEME.foreground};
+    color: ${({ $active }) => ($active ? '#ffffff' : THEME.foreground)};
   }
 `;
 
@@ -401,15 +455,15 @@ export const TabsContent = styled.div`
 `;
 
 // =========================================================================
-// 5. Side Drawer (Marble Slide-in)
+// 5. Side Drawer
 // =========================================================================
 
 const DrawerOverlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 900;
-  background-color: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  background-color: rgba(9, 13, 22, 0.65);
+  backdrop-filter: blur(6px);
   animation: ${fadeIn} 0.2s ease-out;
 `;
 
@@ -421,14 +475,14 @@ const DrawerContainer = styled.div`
   width: 100%;
   max-width: 360px;
   z-index: 910;
-  background-color: rgba(255, 255, 255, 0.98);
-  background-image: ${THEME.gradients.marbleSlab};
-  border-left: 1.5px solid ${THEME.border};
-  backdrop-filter: blur(16px);
-  padding: 20px;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
+  border-left: 1.5px solid ${THEME.gold};
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  box-shadow: -10px 0 30px rgba(15, 23, 42, 0.15);
+  box-shadow: -10px 0 40px rgba(9, 13, 22, 0.2);
   animation: ${slideInRight} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: ${THEME.foreground};
 `;
@@ -437,14 +491,16 @@ const DrawerHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 14px;
-  border-bottom: 1px solid ${THEME.border};
-  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(197, 160, 89, 0.3);
+  margin-bottom: 18px;
 `;
 
 const DrawerTitle = styled.h3`
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-family: ${THEME.font.serif};
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   margin: 0;
   display: flex;
   align-items: center;
@@ -483,37 +539,37 @@ export function SideDrawer({ open, onClose, title, children }) {
 
 const badgeVariants = {
   default: css`
-    background-color: ${THEME.secondary};
+    background-color: #ffffff;
     color: ${THEME.foreground};
     border: 1px solid ${THEME.border};
   `,
   emerald: css`
-    background-color: rgba(5, 150, 105, 0.12);
+    background-color: rgba(4, 120, 87, 0.08);
     color: #047857;
-    border: 1px solid rgba(5, 150, 105, 0.3);
+    border: 1px solid rgba(4, 120, 87, 0.3);
   `,
   gold: css`
-    background: linear-gradient(135deg, rgba(254, 240, 138, 0.9) 0%, rgba(212, 175, 55, 0.9) 100%);
-    color: #0f172a;
+    background: linear-gradient(135deg, rgba(254, 240, 138, 0.95) 0%, rgba(197, 160, 89, 0.95) 100%);
+    color: #090d16;
     font-weight: 800;
     border: 1px solid ${THEME.gold};
-    box-shadow: 0 1px 3px rgba(212, 175, 55, 0.3);
   `,
   rose: css`
-    background-color: rgba(225, 29, 72, 0.12);
-    color: #be123c;
-    border: 1px solid rgba(225, 29, 72, 0.3);
+    background-color: rgba(190, 18, 60, 0.08);
+    color: #9f1239;
+    border: 1px solid rgba(190, 18, 60, 0.3);
   `,
   burgundy: css`
     background: ${THEME.gradients.burgundySeal};
     color: #ffffff;
     border: 1px solid ${THEME.gold};
+    font-family: ${THEME.font.serif};
     font-weight: 700;
   `,
   indigo: css`
-    background-color: rgba(79, 70, 229, 0.12);
-    color: #4338ca;
-    border: 1px solid rgba(79, 70, 229, 0.3);
+    background-color: rgba(55, 48, 163, 0.08);
+    color: #3730a3;
+    border: 1px solid rgba(55, 48, 163, 0.3);
   `,
   outline: css`
     border: 1px solid ${THEME.border};
@@ -526,11 +582,10 @@ export const Badge = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border-radius: ${THEME.radius.full};
-  padding: 2px 8px;
+  border-radius: ${THEME.radius.sm};
+  padding: 2px 7px;
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.3;
   letter-spacing: 0.02em;
   white-space: nowrap;
 
@@ -538,7 +593,7 @@ export const Badge = styled.span`
 `;
 
 // =========================================================================
-// 7. Affection Token Component (실물 딥 버건디 왁스 실 + 골드 천칭 ⚖️ 각인)
+// 7. Affection Token Component (Heritage Burgundy Wax Seal)
 // =========================================================================
 
 const TokenSealWrapper = styled.div`
@@ -549,7 +604,7 @@ const TokenSealWrapper = styled.div`
   border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.full};
   padding: 1px 7px;
-  box-shadow: 0 2px 6px rgba(123, 24, 54, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 6px rgba(99, 19, 38, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
   color: #ffffff;
   font-size: ${({ $size }) => ($size === 'sm' ? '10px' : '11px')};
   font-weight: 800;
@@ -560,7 +615,7 @@ const TokenSealWrapper = styled.div`
 export function AffectionTokenBadge({ count = 0, target = 4, size = 'default' }) {
   return (
     <TokenSealWrapper $size={size} title={`호감 토큰: ${count}/${target}개`}>
-      <span style={{ fontSize: size === 'sm' ? '10px' : '12px' }}>⚖️</span>
+      <span style={{ fontSize: size === 'sm' ? '10px' : '11px' }}>⚖</span>
       <span>{count}</span>
       {target && <span style={{ color: 'rgba(255, 255, 255, 0.65)', fontSize: '9px' }}>/{target}</span>}
     </TokenSealWrapper>
@@ -568,29 +623,32 @@ export function AffectionTokenBadge({ count = 0, target = 4, size = 'default' })
 }
 
 // =========================================================================
-// 8. Input Component
+// 8. Input Component (Chiseled Stone Field with Hairline Inset)
 // =========================================================================
 
 export const Input = styled.input`
   width: 100%;
-  height: 38px;
-  border-radius: ${THEME.radius.md};
+  height: 42px;
+  border-radius: ${THEME.radius.sm};
   border: 1.5px solid ${THEME.input};
   background-color: #ffffff;
-  padding: 0 12px;
+  padding: 0 14px;
   font-size: 14px;
   font-family: ${THEME.font.sans};
+  font-weight: 600;
   color: ${THEME.foreground};
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.05);
+  transition: all 0.15s ease-in-out;
 
   &::placeholder {
     color: ${THEME.mutedForeground};
+    font-weight: 400;
   }
 
   &:focus {
     border-color: ${THEME.gold};
-    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
+    box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.2), inset 0 1px 2px rgba(15, 23, 42, 0.03);
   }
 
   &:disabled {
@@ -611,14 +669,16 @@ const ToastContainer = styled.div`
   transform: translateX(-50%);
   z-index: 2000;
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
   border: 1.5px solid ${THEME.gold};
-  border-radius: ${THEME.radius.lg};
-  padding: 12px 20px;
+  border-radius: ${THEME.radius.md};
+  padding: 12px 24px;
   color: ${THEME.foreground};
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18), 0 0 15px rgba(212, 175, 55, 0.3);
+  font-family: ${THEME.font.sans};
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 0 12px 32px rgba(9, 13, 22, 0.2), 0 0 15px rgba(197, 160, 89, 0.25);
   animation: ${slideUp} 0.2s ease-out;
   display: flex;
   align-items: center;
@@ -640,14 +700,14 @@ export function Toast({ message, onClose }) {
 }
 
 // =========================================================================
-// 10. PauseOverlay Component (3-minute Grace Period Overlay)
+// 10. PauseOverlay Component
 // =========================================================================
 
 const PauseOverlayContainer = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1500;
-  background-color: rgba(15, 23, 42, 0.75);
+  background-color: rgba(9, 13, 22, 0.8);
   backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
@@ -662,26 +722,37 @@ const PauseCard = styled.div`
   max-width: 480px;
   width: 100%;
   background: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
   border: 2px solid ${THEME.gold};
   border-radius: ${THEME.radius.xl};
-  padding: 32px 24px;
-  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35), 0 0 40px rgba(212, 175, 55, 0.3);
+  padding: 36px 28px;
+  box-shadow: 0 30px 70px rgba(9, 13, 22, 0.4), 0 0 40px rgba(197, 160, 89, 0.3);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 16px;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border: 1px solid rgba(197, 160, 89, 0.5);
+    border-radius: calc(${THEME.radius.xl} - 4px);
+    pointer-events: none;
+  }
 `;
 
 const PauseTimerText = styled.div`
-  font-size: 40px;
+  font-size: 42px;
   font-weight: 900;
   color: ${THEME.burgundy};
   font-family: ${THEME.font.mono};
   letter-spacing: 2px;
   margin: 8px 0;
-  text-shadow: 0 2px 10px rgba(123, 24, 54, 0.2);
+  text-shadow: 0 2px 10px rgba(99, 19, 38, 0.2);
 `;
 
 export function PauseOverlay({
@@ -715,11 +786,10 @@ export function PauseOverlay({
   return (
     <PauseOverlayContainer>
       <PauseCard>
-        <div style={{ fontSize: '32px' }}>⏳</div>
         <DialogTitle style={{ color: THEME.foreground, fontSize: '18px' }}>
-          게임 일시정지 (재접속 대기 중)
+          게임 일시정지 (재접속 대기)
         </DialogTitle>
-        <div style={{ fontSize: '13px', color: THEME.mutedForeground, lineHeight: 1.5 }}>
+        <div style={{ fontSize: '13.5px', color: THEME.mutedForeground, lineHeight: 1.5 }}>
           <strong style={{ color: THEME.burgundy }}>[{pausedPlayerNickname}]</strong> 님의 연결이 끊어졌습니다.
           <br />
           재접속을 위해 최대 3분간 게임이 일시정지됩니다.
@@ -728,7 +798,7 @@ export function PauseOverlay({
         <PauseTimerText>{formattedTime}</PauseTimerText>
 
         <div style={{ fontSize: '12px', color: THEME.mutedForeground }}>
-          시간이 초과되면 해당 플레이어는 자동 기권(탈락) 처리됩니다.
+          시간이 초과되면 해당 플레이어는 자동 기권 처리됩니다.
         </div>
 
         {onForfeit && (
@@ -738,7 +808,7 @@ export function PauseOverlay({
             onClick={onForfeit}
             style={{ marginTop: '8px', borderColor: THEME.destructive, color: THEME.destructive }}
           >
-            기다리지 않고 나가기 (🚪 기권)
+            기다리지 않고 나가기 (기권)
           </Button>
         )}
       </PauseCard>

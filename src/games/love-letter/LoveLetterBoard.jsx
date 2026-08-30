@@ -274,12 +274,14 @@ const ThinkingBadge = styled.div`
   position: absolute;
   top: -8px;
   background: ${THEME.gradients.goldShimmer};
-  color: #0f172a;
-  font-size: 9px;
-  font-weight: 800;
-  padding: 1px 6px;
+  color: #090d16;
+  font-family: ${THEME.font.serif};
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 1px 7px;
   border-radius: ${THEME.radius.full};
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.5);
+  box-shadow: 0 2px 8px rgba(197, 160, 89, 0.5);
   white-space: nowrap;
   z-index: 25;
   display: flex;
@@ -366,13 +368,15 @@ const OpponentStatsRow = styled.div`
 const TargetBadge = styled.div`
   position: absolute;
   top: -8px;
-  background: linear-gradient(135deg, ${THEME.goldLight} 0%, ${THEME.gold} 100%);
-  color: #000;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 8px;
+  background: ${THEME.gradients.goldShimmer};
+  color: #090d16;
+  font-family: ${THEME.font.serif};
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 1px 8px;
   border-radius: ${THEME.radius.full};
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(197, 160, 89, 0.4);
   white-space: nowrap;
   z-index: 25;
 `;
@@ -1255,8 +1259,8 @@ export default function LoveLetterBoard({
                   if (isTargetable) handleSeatClick(p);
                 }}
               >
-                {isTargetable && <TargetBadge>🎯 터치하여 지목</TargetBadge>}
-                {isTurn && !isTargetable && <ThinkingBadge>⏳ 생각 중...</ThinkingBadge>}
+                {isTargetable && <TargetBadge>SELECT TARGET</TargetBadge>}
+                {isTurn && !isTargetable && <ThinkingBadge>THINKING...</ThinkingBadge>}
 
                 <AvatarWrapper>
                   <AvatarImg
@@ -1326,11 +1330,11 @@ export default function LoveLetterBoard({
             {isMyTurn ? (
               <>
                 <Sparkles size={14} color={THEME.gold} />
-                <span>👑 [내 턴] 카드를 선택하세요</span>
+                <span style={{ letterSpacing: '0.04em' }}>[YOUR TURN] 카드를 선택하세요</span>
               </>
             ) : (
               <>
-                <span>⏳</span>
+                <span style={{ color: THEME.gold }}>THINKING:</span>
                 <span>[{currentTurnPlayer?.nickname || '상대방'}] 님의 턴</span>
               </>
             )}
@@ -1341,23 +1345,25 @@ export default function LoveLetterBoard({
             onClick={() => setDrawerOpen(true)}
             title="남은 덱 카드 수 (탭하여 카드 가이드 열기)"
           >
-            <MiniDeckCardVisual>💌</MiniDeckCardVisual>
+            <MiniDeckCardVisual style={{ fontFamily: THEME.font.serif, fontWeight: 900, color: THEME.goldLight }}>
+              W
+            </MiniDeckCardVisual>
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ fontSize: '10px', color: THEME.burgundy, fontWeight: 800 }}>
-                남은 덱
+              <span style={{ fontFamily: THEME.font.serif, fontSize: '10px', color: THEME.burgundy, fontWeight: 800, letterSpacing: '0.04em' }}>
+                DECK
               </span>
-              <span style={{ fontSize: '13px', fontWeight: 800 }}>
+              <span style={{ fontSize: '13px', fontWeight: 900 }}>
                 {roomState?.deckCount || 0}장
               </span>
             </div>
             {(roomState?.setAsideOpenCards || []).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginLeft: '6px', borderLeft: `1px solid ${THEME.border}`, paddingLeft: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px', borderLeft: `1px solid ${THEME.border}`, paddingLeft: '6px' }}>
                 <span style={{ fontSize: '9px', color: THEME.mutedForeground }}>제외:</span>
                 {roomState.setAsideOpenCards.map((card, idx) => {
                   const meta = CARD_DATA[card.value] || {};
                   return (
                     <span key={idx} style={{ fontSize: '9px', fontWeight: 800, color: meta.color }}>
-                      {meta.icon}{card.value}
+                      {card.value}
                     </span>
                   );
                 })}
@@ -1369,8 +1375,8 @@ export default function LoveLetterBoard({
           {isTargetingMode && (
             <TargetingBanner>
               <Crosshair size={15} color={THEME.burgundy} />
-              <span style={{ fontSize: '11px', fontWeight: 800, color: THEME.foreground }}>
-                🎯 지목할 상대를 직접 터치하세요!
+              <span style={{ fontFamily: THEME.font.serif, fontSize: '11px', fontWeight: 800, color: THEME.foreground, letterSpacing: '0.04em' }}>
+                TARGET: 지목할 상대를 터치하세요
               </span>
               <Button
                 $variant="outline"

@@ -78,51 +78,104 @@ const AppHeader = styled.header`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background-color: rgba(255, 255, 255, 0.95);
-  background-image: ${THEME.gradients.marbleSlab};
-  border-bottom: 1.5px solid ${THEME.border};
-  backdrop-filter: blur(12px);
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+  padding: 14px 28px;
+  background-color: rgba(255, 255, 255, 0.96);
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
+  border-bottom: 1.5px solid #dcdfe4;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 16px rgba(9, 13, 22, 0.05);
   z-index: 100;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, ${THEME.gold} 50%, transparent 100%);
+  }
 `;
 
 const BrandLogo = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.2rem;
-  font-weight: 800;
+  gap: 12px;
+  font-family: ${THEME.font.serif};
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
   color: ${THEME.foreground};
-  letter-spacing: -0.02em;
+  text-transform: uppercase;
 
-  span.logo-icon {
-    font-size: 1.4rem;
+  span.logo-seal {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: ${THEME.primary};
+    border: 1.5px solid ${THEME.gold};
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: ${THEME.goldLight};
+    font-weight: 800;
+    box-shadow: 0 2px 6px rgba(9, 13, 22, 0.2);
   }
 
-  span.gold-text {
+  span.salon-text {
     color: ${THEME.burgundy};
+    font-weight: 700;
+  }
+`;
+
+const MonogramSeal = styled.div`
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: ${THEME.gradients.obsidianButton};
+  border: 1.5px solid ${THEME.gold};
+  box-shadow: 0 6px 18px rgba(9, 13, 22, 0.25), 0 0 14px rgba(197, 160, 89, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ${THEME.font.serif};
+  font-size: 26px;
+  font-weight: 800;
+  color: ${THEME.goldLight};
+  margin-bottom: 14px;
+  letter-spacing: 0;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px dashed rgba(197, 160, 89, 0.45);
+    border-radius: 50%;
   }
 `;
 
 const UserProfileChip = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   background-color: #ffffff;
-  padding: 4px 12px;
+  padding: 4px 14px 4px 6px;
   border-radius: ${THEME.radius.full};
-  border: 1.5px solid ${THEME.border};
+  border: 1px solid #dcdfe4;
+  box-shadow: 0 2px 8px rgba(9, 13, 22, 0.05);
   font-size: 13px;
   font-weight: 700;
   color: ${THEME.foreground};
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 
   img {
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
-    border: 1px solid ${THEME.gold};
+    border: 1.5px solid ${THEME.gold};
   }
 `;
 
@@ -132,7 +185,7 @@ const MainContent = styled.main`
   flex-direction: column;
   align-items: center;
   justify-content: ${({ $isGame }) => ($isGame ? 'flex-start' : 'center')};
-  padding: ${({ $isGame }) => ($isGame ? '0' : '24px 16px')};
+  padding: ${({ $isGame }) => ($isGame ? '0' : '36px 16px')};
   max-width: ${({ $isGame }) => ($isGame ? '100%' : '1080px')};
   width: 100%;
   margin: 0 auto;
@@ -149,35 +202,52 @@ const MainContent = styled.main`
 // Game Card Grid Layout
 const GameGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
   width: 100%;
-  margin-top: 16px;
+  margin-top: 18px;
 `;
 
 const GameThumbnail = styled.div`
-  height: 140px;
-  border-radius: ${THEME.radius.lg};
-  background: ${({ $bg }) => $bg || THEME.gradients.marbleSlab};
+  height: 130px;
+  border-radius: ${THEME.radius.md};
+  background: ${({ $bg }) => $bg || '#090d16'};
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 4rem;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   position: relative;
   overflow: hidden;
-  border: 1.5px solid ${THEME.border};
-  box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  span.emblem-title {
+    font-family: ${THEME.font.serif};
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: ${THEME.goldLight};
+    text-transform: uppercase;
+  }
+
+  span.emblem-sub {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
 `;
 
 const ChatWrapper = styled.div`
   display: flex;
   flex-direction: column;
   height: 240px;
-  border: 1.5px solid ${THEME.border};
+  border: 1px solid #dcdfe4;
   border-radius: ${THEME.radius.lg};
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
   overflow: hidden;
   margin-top: 16px;
   box-shadow: ${THEME.shadows.marbleSlab};
@@ -215,8 +285,8 @@ const ChatInputRow = styled.form`
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1.5px solid ${THEME.border};
-  background-color: #ffffff;
+  border-top: 1px solid ${THEME.border};
+  background-color: rgba(255, 255, 255, 0.95);
 `;
 
 // =========================================================================
@@ -245,7 +315,7 @@ export default function App() {
         id: saved.userId || `user_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         sessionToken: saved.sessionToken || null,
         nickname: saved.nickname,
-        avatarUrl: saved.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${saved.nickname}`,
+        avatarUrl: saved.avatarUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${saved.nickname}&backgroundColor=090d16,1e293b,3b0b17,047857`,
       };
     }
     return null;
@@ -274,7 +344,7 @@ export default function App() {
   const webrtc = useWebRTC(socket, roomState?.code, currentUser?.id);
   const stt = useSTT(socket, roomState?.code, currentUser?.id);
 
-  const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${avatarSeed}`;
+  const avatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${avatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`;
 
   // Handle Automatic Session Reconnect
   const handleReconnectRequest = useCallback(
@@ -519,9 +589,9 @@ export default function App() {
       {screen !== 'game' && (
         <AppHeader>
           <BrandLogo>
-            <span className="logo-icon">🎲</span>
+            <span className="logo-seal">W</span>
             <span>
-              Wish <span className="gold-text">Boardgame Cafe</span>
+              WISH <span className="salon-text">SALON</span>
             </span>
           </BrandLogo>
 
@@ -539,29 +609,32 @@ export default function App() {
         {/* SCREEN 1: Entry / Nickname Input */}
         {/* ========================================================= */}
         {screen === 'entry' && (
-          <Card style={{ maxWidth: '420px', width: '100%', padding: '10px' }}>
+          <Card style={{ maxWidth: '440px', width: '100%', padding: '14px' }}>
             <CardHeader style={{ textAlign: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '8px' }}>🎲 ☕</div>
-              <CardTitle style={{ fontSize: '1.5rem', justifyContent: 'center' }}>
-                위시 보드게임 카페
+              <MonogramSeal>
+                <span>W</span>
+              </MonogramSeal>
+              <CardTitle style={{ fontSize: '1.6rem', justifyContent: 'center', letterSpacing: '0.08em' }}>
+                WISH SALON
               </CardTitle>
-              <CardDescription>
-                친구들과 함께 즐기는 온라인 실시간 보드게임 라운지
+              <CardDescription style={{ fontFamily: THEME.font.koreanSerif, fontSize: '14px', color: '#475569', marginTop: '2px' }}>
+                프라이빗 실시간 보드게임 라운지
               </CardDescription>
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleEnterLobby} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <form onSubmit={handleEnterLobby} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                   <div
                     style={{
                       position: 'relative',
-                      width: '76px',
-                      height: '76px',
+                      width: '80px',
+                      height: '80px',
                       borderRadius: '50%',
                       border: `2px solid ${THEME.gold}`,
+                      boxShadow: '0 4px 14px rgba(9, 13, 22, 0.15)',
                       overflow: 'hidden',
-                      backgroundColor: THEME.secondary,
+                      backgroundColor: '#090d16',
                     }}
                   >
                     <img
@@ -575,19 +648,20 @@ export default function App() {
                     $variant="ghost"
                     $size="sm"
                     onClick={handleRefreshAvatar}
+                    style={{ fontSize: '12px', color: '#64748b' }}
                   >
-                    <RotateCcw size={14} />
-                    <span>아바타 변경</span>
+                    <RotateCcw size={13} />
+                    <span>문양 씰 변경</span>
                   </Button>
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, color: THEME.mutedForeground, display: 'block', marginBottom: '6px' }}>
-                    닉네임
+                  <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: THEME.mutedForeground, display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    NICKNAME (닉네임)
                   </label>
                   <Input
                     type="text"
-                    placeholder="카페에서 사용할 닉네임 입력"
+                    placeholder="살롱에서 사용할 닉네임 입력"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
                     maxLength={12}
@@ -597,13 +671,13 @@ export default function App() {
 
                 <Button
                   type="submit"
-                  $variant="gold"
+                  $variant="default"
                   $size="lg"
                   $fullWidth
                   disabled={!nickname.trim()}
+                  style={{ letterSpacing: '0.12em' }}
                 >
-                  <Sparkles size={18} />
-                  <span>카페 입장하기</span>
+                  <span>ENTER SALON</span>
                 </Button>
               </form>
             </CardContent>
@@ -621,13 +695,13 @@ export default function App() {
                   $active={activeTab === 'games'}
                   onClick={() => setActiveTab('games')}
                 >
-                  🎮 전체 게임
+                  SALON GAMES
                 </TabsTrigger>
                 <TabsTrigger
                   $active={activeTab === 'join'}
                   onClick={() => setActiveTab('join')}
                 >
-                  🔑 방 코드로 입장
+                  ENTER CODE
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -638,77 +712,80 @@ export default function App() {
                   {/* Game 1: Love Letter (Live) */}
                   <Card $hoverable onClick={() => handleOpenCreateDialog('LOVE_LETTER')}>
                     <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #1e1b4b 0%, #064e3b 100%)">
-                        💌
+                      <GameThumbnail $bg="linear-gradient(135deg, #1e1b4b 0%, #090d16 100%)">
+                        <span className="emblem-title">LOVE LETTER</span>
+                        <span className="emblem-sub">ROYAL COURT</span>
                       </GameThumbnail>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <CardTitle>러브레터</CardTitle>
-                        <Badge $variant="emerald">Live 🟢</Badge>
+                        <Badge $variant="emerald">LIVE</Badge>
                       </div>
                       <CardDescription>
-                        2~6인 · 15분 · 블러핑/심리전
+                        2~6인 · 15분 · 르네상스 왕실 심리전
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p style={{ fontSize: '13px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.4 }}>
-                        공주에게 비밀 연애편지를 전달하세요! 상대의 카드를 추리하고 저격하는 르네상스 왕실 카드 게임.
+                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
+                        공주에게 비밀 연애편지를 전달하세요. 상대의 카드를 추리하고 저격하는 클래식 명작 카드 게임.
                       </p>
                     </CardContent>
                     <CardFooter>
-                      <Button $variant="gold" $size="sm" $fullWidth>
-                        <Play size={14} />
-                        <span>방 만들기 / 참여</span>
+                      <Button $variant="default" $size="sm" $fullWidth>
+                        <Play size={13} />
+                        <span>입장 / 테이블 생성</span>
                       </Button>
                     </CardFooter>
                   </Card>
 
                   {/* Game 2: The Great Dalmuti (Coming Soon) */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('DALMUTI')} style={{ opacity: 0.65 }}>
+                  <Card $hoverable onClick={() => handleOpenCreateDialog('DALMUTI')} style={{ opacity: 0.6 }}>
                     <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)">
-                        👑
+                      <GameThumbnail $bg="linear-gradient(135deg, #312e81 0%, #090d16 100%)">
+                        <span className="emblem-title">THE DALMUTI</span>
+                        <span className="emblem-sub">CLASS STRUGGLE</span>
                       </GameThumbnail>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <CardTitle>달무티</CardTitle>
-                        <Badge $variant="outline">Coming Soon</Badge>
+                        <Badge $variant="outline">COMING SOON</Badge>
                       </div>
                       <CardDescription>
                         4~8인 · 30분 · 계급 역전 카드 게임
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p style={{ fontSize: '13px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.4 }}>
-                        인생은 불공평합니다! 대달무티부터 농노까지 치열한 계급 투쟁이 펼쳐지는 명작 보드게임.
+                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
+                        대달무티부터 농노까지 치열한 계급 투쟁이 펼쳐지는 명작 보드게임.
                       </p>
                     </CardContent>
                     <CardFooter>
-                      <Button $variant="outline" $size="sm" $fullWidth disabled>
+                      <Button $variant="secondary" $size="sm" $fullWidth disabled>
                         준비 중
                       </Button>
                     </CardFooter>
                   </Card>
 
                   {/* Game 3: Liar Game (Coming Soon) */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('LIAR_GAME')} style={{ opacity: 0.65 }}>
+                  <Card $hoverable onClick={() => handleOpenCreateDialog('LIAR_GAME')} style={{ opacity: 0.6 }}>
                     <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #4c0519 0%, #18181b 100%)">
-                        🕵️
+                      <GameThumbnail $bg="linear-gradient(135deg, #3b0b17 0%, #090d16 100%)">
+                        <span className="emblem-title">THE LIAR</span>
+                        <span className="emblem-sub">DECEPTION</span>
                       </GameThumbnail>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <CardTitle>라이어 게임</CardTitle>
-                        <Badge $variant="outline">Coming Soon</Badge>
+                        <Badge $variant="outline">COMING SOON</Badge>
                       </div>
                       <CardDescription>
-                        3~8인 · 20분 · 추리/파티
+                        3~8인 · 20분 · 심리 추리
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p style={{ fontSize: '13px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.4 }}>
-                        단 한 명의 라이어는 제시어를 모릅니다! 정체를 숨기고 자연스럽게 설명하세요.
+                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
+                        단 한 명의 라이어는 제시어를 모릅니다. 정체를 숨기고 자연스럽게 설명하세요.
                       </p>
                     </CardContent>
                     <CardFooter>
-                      <Button $variant="outline" $size="sm" $fullWidth disabled>
+                      <Button $variant="secondary" $size="sm" $fullWidth disabled>
                         준비 중
                       </Button>
                     </CardFooter>
@@ -719,23 +796,23 @@ export default function App() {
               {activeTab === 'join' && (
                 <Card style={{ maxWidth: '460px', margin: '30px auto' }}>
                   <CardHeader>
-                    <CardTitle>🔑 방 코드로 입장</CardTitle>
+                    <CardTitle>초대 코드로 입장</CardTitle>
                     <CardDescription>
-                      친구가 공유해 준 6자리 방 코드를 입력하세요.
+                      공유받은 6자리 살롱 코드를 입력하세요.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       <Input
                         type="text"
                         placeholder="예: 7BK9XP"
                         value={joinCodeInput}
                         onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                         maxLength={6}
-                        style={{ fontSize: '18px', textAlign: 'center', letterSpacing: '4px', fontWeight: 700 }}
+                        style={{ fontSize: '18px', textAlign: 'center', letterSpacing: '6px', fontWeight: 800, fontFamily: THEME.font.mono }}
                       />
-                      <Button type="submit" $variant="gold" $size="lg" $fullWidth disabled={joinCodeInput.length < 4}>
-                        방 입장하기
+                      <Button type="submit" $variant="default" $size="lg" $fullWidth disabled={joinCodeInput.length < 4}>
+                        살롱 입장하기
                       </Button>
                     </form>
                   </CardContent>
@@ -753,7 +830,7 @@ export default function App() {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <CardTitle>💌 러브레터 대기실</CardTitle>
+                  <CardTitle>러브레터 살롱</CardTitle>
                   <CardDescription>
                     목표 토큰 {roomState?.targetTokens || 4}개 · 턴 제한시간 {roomState?.turnTimeLimit || 60}초
                   </CardDescription>
@@ -761,14 +838,14 @@ export default function App() {
 
                 <Button $variant="outline" $size="sm" onClick={handleCopyCode}>
                   {copiedCode ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
-                  <span style={{ fontWeight: 700, letterSpacing: '1px' }}>{roomState?.code || '------'}</span>
+                  <span style={{ fontWeight: 800, letterSpacing: '1px' }}>{roomState?.code || '------'}</span>
                 </Button>
               </div>
             </CardHeader>
 
             <CardContent>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: THEME.gold, marginBottom: '10px' }}>
-                참여 플레이어 ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}명)
+              <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, marginBottom: '12px', textTransform: 'uppercase' }}>
+                PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4})
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -784,33 +861,34 @@ export default function App() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '10px 14px',
-                        backgroundColor: THEME.secondary,
-                        borderRadius: THEME.radius.lg,
-                        border: `1px solid ${isMe ? THEME.gold : THEME.border}`,
+                        backgroundColor: '#ffffff',
+                        borderRadius: THEME.radius.md,
+                        border: `1px solid ${isMe ? THEME.gold : '#e2e8f0'}`,
+                        boxShadow: '0 1px 4px rgba(9, 13, 22, 0.04)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <img
                           src={p.avatarUrl}
                           alt={p.nickname || '플레이어'}
-                          style={{ width: '36px', height: '36px', borderRadius: '50%' }}
+                          style={{ width: '34px', height: '34px', borderRadius: '50%', border: `1px solid ${THEME.gold}` }}
                         />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {p.nickname || '플레이어'}
                             {isPlayerHost && <Crown size={14} color={THEME.gold} />}
-                            {isMe && <span style={{ fontSize: '11px', color: THEME.goldLight }}>(나)</span>}
+                            {isMe && <span style={{ fontSize: '11px', color: THEME.goldAntique }}>(나)</span>}
                           </div>
                         </div>
                       </div>
 
                       <div>
                         {isPlayerHost ? (
-                          <Badge $variant="gold">방장</Badge>
+                          <Badge $variant="gold">HOST</Badge>
                         ) : p.isReady ? (
-                          <Badge $variant="emerald">준비 완료 🟢</Badge>
+                          <Badge $variant="emerald">READY</Badge>
                         ) : (
-                          <Badge $variant="outline">대기 중 ⚪</Badge>
+                          <Badge $variant="outline">WAITING</Badge>
                         )}
                       </div>
                     </div>
@@ -831,7 +909,7 @@ export default function App() {
                 <ChatInputRow onSubmit={handleSendChat}>
                   <Input
                     type="text"
-                    placeholder="채팅 메시지 입력..."
+                    placeholder="메시지 입력..."
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                   />
@@ -893,24 +971,24 @@ export default function App() {
       {/* ========================================================= */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogHeader>
-          <DialogTitle>💌 러브레터 방 만들기</DialogTitle>
+          <DialogTitle>러브레터 살롱 테이블 생성</DialogTitle>
           <DialogDescription>게임 목표 토큰 및 규칙을 설정하세요.</DialogDescription>
         </DialogHeader>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', margin: '14px 0' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '16px 0' }}>
           <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: THEME.gold, display: 'block', marginBottom: '8px' }}>
-              🏆 승리 목표 토큰 수: {targetTokens}개
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+              VICTORY TARGET (승리 목표 토큰): {targetTokens}개
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {[2, 3, 4, 5, 7].map((num) => (
                 <Button
                   key={num}
                   type="button"
-                  $variant={targetTokens === num ? 'gold' : 'secondary'}
+                  $variant={targetTokens === num ? 'default' : 'secondary'}
                   $size="sm"
                   onClick={() => setTargetTokens(num)}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, borderColor: targetTokens === num ? THEME.gold : THEME.border }}
                 >
                   {num}개
                 </Button>
@@ -919,18 +997,18 @@ export default function App() {
           </div>
 
           <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: THEME.gold, display: 'block', marginBottom: '8px' }}>
-              👥 최대 플레이 인원: {maxPlayers}명
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+              MAX PLAYERS (최대 플레이 인원): {maxPlayers}명
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {[2, 3, 4, 5, 6].map((num) => (
                 <Button
                   key={num}
                   type="button"
-                  $variant={maxPlayers === num ? 'gold' : 'secondary'}
+                  $variant={maxPlayers === num ? 'default' : 'secondary'}
                   $size="sm"
                   onClick={() => setMaxPlayers(num)}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, borderColor: maxPlayers === num ? THEME.gold : THEME.border }}
                 >
                   {num}인
                 </Button>
@@ -939,18 +1017,18 @@ export default function App() {
           </div>
 
           <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: THEME.gold, display: 'block', marginBottom: '8px' }}>
-              ⏱️ 턴 제한시간: {turnTimeLimit === 0 ? '무제한' : `${turnTimeLimit}초`}
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+              TURN TIME LIMIT (턴 제한시간): {turnTimeLimit === 0 ? '무제한' : `${turnTimeLimit}초`}
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {[30, 60, 90, 0].map((sec) => (
                 <Button
                   key={sec}
                   type="button"
-                  $variant={turnTimeLimit === sec ? 'gold' : 'secondary'}
+                  $variant={turnTimeLimit === sec ? 'default' : 'secondary'}
                   $size="sm"
                   onClick={() => setTurnTimeLimit(sec)}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, borderColor: turnTimeLimit === sec ? THEME.gold : THEME.border }}
                 >
                   {sec === 0 ? '무제한' : `${sec}초`}
                 </Button>
@@ -960,11 +1038,11 @@ export default function App() {
         </div>
 
         <DialogFooter>
-          <Button $variant="outline" onClick={() => setCreateDialogOpen(false)}>
+          <Button $variant="outline" $size="sm" onClick={() => setCreateDialogOpen(false)}>
             취소
           </Button>
-          <Button $variant="gold" onClick={handleCreateRoomSubmit}>
-            방 만들기
+          <Button $variant="default" $size="sm" onClick={handleCreateRoomSubmit}>
+            살롱 테이블 개설
           </Button>
         </DialogFooter>
       </Dialog>
