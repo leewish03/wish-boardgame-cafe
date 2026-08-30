@@ -28,19 +28,19 @@ export const slideUp = keyframes`
 `;
 
 export const pulseRing = keyframes`
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
+  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(5, 150, 105, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
 `;
 
 export const goldGlow = keyframes`
-  0% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.4); }
-  50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.85); }
-  100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.4); }
+  0% { box-shadow: 0 0 5px rgba(212, 175, 55, 0.4); }
+  50% { box-shadow: 0 0 18px rgba(212, 175, 55, 0.85); }
+  100% { box-shadow: 0 0 5px rgba(212, 175, 55, 0.4); }
 `;
 
 // =========================================================================
-// 1. Button Component
+// 1. Button Component (Marble & Metal Touch)
 // =========================================================================
 
 const buttonVariants = {
@@ -48,23 +48,28 @@ const buttonVariants = {
     background-color: ${THEME.primary};
     color: ${THEME.primaryForeground};
     font-weight: 600;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
     &:hover {
-      background-color: #e4e4e7;
+      background-color: #1e293b;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.3);
     }
   `,
   secondary: css`
     background-color: ${THEME.secondary};
     color: ${THEME.secondaryForeground};
+    border: 1px solid ${THEME.border};
     &:hover {
-      background-color: #3f3f46;
+      background-color: #e2e8f0;
     }
   `,
   outline: css`
     border: 1px solid ${THEME.border};
-    background-color: transparent;
+    background-color: #ffffff;
     color: ${THEME.foreground};
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
     &:hover {
       background-color: ${THEME.secondary};
+      border-color: #cbd5e1;
     }
   `,
   ghost: css`
@@ -78,17 +83,39 @@ const buttonVariants = {
     background-color: ${THEME.destructive};
     color: ${THEME.destructiveForeground};
     &:hover {
-      background-color: #991b1b;
+      background-color: #9f1239;
+    }
+  `,
+  emerald: css`
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+    &:hover {
+      filter: brightness(1.08);
+      box-shadow: 0 4px 14px rgba(5, 150, 105, 0.45);
+    }
+  `,
+  burgundy: css`
+    background: ${THEME.gradients.burgundySeal};
+    color: #ffffff;
+    border: 1px solid ${THEME.gold};
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(123, 24, 54, 0.35);
+    &:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 4px 14px rgba(123, 24, 54, 0.55);
     }
   `,
   gold: css`
-    background: linear-gradient(135deg, ${THEME.goldLight} 0%, ${THEME.gold} 100%);
-    color: #000;
-    font-weight: 700;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    background: ${THEME.gradients.goldShimmer};
+    color: #0f172a;
+    font-weight: 800;
+    box-shadow: 0 2px 10px rgba(212, 175, 55, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.4);
     &:hover {
-      filter: brightness(1.1);
-      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.5);
+      filter: brightness(1.08);
+      box-shadow: 0 4px 16px rgba(212, 175, 55, 0.6);
     }
   `,
 };
@@ -127,7 +154,7 @@ export const Button = styled.button`
   white-space: nowrap;
   border-radius: ${THEME.radius.md};
   font-family: ${THEME.font.sans};
-  font-weight: 500;
+  font-weight: 600;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
@@ -135,7 +162,7 @@ export const Button = styled.button`
   user-select: none;
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px ${THEME.background}, 0 0 0 4px ${THEME.ring};
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px ${THEME.ring};
   }
 
   &:disabled {
@@ -154,26 +181,28 @@ export const Button = styled.button`
 `;
 
 // =========================================================================
-// 2. Card Components
+// 2. Card Components (Marble Slab)
 // =========================================================================
 
 export const Card = styled.div`
   border-radius: ${THEME.radius.xl};
   border: 1px solid ${THEME.border};
-  background-color: ${THEME.card};
-  color: ${THEME.cardForeground};
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.2);
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  color: ${THEME.foreground};
+  box-shadow: ${THEME.shadows.marbleSlab};
   overflow: hidden;
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 
   ${({ $hoverable }) =>
     $hoverable &&
     css`
       cursor: pointer;
       &:hover {
-        border-color: #3f3f46;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        border-color: ${THEME.gold};
+        box-shadow: ${THEME.shadows.marbleCardHover};
+        transform: translateY(-2px);
       }
     `}
 
@@ -181,7 +210,7 @@ export const Card = styled.div`
     $active &&
     css`
       border-color: ${THEME.gold};
-      box-shadow: 0 0 16px rgba(245, 158, 11, 0.25);
+      box-shadow: ${THEME.shadows.goldNeon};
     `}
 `;
 
@@ -194,11 +223,11 @@ export const CardHeader = styled.div`
 
 export const CardTitle = styled.h3`
   font-size: 1.2rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.02em;
   margin: 0;
-  color: ${THEME.cardForeground};
+  color: ${THEME.foreground};
   display: flex;
   align-items: center;
   gap: 8px;
@@ -224,15 +253,15 @@ export const CardFooter = styled.div`
 `;
 
 // =========================================================================
-// 3. Dialog / Modal
+// 3. Dialog / Modal (Polished Marble Modal)
 // =========================================================================
 
 const DialogOverlayWrapper = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background-color: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(6px);
+  background-color: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
   animation: ${fadeIn} 0.2s ease-out;
   display: flex;
   align-items: center;
@@ -246,11 +275,12 @@ const DialogContentWrapper = styled.div`
   max-width: ${({ $maxWidth = '480px' }) => $maxWidth};
   max-height: 90vh;
   overflow-y: auto;
-  background-color: ${THEME.background};
-  border: 1px solid ${THEME.border};
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid ${THEME.border};
   border-radius: ${THEME.radius.xl};
   padding: 24px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.25), 0 0 20px rgba(212, 175, 55, 0.2);
   animation: ${zoomIn} 0.2s ease-out;
   color: ${THEME.foreground};
 `;
@@ -268,7 +298,7 @@ const CloseButton = styled.button`
   justify-content: center;
   padding: 6px;
   border-radius: ${THEME.radius.sm};
-  transition: color 0.15s;
+  transition: all 0.15s;
 
   &:hover {
     color: ${THEME.foreground};
@@ -285,7 +315,7 @@ export const DialogHeader = styled.div`
 
 export const DialogTitle = styled.h2`
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 800;
   margin: 0;
   color: ${THEME.foreground};
   display: flex;
@@ -329,11 +359,12 @@ export function Dialog({ open, onClose, children, maxWidth = '480px' }) {
 
 export const TabsList = styled.div`
   display: inline-flex;
-  height: 40px;
+  height: 42px;
   align-items: center;
   justify-content: flex-start;
   border-radius: ${THEME.radius.lg};
   background-color: ${THEME.muted};
+  border: 1px solid ${THEME.border};
   padding: 4px;
   gap: 4px;
   color: ${THEME.mutedForeground};
@@ -349,15 +380,15 @@ export const TabsTrigger = styled.button`
   border-radius: ${THEME.radius.md};
   padding: 6px 14px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   flex: ${({ $fullWidth }) => ($fullWidth ? '1' : 'none')};
 
-  background-color: ${({ $active }) => ($active ? THEME.background : 'transparent')};
+  background-color: ${({ $active }) => ($active ? '#ffffff' : 'transparent')};
   color: ${({ $active }) => ($active ? THEME.foreground : THEME.mutedForeground)};
-  box-shadow: ${({ $active }) => ($active ? '0 1px 3px rgba(0,0,0,0.3)' : 'none')};
+  box-shadow: ${({ $active }) => ($active ? '0 2px 6px rgba(15, 23, 42, 0.1)' : 'none')};
 
   &:hover {
     color: ${THEME.foreground};
@@ -370,15 +401,15 @@ export const TabsContent = styled.div`
 `;
 
 // =========================================================================
-// 5. Side Drawer (Transparent Slide-in)
+// 5. Side Drawer (Marble Slide-in)
 // =========================================================================
 
 const DrawerOverlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 900;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(3px);
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
   animation: ${fadeIn} 0.2s ease-out;
 `;
 
@@ -390,13 +421,14 @@ const DrawerContainer = styled.div`
   width: 100%;
   max-width: 360px;
   z-index: 910;
-  background-color: rgba(9, 9, 11, 0.95);
-  border-left: 1px solid ${THEME.border};
+  background-color: rgba(255, 255, 255, 0.98);
+  background-image: ${THEME.gradients.marbleSlab};
+  border-left: 1.5px solid ${THEME.border};
   backdrop-filter: blur(16px);
   padding: 20px;
   display: flex;
   flex-direction: column;
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.7);
+  box-shadow: -10px 0 30px rgba(15, 23, 42, 0.15);
   animation: ${slideInRight} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: ${THEME.foreground};
 `;
@@ -412,7 +444,7 @@ const DrawerHeader = styled.div`
 
 const DrawerTitle = styled.h3`
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
   display: flex;
   align-items: center;
@@ -453,31 +485,40 @@ const badgeVariants = {
   default: css`
     background-color: ${THEME.secondary};
     color: ${THEME.foreground};
+    border: 1px solid ${THEME.border};
   `,
   emerald: css`
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background-color: rgba(5, 150, 105, 0.12);
+    color: #047857;
+    border: 1px solid rgba(5, 150, 105, 0.3);
   `,
   gold: css`
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(254, 240, 138, 0.9) 0%, rgba(212, 175, 55, 0.9) 100%);
+    color: #0f172a;
+    font-weight: 800;
+    border: 1px solid ${THEME.gold};
+    box-shadow: 0 1px 3px rgba(212, 175, 55, 0.3);
   `,
   rose: css`
-    background-color: rgba(244, 63, 94, 0.15);
-    color: #fb7185;
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background-color: rgba(225, 29, 72, 0.12);
+    color: #be123c;
+    border: 1px solid rgba(225, 29, 72, 0.3);
+  `,
+  burgundy: css`
+    background: ${THEME.gradients.burgundySeal};
+    color: #ffffff;
+    border: 1px solid ${THEME.gold};
+    font-weight: 700;
   `,
   indigo: css`
-    background-color: rgba(99, 102, 241, 0.15);
-    color: #818cf8;
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    background-color: rgba(79, 70, 229, 0.12);
+    color: #4338ca;
+    border: 1px solid rgba(79, 70, 229, 0.3);
   `,
   outline: css`
     border: 1px solid ${THEME.border};
-    color: ${THEME.mutedForeground};
-    background: transparent;
+    color: ${THEME.foreground};
+    background: #ffffff;
   `,
 };
 
@@ -488,7 +529,7 @@ export const Badge = styled.span`
   border-radius: ${THEME.radius.full};
   padding: 2px 8px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.3;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -497,15 +538,45 @@ export const Badge = styled.span`
 `;
 
 // =========================================================================
-// 7. Input Component
+// 7. Affection Token Component (실물 딥 버건디 왁스 실 + 골드 천칭 ⚖️ 각인)
+// =========================================================================
+
+const TokenSealWrapper = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: ${THEME.gradients.burgundySeal};
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.full};
+  padding: 1px 7px;
+  box-shadow: 0 2px 6px rgba(123, 24, 54, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  font-size: ${({ $size }) => ($size === 'sm' ? '10px' : '11px')};
+  font-weight: 800;
+  user-select: none;
+  white-space: nowrap;
+`;
+
+export function AffectionTokenBadge({ count = 0, target = 4, size = 'default' }) {
+  return (
+    <TokenSealWrapper $size={size} title={`호감 토큰: ${count}/${target}개`}>
+      <span style={{ fontSize: size === 'sm' ? '10px' : '12px' }}>⚖️</span>
+      <span>{count}</span>
+      {target && <span style={{ color: 'rgba(255, 255, 255, 0.65)', fontSize: '9px' }}>/{target}</span>}
+    </TokenSealWrapper>
+  );
+}
+
+// =========================================================================
+// 8. Input Component
 // =========================================================================
 
 export const Input = styled.input`
   width: 100%;
   height: 38px;
   border-radius: ${THEME.radius.md};
-  border: 1px solid ${THEME.input};
-  background-color: rgba(9, 9, 11, 0.6);
+  border: 1.5px solid ${THEME.input};
+  background-color: #ffffff;
   padding: 0 12px;
   font-size: 14px;
   font-family: ${THEME.font.sans};
@@ -518,18 +589,19 @@ export const Input = styled.input`
   }
 
   &:focus {
-    border-color: ${THEME.ring};
-    box-shadow: 0 0 0 2px rgba(212, 212, 216, 0.2);
+    border-color: ${THEME.gold};
+    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    background-color: ${THEME.secondary};
   }
 `;
 
 // =========================================================================
-// 8. Toast / Notification Component
+// 9. Toast / Notification Component
 // =========================================================================
 
 const ToastContainer = styled.div`
@@ -538,14 +610,15 @@ const ToastContainer = styled.div`
   left: 50%;
   transform: translateX(-50%);
   z-index: 2000;
-  background-color: ${THEME.card};
-  border: 1px solid ${THEME.border};
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.lg};
   padding: 12px 20px;
   color: ${THEME.foreground};
   font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18), 0 0 15px rgba(212, 175, 55, 0.3);
   animation: ${slideUp} 0.2s ease-out;
   display: flex;
   align-items: center;
@@ -567,14 +640,14 @@ export function Toast({ message, onClose }) {
 }
 
 // =========================================================================
-// 9. PauseOverlay Component (3-minute Grace Period Overlay)
+// 10. PauseOverlay Component (3-minute Grace Period Overlay)
 // =========================================================================
 
 const PauseOverlayContainer = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1500;
-  background-color: rgba(9, 9, 11, 0.88);
+  background-color: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
@@ -588,90 +661,27 @@ const PauseOverlayContainer = styled.div`
 const PauseCard = styled.div`
   max-width: 480px;
   width: 100%;
-  background: rgba(24, 24, 27, 0.92);
-  border: 1px solid rgba(245, 158, 11, 0.6);
+  background: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 2px solid ${THEME.gold};
   border-radius: ${THEME.radius.xl};
   padding: 32px 24px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(245, 158, 11, 0.25);
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35), 0 0 40px rgba(212, 175, 55, 0.3);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 16px;
-  animation: ${zoomIn} 0.25s ease-out;
 `;
 
-const PauseIconCircle = styled.div`
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(245, 158, 11, 0.15);
-  border: 2px solid ${THEME.gold};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  color: ${THEME.gold};
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
-`;
-
-const PauseTitle = styled.h2`
-  font-size: 1.35rem;
-  font-weight: 700;
-  margin: 0;
-  color: ${THEME.foreground};
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const PauseSubtitle = styled.div`
-  font-size: 14px;
-  color: ${THEME.mutedForeground};
-  line-height: 1.5;
-
-  strong {
-    color: ${THEME.goldLight};
-    font-weight: 700;
-  }
-`;
-
-const TimerBox = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  background: rgba(9, 9, 11, 0.8);
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.lg};
-  padding: 14px 28px;
-  width: 100%;
-  max-width: 280px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
-`;
-
-const TimerLabel = styled.span`
-  font-size: 11px;
-  font-weight: 600;
-  color: ${THEME.mutedForeground};
-  text-transform: uppercase;
-  letter-spacing: 1px;
-`;
-
-const TimerCountdown = styled.div`
-  font-size: 2.4rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: ${THEME.gold};
+const PauseTimerText = styled.div`
+  font-size: 40px;
+  font-weight: 900;
+  color: ${THEME.burgundy};
+  font-family: ${THEME.font.mono};
   letter-spacing: 2px;
-  line-height: 1;
-`;
-
-const PauseInfoFooter = styled.p`
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
-  margin: 0;
-  line-height: 1.4;
+  margin: 8px 0;
+  text-shadow: 0 2px 10px rgba(123, 24, 54, 0.2);
 `;
 
 export function PauseOverlay({
@@ -680,19 +690,15 @@ export function PauseOverlay({
   pauseExpiresAt,
   onForfeit,
 }) {
-  const [secondsRemaining, setSecondsRemaining] = React.useState(180);
+  const [timeLeft, setTimeLeft] = React.useState(180);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || !pauseExpiresAt) return;
 
     const updateTimer = () => {
-      if (!pauseExpiresAt) {
-        setSecondsRemaining(180);
-        return;
-      }
-      const msLeft = pauseExpiresAt - Date.now();
-      const secs = Math.max(0, Math.ceil(msLeft / 1000));
-      setSecondsRemaining(secs);
+      const remainingMs = new Date(pauseExpiresAt).getTime() - Date.now();
+      const seconds = Math.max(0, Math.floor(remainingMs / 1000));
+      setTimeLeft(seconds);
     };
 
     updateTimer();
@@ -702,46 +708,40 @@ export function PauseOverlay({
 
   if (!open) return null;
 
-  const minutes = Math.floor(secondsRemaining / 60);
-  const seconds = secondsRemaining % 60;
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   return (
     <PauseOverlayContainer>
       <PauseCard>
-        <PauseIconCircle>⏳</PauseIconCircle>
-
-        <PauseTitle>게임 일시정지 (Pause)</PauseTitle>
-
-        <PauseSubtitle>
-          <strong>[{pausedPlayerNickname}]</strong> 님의 네트워크 연결이 끊겼습니다.
+        <div style={{ fontSize: '32px' }}>⏳</div>
+        <DialogTitle style={{ color: THEME.foreground, fontSize: '18px' }}>
+          게임 일시정지 (재접속 대기 중)
+        </DialogTitle>
+        <div style={{ fontSize: '13px', color: THEME.mutedForeground, lineHeight: 1.5 }}>
+          <strong style={{ color: THEME.burgundy }}>[{pausedPlayerNickname}]</strong> 님의 연결이 끊어졌습니다.
           <br />
-          재접속을 위해 잠시 게임을 일시정지합니다.
-        </PauseSubtitle>
+          재접속을 위해 최대 3분간 게임이 일시정지됩니다.
+        </div>
 
-        <TimerBox>
-          <TimerLabel>재접속 대기 시간</TimerLabel>
-          <TimerCountdown>{formattedTime}</TimerCountdown>
-        </TimerBox>
+        <PauseTimerText>{formattedTime}</PauseTimerText>
 
-        <PauseInfoFooter>
-          해당 플레이어가 3분 이내에 다시 접속하면 게임이 자동으로 이어집니다.
-          <br />
-          (3분 초과 시 해당 플레이어는 자동 기권 처리됩니다)
-        </PauseInfoFooter>
+        <div style={{ fontSize: '12px', color: THEME.mutedForeground }}>
+          시간이 초과되면 해당 플레이어는 자동 기권(탈락) 처리됩니다.
+        </div>
 
         {onForfeit && (
           <Button
-            $variant="destructive"
+            $variant="outline"
             $size="sm"
             onClick={onForfeit}
-            style={{ marginTop: '8px' }}
+            style={{ marginTop: '8px', borderColor: THEME.destructive, color: THEME.destructive }}
           >
-            게임 포기하고 나가기
+            기다리지 않고 나가기 (🚪 기권)
           </Button>
         )}
       </PauseCard>
     </PauseOverlayContainer>
   );
 }
-

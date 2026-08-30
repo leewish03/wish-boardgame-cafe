@@ -13,6 +13,7 @@ import {
   DialogFooter,
   SideDrawer,
   PauseOverlay,
+  AffectionTokenBadge,
 } from '../../shared/components';
 import { sfx } from '../../shared/sfx';
 import {
@@ -35,18 +36,18 @@ import {
 } from 'lucide-react';
 
 // =========================================================================
-// Card Definitions & Rules
+// Card Definitions & Rules (Renaissance Palette)
 // =========================================================================
 
 export const CARD_DATA = {
-  1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#3b82f6', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
-  2: { value: 2, name: '사제', nameEn: 'Priest', count: 2, color: '#06b6d4', icon: '📜', desc: '상대 1명을 지목하여 그 사람의 손패를 비밀리에 확인합니다.' },
-  3: { value: 3, name: '남작', nameEn: 'Baron', count: 2, color: '#a855f7', icon: '⚔️', desc: '상대 1명과 비밀리에 손패 숫자를 비교하여 더 낮은 쪽이 탈락합니다.' },
-  4: { value: 4, name: '하녀', nameEn: 'Handmaid', count: 2, color: '#10b981', icon: '🌸', desc: '다음 내 턴 시작 전까지 다른 플레이어의 모든 카드 효과로부터 면역 보호됩니다.' },
-  5: { value: 5, name: '왕자', nameEn: 'Prince', count: 2, color: '#f59e0b', icon: '👑', desc: '자신 포함 1명을 지목하여 손패를 버리고 새로 1장 드로우하게 합니다.' },
-  6: { value: 6, name: '국왕', nameEn: 'King', count: 1, color: '#f97316', icon: '🤴', desc: '상대 1명을 지목하여 자신의 손패와 상대의 손패를 맞교환합니다.' },
-  7: { value: 7, name: '백작부인', nameEn: 'Countess', count: 1, color: '#ec4899', icon: '🌹', desc: '손에 왕자(5)나 국왕(6)이 함께 있을 경우, 반드시 백작부인을 먼저 내려놓아야 합니다.' },
-  8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#ef4444', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
+  1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#1e3a8a', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
+  2: { value: 2, name: '사제', nameEn: 'Priest', count: 2, color: '#6b21a8', icon: '📜', desc: '상대 1명을 지목하여 그 사람의 손패를 비밀리에 확인합니다.' },
+  3: { value: 3, name: '남작', nameEn: 'Baron', count: 2, color: '#4c1d95', icon: '⚔️', desc: '상대 1명과 비밀리에 손패 숫자를 비교하여 더 낮은 쪽이 탈락합니다.' },
+  4: { value: 4, name: '하녀', nameEn: 'Handmaid', count: 2, color: '#047857', icon: '🌸', desc: '다음 내 턴 시작 전까지 다른 플레이어의 모든 카드 효과로부터 면역 보호됩니다.' },
+  5: { value: 5, name: '왕자', nameEn: 'Prince', count: 2, color: '#b45309', icon: '👑', desc: '자신 포함 1명을 지목하여 손패를 버리고 새로 1장 드로우하게 합니다.' },
+  6: { value: 6, name: '국왕', nameEn: 'King', count: 1, color: '#92400e', icon: '🤴', desc: '상대 1명을 지목하여 자신의 손패와 상대의 손패를 맞교환합니다.' },
+  7: { value: 7, name: '백작부인', nameEn: 'Countess', count: 1, color: '#831843', icon: '🌹', desc: '손에 왕자(5)나 국왕(6)이 함께 있을 경우, 반드시 백작부인을 먼저 내려놓아야 합니다.' },
+  8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#9f1239', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
 };
 
 // =========================================================================
@@ -54,38 +55,38 @@ export const CARD_DATA = {
 // =========================================================================
 
 const pulseWave = keyframes`
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.8); }
-  70% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.8); }
+  70% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(5, 150, 105, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
 `;
 
 const turnGlow = keyframes`
-  0% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
-  50% { box-shadow: 0 0 16px rgba(245, 158, 11, 0.9); }
-  100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
+  0% { box-shadow: 0 0 4px rgba(212, 175, 55, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(212, 175, 55, 0.9); }
+  100% { box-shadow: 0 0 4px rgba(212, 175, 55, 0.4); }
 `;
 
 const turnPulse = keyframes`
   0%, 100% {
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.4), 0 0 20px rgba(212, 175, 55, 0.2);
     border-color: ${THEME.gold};
   }
   50% {
-    box-shadow: 0 0 22px rgba(245, 158, 11, 0.8), 0 0 35px rgba(245, 158, 11, 0.45);
+    box-shadow: 0 0 22px rgba(212, 175, 55, 0.8), 0 0 35px rgba(212, 175, 55, 0.45);
     border-color: ${THEME.goldLight};
   }
 `;
 
 const targetPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.8); border-color: ${THEME.goldLight}; }
-  70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); border-color: ${THEME.gold}; }
-  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); border-color: ${THEME.goldLight}; }
+  0% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.8); border-color: ${THEME.goldLight}; }
+  70% { box-shadow: 0 0 0 12px rgba(212, 175, 55, 0); border-color: ${THEME.gold}; }
+  100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); border-color: ${THEME.goldLight}; }
 `;
 
 const forcedPulse = keyframes`
-  0% { transform: scale(1); box-shadow: 0 0 6px rgba(236, 72, 153, 0.5); }
-  50% { transform: scale(1.03); box-shadow: 0 0 18px rgba(236, 72, 153, 0.9); }
-  100% { transform: scale(1); box-shadow: 0 0 6px rgba(236, 72, 153, 0.5); }
+  0% { transform: scale(1); box-shadow: 0 0 6px rgba(190, 18, 60, 0.5); }
+  50% { transform: scale(1.03); box-shadow: 0 0 18px rgba(190, 18, 60, 0.9); }
+  100% { transform: scale(1); box-shadow: 0 0 6px rgba(190, 18, 60, 0.5); }
 `;
 
 // =========================================================================
@@ -115,9 +116,11 @@ const TopNavBar = styled.header`
   min-height: 38px;
   max-height: 38px;
   padding: 0 10px;
-  background-color: rgba(9, 9, 11, 0.95);
-  border-bottom: 1px solid ${THEME.border};
-  backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.95);
+  background-image: ${THEME.gradients.marbleSlab};
+  border-bottom: 1.5px solid ${THEME.border};
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05);
   z-index: 100;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -144,29 +147,30 @@ const NavIconButton = styled.button`
   width: 28px;
   height: 28px;
   border-radius: ${THEME.radius.md};
-  background-color: transparent;
-  border: 1px solid transparent;
+  background-color: #ffffff;
+  border: 1px solid ${THEME.border};
   color: ${THEME.foreground};
   cursor: pointer;
   padding: 0;
   transition: all 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 
   &:hover {
     background-color: ${THEME.secondary};
-    border-color: ${THEME.border};
+    border-color: #cbd5e1;
   }
 
   &.danger {
     color: ${THEME.rose};
     &:hover {
-      background-color: rgba(244, 63, 94, 0.15);
+      background-color: rgba(225, 29, 72, 0.1);
       border-color: ${THEME.rose};
     }
   }
 `;
 
 // =========================================================================
-// Main Game Table Area (100dvh - 38px)
+// Main Game Table Area (100dvh - 38px - Full White Carrara & Jade Onyx Marble)
 // =========================================================================
 
 const TableArea = styled.main`
@@ -179,10 +183,11 @@ const TableArea = styled.main`
   padding: 6px 10px;
   position: relative;
   background: radial-gradient(
-    ellipse at center,
-    ${THEME.feltGreen} 0%,
-    ${THEME.feltGreenDeep} 70%,
-    #01140f 100%
+    ellipse at 50% 35%,
+    #ffffff 0%,
+    #f8fafc 40%,
+    #f1f5f9 70%,
+    #e2e8f0 100%
   );
   overflow: hidden;
   box-sizing: border-box;
@@ -220,7 +225,8 @@ const OpponentSeat = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: rgba(9, 9, 11, 0.88);
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   border: 1.5px solid
     ${({ $isTargetable, $isTurn }) =>
       $isTargetable
@@ -235,7 +241,7 @@ const OpponentSeat = styled.div`
   height: 90%;
   position: relative;
   backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: ${THEME.shadows.marbleSlab};
   transition: all 0.2s;
   box-sizing: border-box;
   cursor: ${({ $isTargetable }) => ($isTargetable ? 'pointer' : 'default')};
@@ -248,10 +254,10 @@ const OpponentSeat = styled.div`
     $isTargetable &&
     css`
       animation: ${targetPulse} 1.5s infinite;
-      background-color: rgba(245, 158, 11, 0.12);
+      background-color: rgba(212, 175, 55, 0.12);
       &:hover {
         transform: scale(1.04);
-        background-color: rgba(245, 158, 11, 0.22);
+        background-color: rgba(212, 175, 55, 0.22);
       }
     `}
 
@@ -260,20 +266,20 @@ const OpponentSeat = styled.div`
     !$isTargetable &&
     css`
       animation: ${turnPulse} 1.6s infinite ease-in-out;
-      background: linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(9, 9, 11, 0.95) 100%);
+      border-color: ${THEME.gold};
     `}
 `;
 
 const ThinkingBadge = styled.div`
   position: absolute;
   top: -8px;
-  background: linear-gradient(135deg, ${THEME.gold} 0%, #b45309 100%);
-  color: #fff;
+  background: ${THEME.gradients.goldShimmer};
+  color: #0f172a;
   font-size: 9px;
   font-weight: 800;
   padding: 1px 6px;
   border-radius: ${THEME.radius.full};
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.6);
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.5);
   white-space: nowrap;
   z-index: 25;
   display: flex;
@@ -312,17 +318,17 @@ const SpeechBubble = styled.div`
   left: 50%;
   transform: translateX(-50%);
   margin-bottom: 6px;
-  background-color: rgba(9, 9, 11, 0.95);
-  border: 1px solid ${THEME.emerald};
+  background-color: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid ${THEME.emerald};
   border-radius: ${THEME.radius.md};
   padding: 4px 8px;
   font-size: 11px;
-  color: ${THEME.foreground};
+  color: #ffffff;
   white-space: nowrap;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
   z-index: 60;
 
   &::after {
@@ -333,13 +339,13 @@ const SpeechBubble = styled.div`
     transform: translateX(-50%);
     border-width: 4px;
     border-style: solid;
-    border-color: ${THEME.emerald} transparent transparent transparent;
+    border-color: rgba(15, 23, 42, 0.95) transparent transparent transparent;
   }
 `;
 
 const OpponentName = styled.div`
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: ${THEME.foreground};
   max-width: 100px;
   overflow: hidden;
@@ -479,18 +485,20 @@ const CenterTurnBanner = styled.div`
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background-color: ${({ $isMyTurn }) =>
-    $isMyTurn ? 'rgba(245, 158, 11, 0.18)' : 'rgba(9, 9, 11, 0.85)'};
+  background: ${({ $isMyTurn }) =>
+    $isMyTurn
+      ? THEME.gradients.goldShimmer
+      : 'rgba(255, 255, 255, 0.95)'};
   border: 1.5px solid
     ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
   padding: 5px 16px;
   border-radius: ${THEME.radius.full};
   font-size: 13px;
-  font-weight: 700;
-  color: ${({ $isMyTurn }) => ($isMyTurn ? THEME.goldLight : THEME.foreground)};
+  font-weight: 800;
+  color: ${({ $isMyTurn }) => ($isMyTurn ? '#0f172a' : THEME.foreground)};
   animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
   box-shadow: ${({ $isMyTurn }) =>
-    $isMyTurn ? '0 0 18px rgba(245, 158, 11, 0.5)' : 'none'};
+    $isMyTurn ? '0 0 20px rgba(212, 175, 55, 0.5)' : '0 2px 8px rgba(15, 23, 42, 0.06)'};
   white-space: nowrap;
   max-width: 92%;
   overflow: hidden;
@@ -502,11 +510,12 @@ const DeckSlot = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: rgba(9, 9, 11, 0.85);
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.lg};
   padding: 5px 14px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08), 0 0 10px rgba(212, 175, 55, 0.2);
   cursor: pointer;
   transition: transform 0.15s;
 
@@ -519,13 +528,13 @@ const MiniDeckCardVisual = styled.div`
   width: 24px;
   height: 34px;
   border-radius: 4px;
-  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  background: ${THEME.gradients.burgundySeal};
   border: 1px solid ${THEME.gold};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  box-shadow: 1.5px 1.5px 0 rgba(245, 158, 11, 0.5);
+  font-size: 12px;
+  box-shadow: 1px 1px 4px rgba(123, 24, 54, 0.4);
 `;
 
 const FloatingToast = styled(motion.div)`
@@ -533,17 +542,18 @@ const FloatingToast = styled(motion.div)`
   top: 4px;
   left: 50%;
   transform: translateX(-50%);
-  background-color: rgba(9, 9, 11, 0.95);
-  border: 1px solid ${THEME.gold};
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid ${THEME.burgundy};
   border-radius: ${THEME.radius.full};
   padding: 5px 14px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: ${THEME.foreground};
   display: flex;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 6px 20px rgba(123, 24, 54, 0.25);
   z-index: 80;
   pointer-events: none;
   white-space: nowrap;
@@ -561,11 +571,12 @@ const TargetingBanner = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: rgba(9, 9, 11, 0.96);
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.full};
   padding: 5px 14px;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 24px rgba(212, 175, 55, 0.6);
   z-index: 50;
   animation: ${turnGlow} 1.5s infinite;
   white-space: nowrap;
@@ -590,7 +601,7 @@ const MyPlayArea = styled.section`
   transition: background 0.3s ease;
   background: ${({ $isMyTurn }) =>
     $isMyTurn
-      ? 'radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.16) 0%, transparent 75%)'
+      ? 'radial-gradient(ellipse at bottom, rgba(212, 175, 55, 0.18) 0%, transparent 75%)'
       : 'transparent'};
 `;
 
@@ -632,13 +643,14 @@ const CardMotion = styled(motion.div)`
   width: 120px;
   height: 148px;
   border-radius: ${THEME.radius.lg};
-  background-color: ${THEME.card};
-  border: 2px solid
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid
     ${({ $isSelected, $color, $isForced }) =>
       $isSelected
         ? THEME.gold
         : $isForced
-        ? '#ec4899'
+        ? '#be123c'
         : $color || THEME.gold};
   padding: 8px;
   display: flex;
@@ -646,15 +658,15 @@ const CardMotion = styled(motion.div)`
   justify-content: space-between;
   box-shadow: ${({ $isSelected }) =>
     $isSelected
-      ? `0 0 20px rgba(245, 158, 11, 0.8), 0 8px 24px rgba(0, 0, 0, 0.8)`
-      : `0 6px 18px rgba(0, 0, 0, 0.6)`};
+      ? `0 0 24px rgba(212, 175, 55, 0.7), 0 8px 24px rgba(15, 23, 42, 0.15)`
+      : `0 4px 16px rgba(15, 23, 42, 0.08)`};
   cursor: ${({ $canPlay, $isRestricted, $isMyTurn }) =>
     $canPlay && !$isRestricted && $isMyTurn ? 'pointer' : 'not-allowed'};
   position: relative;
   overflow: hidden;
   user-select: none;
   box-sizing: border-box;
-  transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-12px)' : 'translateY(0)')};
+  transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-14px)' : 'translateY(0)')};
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease, filter 0.25s ease;
 
   opacity: ${({ $isRestricted, $isMyTurn }) =>
@@ -674,7 +686,7 @@ const CardMotion = styled(motion.div)`
     inset: 0;
     background: radial-gradient(
       circle at top left,
-      ${({ $color }) => `${$color}22`} 0%,
+      ${({ $color }) => `${$color}18`} 0%,
       transparent 70%
     );
     pointer-events: none;
@@ -688,8 +700,8 @@ const CardMotion = styled(motion.div)`
 const ShowcaseBackdrop = styled(motion.div)`
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
+  background-color: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
   z-index: 95;
   display: flex;
   align-items: center;
@@ -698,11 +710,12 @@ const ShowcaseBackdrop = styled(motion.div)`
 `;
 
 const ShowcaseCardBox = styled(motion.div)`
-  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  background: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   border: 2px solid ${({ $color }) => $color || THEME.gold};
   border-radius: ${THEME.radius.xl};
-  padding: 14px 18px;
-  box-shadow: 0 0 40px ${({ $color }) => `${$color}77` || 'rgba(245, 158, 11, 0.7)'}, 0 20px 50px rgba(0, 0, 0, 0.95);
+  padding: 16px 20px;
+  box-shadow: 0 0 45px ${({ $color }) => `${$color}55` || 'rgba(212, 175, 55, 0.5)'}, 0 25px 60px rgba(15, 23, 42, 0.35);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -717,7 +730,7 @@ const ShowcaseHeader = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   color: ${THEME.foreground};
   text-align: center;
@@ -727,14 +740,15 @@ const ShowcaseCardVisual = styled.div`
   width: 100px;
   height: 132px;
   border-radius: ${THEME.radius.lg};
-  background-color: ${THEME.card};
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   border: 2px solid ${({ $color }) => $color || THEME.gold};
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
   padding: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   box-sizing: border-box;
   position: relative;
   overflow: hidden;
@@ -745,7 +759,7 @@ const ShowcaseCardVisual = styled.div`
     inset: 0;
     background: radial-gradient(
       circle at top left,
-      ${({ $color }) => `${$color}33`} 0%,
+      ${({ $color }) => `${$color}22`} 0%,
       transparent 70%
     );
   }
@@ -754,7 +768,7 @@ const ShowcaseCardVisual = styled.div`
 const ShowcaseFooter = styled.div`
   font-size: 11px;
   font-weight: 700;
-  color: ${THEME.goldLight};
+  color: ${THEME.foreground};
   text-align: center;
   line-height: 1.3;
 `;
@@ -766,9 +780,18 @@ const CardHeaderRow = styled.div`
 `;
 
 const CardValueBadge = styled.span`
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 900;
-  color: ${({ $color }) => $color};
+  color: #ffffff;
+  background: ${({ $color }) => $color || THEME.burgundy};
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid ${THEME.gold};
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.2);
   line-height: 1;
 `;
 
@@ -776,6 +799,7 @@ const CardEmblem = styled.div`
   font-size: 2rem;
   text-align: center;
   margin: 1px 0;
+  filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.1));
 `;
 
 const CardFooterInfo = styled.div`
@@ -792,8 +816,9 @@ const CardNameText = styled.div`
 `;
 
 const CardDescSnippet = styled.div`
-  font-size: 9px;
-  color: ${THEME.mutedForeground};
+  font-size: 9.5px;
+  color: #334155;
+  font-weight: 600;
   line-height: 1.15;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -806,7 +831,7 @@ const RestrictionBadge = styled.div`
   top: 4px;
   right: 4px;
   left: 4px;
-  background-color: rgba(239, 68, 68, 0.95);
+  background-color: rgba(225, 29, 72, 0.95);
   color: #fff;
   font-size: 9px;
   font-weight: 800;
@@ -814,7 +839,7 @@ const RestrictionBadge = styled.div`
   border-radius: 4px;
   text-align: center;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
 `;
 
 const ActionControlBar = styled.div`
@@ -844,28 +869,28 @@ const SmartGuessButton = styled.button`
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  padding: 8px 10px;
   background-color: ${({ $selected }) =>
-    $selected ? 'rgba(245, 158, 11, 0.2)' : THEME.secondary};
+    $selected ? 'rgba(212, 175, 55, 0.15)' : '#ffffff'};
+  background-image: ${THEME.gradients.marbleSlab};
   border: 1.5px solid
     ${({ $selected, $isZero }) =>
-      $selected
-        ? THEME.gold
-        : $isZero
-        ? 'rgba(255, 255, 255, 0.08)'
-        : THEME.border};
-  border-radius: ${THEME.radius.md};
-  padding: 8px 10px;
-  color: ${THEME.foreground};
-  cursor: ${({ disabled }) => (disabled ? 'not-allowed' : 'pointer')};
+      $selected ? THEME.gold : $isZero ? '#e2e8f0' : THEME.border};
+  border-radius: ${THEME.radius.lg};
+  cursor: ${({ $isZero }) => ($isZero ? 'not-allowed' : 'pointer')};
+  opacity: ${({ $isZero }) => ($isZero ? 0.4 : 1)};
+  filter: ${({ $isZero }) => ($isZero ? 'grayscale(80%)' : 'none')};
   transition: all 0.15s;
-  opacity: ${({ disabled }) => (disabled ? 0.4 : 1)};
+  box-shadow: ${({ $selected }) =>
+    $selected ? '0 0 12px rgba(212, 175, 55, 0.4)' : '0 1px 3px rgba(15, 23, 42, 0.05)'};
+  color: ${THEME.foreground};
   text-align: left;
   box-sizing: border-box;
   width: 100%;
 
   &:hover:not(:disabled) {
     border-color: ${THEME.gold};
-    background-color: rgba(245, 158, 11, 0.12);
+    transform: translateY(-1px);
   }
 `;
 
@@ -1246,9 +1271,11 @@ export default function LoveLetterBoard({
                 <OpponentName>{p.nickname}</OpponentName>
 
                 <OpponentStatsRow>
-                  <Badge $variant="gold" style={{ padding: '1px 4px', fontSize: '9px' }}>
-                    ⭐{p.tokens || 0}
-                  </Badge>
+                  <AffectionTokenBadge
+                    count={p.tokens || 0}
+                    target={roomState?.targetTokens || 4}
+                    size="sm"
+                  />
                   <Badge $variant="outline" style={{ padding: '1px 4px', fontSize: '9px' }}>
                     🃏{p.handCount || 0}
                   </Badge>
@@ -1298,7 +1325,7 @@ export default function LoveLetterBoard({
           <CenterTurnBanner $isMyTurn={isMyTurn}>
             {isMyTurn ? (
               <>
-                <Sparkles size={14} color={THEME.goldLight} />
+                <Sparkles size={14} color={THEME.gold} />
                 <span>👑 [내 턴] 카드를 선택하세요</span>
               </>
             ) : (
@@ -1316,7 +1343,7 @@ export default function LoveLetterBoard({
           >
             <MiniDeckCardVisual>💌</MiniDeckCardVisual>
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ fontSize: '10px', color: THEME.gold, fontWeight: 700 }}>
+              <span style={{ fontSize: '10px', color: THEME.burgundy, fontWeight: 800 }}>
                 남은 덱
               </span>
               <span style={{ fontSize: '13px', fontWeight: 800 }}>
@@ -1341,8 +1368,8 @@ export default function LoveLetterBoard({
           {/* Active Direct Targeting Banner Overlay */}
           {isTargetingMode && (
             <TargetingBanner>
-              <Crosshair size={15} color={THEME.goldLight} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: THEME.goldLight }}>
+              <Crosshair size={15} color={THEME.burgundy} />
+              <span style={{ fontSize: '11px', fontWeight: 800, color: THEME.foreground }}>
                 🎯 지목할 상대를 직접 터치하세요!
               </span>
               <Button
@@ -1365,9 +1392,10 @@ export default function LoveLetterBoard({
           {/* My Minimal Status Bar */}
           <MyStatusBar>
             <MyStatusLeft>
-              <Badge $variant="gold" style={{ padding: '1px 6px', fontSize: '10px', fontWeight: 700 }}>
-                ⭐ {myPlayer?.tokens || 0}/{roomState?.targetTokens || 4}개
-              </Badge>
+              <AffectionTokenBadge
+                count={myPlayer?.tokens || 0}
+                target={roomState?.targetTokens || 4}
+              />
               {myPlayer?.isProtected && (
                 <Badge $variant="emerald" style={{ padding: '1px 6px', fontSize: '10px' }}>
                   🌸 보호막 활성
@@ -1733,12 +1761,20 @@ export default function LoveLetterBoard({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '6px 10px',
-                      backgroundColor: THEME.secondary,
+                      backgroundColor: '#ffffff',
+                      border: `1px solid ${THEME.border}`,
                       borderRadius: THEME.radius.md,
                       fontSize: '11px',
                     }}
                   >
-                    <span style={{ fontWeight: 600 }}>{p.nickname}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: 700, color: THEME.foreground }}>{p.nickname}</span>
+                      <AffectionTokenBadge
+                        count={p.tokens || 0}
+                        target={roomState?.targetTokens || 4}
+                        size="sm"
+                      />
+                    </div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       {p.hand && p.hand.length > 0 ? (
                         p.hand.map((c, i) => {

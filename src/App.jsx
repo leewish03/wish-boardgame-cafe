@@ -79,9 +79,11 @@ const AppHeader = styled.header`
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-  background-color: rgba(9, 9, 11, 0.85);
-  border-bottom: 1px solid ${THEME.border};
-  backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.95);
+  background-image: ${THEME.gradients.marbleSlab};
+  border-bottom: 1.5px solid ${THEME.border};
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
   z-index: 100;
 `;
 
@@ -89,8 +91,8 @@ const BrandLogo = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-size: 1.2rem;
+  font-weight: 800;
   color: ${THEME.foreground};
   letter-spacing: -0.02em;
 
@@ -99,7 +101,7 @@ const BrandLogo = styled.div`
   }
 
   span.gold-text {
-    color: ${THEME.gold};
+    color: ${THEME.burgundy};
   }
 `;
 
@@ -107,17 +109,20 @@ const UserProfileChip = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: ${THEME.secondary};
+  background-color: #ffffff;
   padding: 4px 12px;
   border-radius: ${THEME.radius.full};
-  border: 1px solid ${THEME.border};
+  border: 1.5px solid ${THEME.border};
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  color: ${THEME.foreground};
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 
   img {
     width: 22px;
     height: 22px;
     border-radius: 50%;
+    border: 1px solid ${THEME.gold};
   }
 `;
 
@@ -153,7 +158,7 @@ const GameGrid = styled.div`
 const GameThumbnail = styled.div`
   height: 140px;
   border-radius: ${THEME.radius.lg};
-  background: ${({ $bg }) => $bg || THEME.secondary};
+  background: ${({ $bg }) => $bg || THEME.gradients.marbleSlab};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -161,18 +166,21 @@ const GameThumbnail = styled.div`
   margin-bottom: 12px;
   position: relative;
   overflow: hidden;
-  border: 1px solid ${THEME.border};
+  border: 1.5px solid ${THEME.border};
+  box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.04);
 `;
 
 const ChatWrapper = styled.div`
   display: flex;
   flex-direction: column;
   height: 240px;
-  border: 1px solid ${THEME.border};
+  border: 1.5px solid ${THEME.border};
   border-radius: ${THEME.radius.lg};
-  background-color: rgba(9, 9, 11, 0.5);
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
   overflow: hidden;
   margin-top: 16px;
+  box-shadow: ${THEME.shadows.marbleSlab};
 `;
 
 const ChatFeed = styled.div`
@@ -191,8 +199,8 @@ const ChatBubble = styled.div`
   font-size: 13px;
 
   span.name {
-    font-weight: 700;
-    color: ${THEME.gold};
+    font-weight: 800;
+    color: ${THEME.burgundy};
     white-space: nowrap;
   }
 
@@ -207,8 +215,8 @@ const ChatInputRow = styled.form`
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid ${THEME.border};
-  background-color: ${THEME.card};
+  border-top: 1.5px solid ${THEME.border};
+  background-color: #ffffff;
 `;
 
 // =========================================================================
