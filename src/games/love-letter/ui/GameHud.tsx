@@ -9,7 +9,11 @@ interface GameHudProps {
   isMyTurn: boolean;
   onOpenSettings: () => void;
   onToggleMic?: () => void;
+  onToggleSpeaker?: () => void;
+  onToggleSTT?: () => void;
   isMicOn?: boolean;
+  isSpeakerOn?: boolean;
+  isSTTActive?: boolean;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -20,7 +24,11 @@ export const GameHud: React.FC<GameHudProps> = ({
   isMyTurn,
   onOpenSettings,
   onToggleMic,
+  onToggleSpeaker,
+  onToggleSTT,
   isMicOn = false,
+  isSpeakerOn = true,
+  isSTTActive = false,
 }) => {
   return (
     <HudContainer>
@@ -40,11 +48,21 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       <RightCluster>
         {onToggleMic && (
-          <IconButton onClick={onToggleMic} $active={isMicOn}>
+          <IconButton onClick={onToggleMic} $active={isMicOn} title={isMicOn ? '마이크 끄기' : '마이크 켜기'}>
             {isMicOn ? '🎙️' : '🔇'}
           </IconButton>
         )}
-        <IconButton onClick={onOpenSettings}>☰</IconButton>
+        {onToggleSpeaker && (
+          <IconButton onClick={onToggleSpeaker} $active={isSpeakerOn} title={isSpeakerOn ? '스피커 음소거' : '스피커 켜기'}>
+            {isSpeakerOn ? '🔊' : '🔈'}
+          </IconButton>
+        )}
+        {onToggleSTT && (
+          <IconButton onClick={onToggleSTT} $active={isSTTActive} title="실시간 자막(STT)">
+            💬
+          </IconButton>
+        )}
+        <IconButton onClick={onOpenSettings} title="메뉴 / 나가기">☰</IconButton>
       </RightCluster>
     </HudContainer>
   );
@@ -113,8 +131,8 @@ const RightCluster = styled.div`
 `;
 
 const IconButton = styled.button<{ $active?: boolean }>`
-  background: #27272a;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: ${props => props.$active ? 'rgba(212, 175, 55, 0.25)' : '#27272a'};
+  border: 1px solid ${props => props.$active ? '#d4af37' : 'rgba(255, 255, 255, 0.1)'};
   color: #fff;
   width: 32px;
   height: 32px;

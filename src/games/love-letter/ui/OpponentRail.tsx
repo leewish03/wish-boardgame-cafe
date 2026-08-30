@@ -8,6 +8,8 @@ interface OpponentRailProps {
   currentTurnPlayerId: PlayerId | null;
   targetablePlayerIds: PlayerId[];
   selectedTargetId: PlayerId | null;
+  speakingUsers?: Record<string, boolean>;
+  userSubtitles?: Record<string, { text: string; timestamp: number }>;
   onSelectTarget: (playerId: PlayerId) => void;
   onInspectDiscards?: (playerId: PlayerId) => void;
 }
@@ -17,6 +19,8 @@ export const OpponentRail: React.FC<OpponentRailProps> = ({
   currentTurnPlayerId,
   targetablePlayerIds,
   selectedTargetId,
+  speakingUsers = {},
+  userSubtitles = {},
   onSelectTarget,
   onInspectDiscards,
 }) => {
@@ -30,6 +34,8 @@ export const OpponentRail: React.FC<OpponentRailProps> = ({
           isTargetable={targetablePlayerIds.includes(opp.id)}
           isSelectedTarget={selectedTargetId === opp.id}
           isSelf={false}
+          isSpeaking={!!speakingUsers[opp.id]}
+          subtitle={userSubtitles[opp.id]}
           onClickTarget={() => onSelectTarget(opp.id)}
           onInspectDiscards={() => onInspectDiscards && onInspectDiscards(opp.id)}
         />

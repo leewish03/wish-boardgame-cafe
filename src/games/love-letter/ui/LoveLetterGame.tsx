@@ -5,6 +5,8 @@ import { OpponentRail } from './OpponentRail';
 import { ActionStage } from './ActionStage';
 import { PlayerHand } from './PlayerHand';
 import { GuessSelector } from './GuessSelector';
+import { SpatialMotionStage } from '../presentation/SpatialMotionStage';
+import { useActionTimeline } from '../presentation/useActionTimeline';
 import { GameState, CardValue, PlayerId } from '../../../../packages/love-letter-core/src/types';
 import { calculateRemainingCards } from '../../../../packages/love-letter-core/src/selectors';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
@@ -13,6 +15,14 @@ interface LoveLetterGameProps {
   gameState: GameState;
   myUserId: string;
   myHand: any[];
+  speakingUsers?: Record<string, boolean>;
+  userSubtitles?: Record<string, { text: string; timestamp: number }>;
+  isMicOn?: boolean;
+  isSpeakerOn?: boolean;
+  isSTTActive?: boolean;
+  onToggleMic?: () => void;
+  onToggleSpeaker?: () => void;
+  onToggleSTT?: () => void;
   onPlayCard: (cardId: string, targetId?: string, guessValue?: number) => void;
   onLeaveRoom: () => void;
 }
@@ -21,12 +31,23 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   gameState,
   myUserId,
   myHand,
+  speakingUsers = {},
+  userSubtitles = {},
+  isMicOn,
+  isSpeakerOn,
+  isSTTActive,
+  onToggleMic,
+  onToggleSpeaker,
+  onToggleSTT,
   onPlayCard,
   onLeaveRoom,
 }) => {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [isGuessOpen, setIsGuessOpen] = useState(false);
+  const [isDraggingCard, setIsDraggingCard] = useState(false);
+
+  const { currentAction } = useActionTimeline();
 
   const me = gameState.players.find(p => p.id === myUserId);
   const opponents = gameState.players.filter(p => p.id !== myUserId);
@@ -36,7 +57,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     return myHand.find(c => c.id === selectedCardId);
   }, [myHand, selectedCardId]);
 
-  // Targetable player ids
   const targetablePlayerIds = useMemo(() => {
     if (!isMyTurn || !selectedCard) return [];
     const meta = CARD_DEFINITIONS[selectedCard.value as CardValue];
@@ -47,7 +67,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       .map(p => p.id);
   }, [isMyTurn, selectedCard, opponents]);
 
-  // Remaining cards for Guard helper
   const allDiscards = useMemo(() => {
     return gameState.players.flatMap(p => p.discardPile || []);
   }, [gameState.players]);
@@ -64,7 +83,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     setSelectedTargetId(null);
 
     const meta = CARD_DEFINITIONS[card.value as CardValue];
-    // If card doesn't need target (Handmaid, Countess, Princess), execute immediately
     if (!meta.needsTarget) {
       onPlayCard(cardId);
       setSelectedCardId(null);
@@ -76,11 +94,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
     setSelectedTargetId(targetId);
 
-    // If Guard (1), open Guess Selector
     if (selectedCard.value === 1) {
       setIsGuessOpen(true);
     } else {
-      // Execute targeted card (Priest, Baron, Prince, King)
       onPlayCard(selectedCardId, targetId);
       setSelectedCardId(null);
       setSelectedTargetId(null);
@@ -105,21 +121,31 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         targetTokens={gameState.config.targetTokens}
         turnPlayerNickname={turnPlayer?.nickname || '플레이어'}
         isMyTurn={isMyTurn}
+        isMicOn={isMicOn}
+        isSpeakerOn={isSpeakerOn}
+        isSTTActive={isSTTActive}
+        onToggleMic={onToggleMic}
+        onToggleSpeaker={onToggleSpeaker}
+        onToggleSTT={onToggleSTT}
         onOpenSettings={onLeaveRoom}
       />
+
+      <SpatialMotionStage currentAction={currentAction} />
 
       <OpponentRail
         opponents={opponents}
         currentTurnPlayerId={gameState.currentTurnPlayerId}
         targetablePlayerIds={targetablePlayerIds}
         selectedTargetId={selectedTargetId}
+        speakingUsers={speakingUsers}
+        userSubtitles={userSubtitles}
         onSelectTarget={handleSelectTarget}
       />
 
       <ActionStage
         deckCount={gameState.deck.length}
         lastAction={gameState.lastAction}
-        isDraggingCard={false}
+        isDraggingCard={isDraggingCard}
       />
 
       <PlayerHand

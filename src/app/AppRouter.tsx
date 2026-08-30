@@ -5,25 +5,33 @@ import { LobbyScreen } from '../screens/LobbyScreen';
 import { WaitingRoomScreen } from '../screens/WaitingRoomScreen';
 import { LoveLetterGame } from '../games/love-letter/ui/LoveLetterGame';
 import { GameState } from '../../packages/love-letter-core/src/types';
-import { createInitialGameState } from '../../packages/love-letter-core/src/state';
+import { useWebRTC } from '../shared/useWebRTC';
+import { useSTT } from '../shared/useSTT';
+import { sfx } from '../shared/sfx';
 
 type Screen = 'ENTRY' | 'LOBBY' | 'WAITING' | 'GAME';
 
 export const AppRouter: React.FC = () => {
   const [screen, setScreen] = useState<Screen>('ENTRY');
-  const [user, setUser] = useState<{ nickname: string; avatar: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; nickname: string; avatar: string } | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [roomCode, setRoomCode] = useState<string>('');
   const [roomState, setRoomState] = useState<any>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [mySecretHand, setMySecretHand] = useState<any[]>([]);
 
+  // WebRTC & STT integration
+  const webrtc = useWebRTC(socket, roomCode, user?.id);
+  const stt = useSTT(socket, roomCode, user?.id, user?.nickname, webrtc.isMicOn);
+
   useEffect(() => {
-    // Check saved session
     const savedNick = localStorage.getItem('wish_nickname');
     const savedAvatar = localStorage.getItem('wish_avatar') || '👑';
+    const savedId = localStorage.getItem('wish_userid') || `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    localStorage.setItem('wish_userid', savedId);
+
     if (savedNick) {
-      setUser({ nickname: savedNick, avatar: savedAvatar });
+      setUser({ id: savedId, nickname: savedNick, avatar: savedAvatar });
       setScreen('LOBBY');
     }
 
@@ -52,9 +60,11 @@ export const AppRouter: React.FC = () => {
   }, []);
 
   const handleLogin = (nickname: string, avatar: string) => {
+    const userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     localStorage.setItem('wish_nickname', nickname);
     localStorage.setItem('wish_avatar', avatar);
-    setUser({ nickname, avatar });
+    localStorage.setItem('wish_userid', userId);
+    setUser({ id: userId, nickname, avatar });
     setScreen('LOBBY');
   };
 
@@ -67,12 +77,11 @@ export const AppRouter: React.FC = () => {
 
   const handleCreateRoom = (gameType: string) => {
     if (!socket || !user) return;
-    const userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     socket.emit('room:create', {
       gameType,
       nickname: user.nickname,
       avatarUrl: user.avatar,
-      userId,
+      userId: user.id,
     }, (res: any) => {
       if (res && res.roomCode) {
         setRoomCode(res.roomCode);
@@ -83,12 +92,11 @@ export const AppRouter: React.FC = () => {
 
   const handleJoinRoom = (code: string) => {
     if (!socket || !user) return;
-    const userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     socket.emit('room:join', {
       roomCode: code,
       nickname: user.nickname,
       avatarUrl: user.avatar,
-      userId,
+      userId: user.id,
     }, (res: any) => {
       if (res && !res.error) {
         setRoomCode(code);
@@ -112,6 +120,7 @@ export const AppRouter: React.FC = () => {
   const handleStartGame = () => {
     if (!socket || !roomCode) return;
     socket.emit('loveletter:start-game', { roomCode });
+    sfx.playRoundWin();
   };
 
   const handlePlayCard = (cardId: string, targetId?: string, guessValue?: number) => {
@@ -122,6 +131,7 @@ export const AppRouter: React.FC = () => {
       targetUserId: targetId,
       guessValue,
     });
+    sfx.playCardPlay();
   };
 
   const handleLeaveRoom = () => {
@@ -134,7 +144,6 @@ export const AppRouter: React.FC = () => {
     setScreen('LOBBY');
   };
 
-  // Screen routing
   if (screen === 'ENTRY' || !user) {
     return <EntryScreen onLogin={handleLogin} />;
   }
@@ -156,7 +165,7 @@ export const AppRouter: React.FC = () => {
         roomCode={roomCode}
         players={roomState.players || []}
         isHost={roomState.hostId === socket?.id || roomState.players?.[0]?.socketId === socket?.id}
-        myUserId={socket?.id || ''}
+        myUserId={user.id}
         onAddBot={handleAddBot}
         onToggleReady={handleToggleReady}
         onStartGame={handleStartGame}
@@ -169,8 +178,16 @@ export const AppRouter: React.FC = () => {
     return (
       <LoveLetterGame
         gameState={gameState}
-        myUserId={socket?.id || ''}
+        myUserId={user.id}
         myHand={mySecretHand}
+        speakingUsers={webrtc.speakingUsers}
+        userSubtitles={stt.userSubtitles}
+        isMicOn={webrtc.isMicOn}
+        isSpeakerOn={webrtc.isSpeakerOn}
+        isSTTActive={stt.isSTTActive}
+        onToggleMic={webrtc.toggleMic}
+        onToggleSpeaker={webrtc.toggleSpeaker}
+        onToggleSTT={stt.toggleSTT}
         onPlayCard={handlePlayCard}
         onLeaveRoom={handleLeaveRoom}
       />

@@ -11,6 +11,7 @@ import { initRoomManager } from './server/shared/roomManager.js';
 import { initWebRTCSignaling } from './server/shared/webrtcSignaling.js';
 import { initSTTBroadcast } from './server/shared/sttBroadcast.js';
 import { registerLoveLetter } from './server/games/love-letter.js';
+import { createLoveLetterService } from './server/core/LoveLetterService.js';
 
 dotenv.config();
 
@@ -20,10 +21,16 @@ const distPath = path.join(__dirname, 'dist');
 
 const app = express();
 const server = http.createServer(app);
+
+// Socket.io Server with Connection State Recovery
 const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
+  },
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes grace recovery
+    skipMiddlewares: true,
   },
 });
 
@@ -43,7 +50,12 @@ const PORT = process.env.PORT || 3001;
 
 // 1. Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Wish Boardgame Cafe', time: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'Wish Boardgame Cafe',
+    version: '2.0.0-ts-core',
+    time: new Date().toISOString(),
+  });
 });
 
 // SPA Fallback for client-side routing
@@ -63,6 +75,9 @@ initRoomManager(io);
 initWebRTCSignaling(io);
 initSTTBroadcast(io);
 registerLoveLetter(io);
+
+// Initialize Pure TypeScript Love Letter Service
+export const loveLetterService = createLoveLetterService(io);
 
 server.listen(PORT, () => {
   console.log(`====================================================`);

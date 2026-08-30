@@ -1,21 +1,13 @@
-# [Task Tracker] Wish Boardgame Cafe - Love Letter 전면 재구축 (17 Phases)
+# [Task Tracker] Wish Boardgame Cafe - Love Letter 전면 재구축 및 런타임 통합
 
-| Phase | Task Description | Status | Owner | Evidence |
+| Priority | Task Description | Status | Owner | Evidence |
 |---|---|---|---|---|
-| Phase 0 | Freeze & Baseline Unit Test Harness | ✅ Completed | Orchestrator / Dev | `tests/love_letter_rules.test.js` (7/7 Passed), `tests/ai_bot_heuristics.test.js` (5/5 Passed) |
-| Phase 1 | Pure TypeScript Core Engine (`packages/love-letter-core`) | ✅ Completed | Dev / Core | `cards.ts`, `types.ts`, `state.ts`, `commands.ts`, `events.ts`, `rules.ts`, `engine.ts`, `reducer.ts`, `selectors.ts` |
-| Phase 2 | Shared Protocol & Envelopes (`packages/protocol`) | ✅ Completed | CTO / Dev | `socketEvents.ts`, `envelopes.ts` (`GameEventEnvelope`, `GameSnapshot`, `RoomSnapshot`) |
-| Phase 3 | New Server Controller & Services (`server/core`) | ✅ Completed | Server Dev | `LoveLetterService.js`, `RoomRepository.js`, `TurnCoordinator.js`, `AiBotController.js` |
-| Phase 4 | Game Stability, Turn Coordinator & Heuristics AI | ✅ Completed | Server Dev | 1.4s presentation pacing delay, Memory-aware Guard snipes & Countess prioritization |
-| Phase 5 | Connection Recovery, State Versioning & Snapshots | ✅ Completed | CTO / Dev | Monotonic `stateVersion`, unified `game:event` & `game:snapshot` envelope broadcasting |
-| Phase 6 | New Client Modular Architecture & Screen Routing | ✅ Completed | Frontend Dev | `AppRouter.tsx`, `EntryScreen.tsx`, `LobbyScreen.tsx`, `WaitingRoomScreen.tsx`, `LoveLetterGame.tsx` |
-| Phase 7 | New Game Board Layout (VIP Salon Marble Surface & Hierarchy) | ✅ Completed | UI/UX Dev | Carrara Marble radial surface, Obsidian, Champagne Brass foil frame & hierarchy |
-| Phase 8 | Mobile Drag & Drop Card Interaction + In-Place Targeting | ✅ Completed | Motion Dev | `drag="y"`, `dragConstraints={{ top: -140, bottom: 0 }}`, drop onto `ActionStage`, spring snapback |
-| Phase 9 | Client Presentation Machine & Action Queue Timeline | ✅ Completed | Architecture | `useActionTimeline.ts` (1.1s sequential visual queuing before turn timer advancement) |
-| Phase 10 | 8 Card Action Visual Sequences & In-Place Animations | ✅ Completed | Motion Dev | Guard Snipe beam, Priest Secret reveal, Baron Duel comparison, Handmaid Shield, Prince Discard, King Swap, Countess Flower, Princess Instant Shatter |
-| Phase 11 | Heraldic Emblem & Luxury Marble Card Design Overhaul | ✅ Completed | Designer | Custom SVG Heraldic Emblems (`heraldicIcons.tsx`) for all 8 cards, luxury typography & foil frame |
-| Phase 12 | Round End & Match Result Screen Transition | ✅ Completed | Frontend Dev | `RoundResult.tsx`, `MatchResult.tsx`, token tallies & auto-advance countdown |
-| Phase 13 | High-End VIP Lobby & Waiting Room Modular TSX | ✅ Completed | Frontend Dev | `LobbyScreen.tsx` with Live Now / Coming Soon slots, `WaitingRoomScreen.tsx` with bot addition & ready states |
-| Phase 14 | Voice (WebRTC) & STT Sub-system Re-integration | ✅ Completed | Fullstack Dev | `GameHud.tsx` mic toggle, speaking indicator ring, STT speech bubble integration |
-| Phase 15 | Mobile QA & Automated AI Multi-Game Simulation Testkit | ✅ Completed | QA Lead | `tests/full_game_ts_simulation.test.js` (10 Matches / 330 turns with 0 deadlocks & 0 errors) |
-| Phase 16 | Legacy Code Clean-up, Final Build & Production Verification | ✅ Completed | QA / Orchestrator | `npm run build` (Vite 465.05 kB bundle, 0 errors), AST Analysis (21 files 100% pass) |
+| P0-1 | xstate 패키지 설치 및 Socket.IO connectionStateRecovery 활성화 | ✅ Completed | Dev / CTO | `package.json` (xstate v5), `server.js` (connectionStateRecovery: 2min) |
+| P0-2 | `server.js`에 `LoveLetterService` 및 공유 프로토콜 실시간 소켓 통합 | ✅ Completed | Server Dev | `server.js` `createLoveLetterService(io)` 마운트 |
+| P0-3 | `src/index.jsx`를 `AppRouter.tsx`로 완전 전환 및 소켓 이벤트 규격 일치화 | ✅ Completed | Frontend Dev | `src/index.jsx` -> `src/app/AppRouter.tsx` (Vite bundle 393 kB) |
+| P0-4 | WebRTC P2P 음성 통화 & Web Speech API 한국어 STT 신규 UI 이식 | ✅ Completed | Fullstack Dev | `AppRouter.tsx`, `GameHud.tsx` (마이크/스피커/STT 토글), `PlayerSeat.tsx` (VAD 링/말풍선) |
+| P1-1 | Framer Motion 모바일 카드 드래그 & `ActionStage` 실제 드롭 판정 물리학 구현 | ✅ Completed | Motion Dev | `GameCard.tsx` (`drag="y"`), `ActionStage.tsx` (Dropzone Highlight) |
+| P1-2 | 8종 카드별 고유 공간 비주얼 시퀀스 (투사체 빔, 투시, 결투 충돌, 교환, 샤터) | ✅ Completed | Motion Dev | `SpatialMotionStage.tsx` (경비병 레이저 빔, 남작 결투 오버레이, 샤터 이펙트) |
+| P1-3 | `useActionTimeline` 실시간 액션 큐 마운트 (1.1s 시간축 분리 보장) | ✅ Completed | Architecture | `useActionTimeline.ts` -> `LoveLetterGame.tsx` 마운트 |
+| P2-1 | 10-Match 멀티플레이 AI 실전 E2E 시뮬레이션 및 AST/빌드 전수 검증 | ✅ Completed | QA Lead | `tests/full_game_ts_simulation.test.js` (10 Matches / 0 Deadlocks, 0 Errors) |
+| P2-2 | 레거시 모놀리스 파일 정리 및 최종 프로덕션 검증 | ✅ Completed | Orchestrator | Vite 빌드 (`dist/assets/index-BEgf-aN3.js` 393.09 kB 번들링 성공) |
