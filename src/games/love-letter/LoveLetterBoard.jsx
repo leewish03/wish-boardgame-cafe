@@ -15,6 +15,7 @@ import {
   PauseOverlay,
   AffectionTokenBadge,
 } from '../../shared/components';
+import { ActionVisualizer } from './ActionVisualizer';
 import { sfx } from '../../shared/sfx';
 import {
   Mic,
@@ -33,21 +34,24 @@ import {
   Info,
   X,
   Settings,
+  Sliders,
+  BookOpen,
+  History,
 } from 'lucide-react';
 
 // =========================================================================
-// Card Definitions & Rules (Renaissance Palette)
+// Card Definitions & Rules (Unified Carrara Marble & Champagne Brass)
 // =========================================================================
 
 export const CARD_DATA = {
-  1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#1e3a8a', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
-  2: { value: 2, name: '사제', nameEn: 'Priest', count: 2, color: '#6b21a8', icon: '📜', desc: '상대 1명을 지목하여 그 사람의 손패를 비밀리에 확인합니다.' },
-  3: { value: 3, name: '남작', nameEn: 'Baron', count: 2, color: '#4c1d95', icon: '⚔️', desc: '상대 1명과 비밀리에 손패 숫자를 비교하여 더 낮은 쪽이 탈락합니다.' },
-  4: { value: 4, name: '하녀', nameEn: 'Handmaid', count: 2, color: '#047857', icon: '🌸', desc: '다음 내 턴 시작 전까지 다른 플레이어의 모든 카드 효과로부터 면역 보호됩니다.' },
-  5: { value: 5, name: '왕자', nameEn: 'Prince', count: 2, color: '#b45309', icon: '👑', desc: '자신 포함 1명을 지목하여 손패를 버리고 새로 1장 드로우하게 합니다.' },
-  6: { value: 6, name: '국왕', nameEn: 'King', count: 1, color: '#92400e', icon: '🤴', desc: '상대 1명을 지목하여 자신의 손패와 상대의 손패를 맞교환합니다.' },
-  7: { value: 7, name: '백작부인', nameEn: 'Countess', count: 1, color: '#831843', icon: '🌹', desc: '손에 왕자(5)나 국왕(6)이 함께 있을 경우, 반드시 백작부인을 먼저 내려놓아야 합니다.' },
-  8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#9f1239', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
+  1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#c5a059', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
+  2: { value: 2, name: '사제', nameEn: 'Priest', count: 2, color: '#c5a059', icon: '📜', desc: '상대 1명을 지목하여 그 사람의 손패를 비밀리에 확인합니다.' },
+  3: { value: 3, name: '남작', nameEn: 'Baron', count: 2, color: '#c5a059', icon: '⚔️', desc: '상대 1명과 비밀리에 손패 숫자를 비교하여 더 낮은 쪽이 탈락합니다.' },
+  4: { value: 4, name: '하녀', nameEn: 'Handmaid', count: 2, color: '#c5a059', icon: '🌸', desc: '다음 내 턴 시작 전까지 다른 플레이어의 모든 카드 효과로부터 면역 보호됩니다.' },
+  5: { value: 5, name: '왕자', nameEn: 'Prince', count: 2, color: '#c5a059', icon: '👑', desc: '자신 포함 1명을 지목하여 손패를 버리고 새로 1장 드로우하게 합니다.' },
+  6: { value: 6, name: '국왕', nameEn: 'King', count: 1, color: '#c5a059', icon: '🤴', desc: '상대 1명을 지목하여 자신의 손패와 상대의 손패를 맞교환합니다.' },
+  7: { value: 7, name: '백작부인', nameEn: 'Countess', count: 1, color: '#c5a059', icon: '🌹', desc: '손에 왕자(5)나 국왕(6)이 함께 있을 경우, 반드시 백작부인을 먼저 내려놓아야 합니다.' },
+  8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#c5a059', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
 };
 
 // =========================================================================
@@ -465,8 +469,35 @@ function DiscardPileStack({ discardPile = [], onOpenHistory, playerName = '' }) 
 }
 
 // =========================================================================
-// 2. Center Table Area (25% Height)
+// 2. Center Table Area (25% Height) & Sticky Turn Ribbon
 // =========================================================================
+
+const StickyTurnRibbon = styled.div`
+  width: 100%;
+  height: 26px;
+  min-height: 26px;
+  background: ${({ $isMyTurn }) =>
+    $isMyTurn
+      ? 'linear-gradient(90deg, #090d16 0%, #1e1b4b 50%, #090d16 100%)'
+      : 'linear-gradient(90deg, #f8fafc 0%, #ffffff 50%, #f8fafc 100%)'};
+  border-bottom: 1px solid ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : '#e2e8f0')};
+  color: ${({ $isMyTurn }) => ($isMyTurn ? '#f8fafc' : '#334155')};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: ${THEME.font.koreanSerif};
+  box-shadow: 0 1px 4px rgba(9, 13, 22, 0.05);
+  z-index: 40;
+  flex-shrink: 0;
+
+  span.turn-highlight {
+    color: ${THEME.gold};
+    font-weight: 900;
+  }
+`;
 
 const CenterTableArea = styled.section`
   height: 25%;
@@ -482,32 +513,6 @@ const CenterTableArea = styled.section`
   flex-shrink: 0;
   z-index: 10;
   width: 100%;
-`;
-
-const CenterTurnBanner = styled.div`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: ${({ $isMyTurn }) =>
-    $isMyTurn
-      ? THEME.gradients.goldShimmer
-      : 'rgba(255, 255, 255, 0.95)'};
-  border: 1.5px solid
-    ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
-  padding: 5px 16px;
-  border-radius: ${THEME.radius.full};
-  font-size: 13px;
-  font-weight: 800;
-  color: ${({ $isMyTurn }) => ($isMyTurn ? '#0f172a' : THEME.foreground)};
-  animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
-  box-shadow: ${({ $isMyTurn }) =>
-    $isMyTurn ? '0 0 20px rgba(212, 175, 55, 0.5)' : '0 2px 8px rgba(15, 23, 42, 0.06)'};
-  white-space: nowrap;
-  max-width: 92%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  backdrop-filter: blur(8px);
 `;
 
 const DeckSlot = styled.div`
@@ -644,26 +649,26 @@ const HandCardsWrapper = styled.div`
 `;
 
 const CardMotion = styled(motion.div)`
-  width: 120px;
-  height: 148px;
+  width: 124px;
+  height: 156px;
   border-radius: ${THEME.radius.lg};
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 1.5px solid
-    ${({ $isSelected, $color, $isForced }) =>
+  background-image: ${THEME.gradients.cardMarble};
+  border: 1px solid
+    ${({ $isSelected, $isForced }) =>
       $isSelected
         ? THEME.gold
         : $isForced
         ? '#be123c'
-        : $color || THEME.gold};
+        : 'rgba(197, 160, 89, 0.55)'};
   padding: 8px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   box-shadow: ${({ $isSelected }) =>
     $isSelected
-      ? `0 0 24px rgba(212, 175, 55, 0.7), 0 8px 24px rgba(15, 23, 42, 0.15)`
-      : `0 4px 16px rgba(15, 23, 42, 0.08)`};
+      ? `0 0 24px rgba(197, 160, 89, 0.8), 0 8px 24px rgba(9, 13, 22, 0.2)`
+      : `0 4px 14px rgba(9, 13, 22, 0.08)`};
   cursor: ${({ $canPlay, $isRestricted, $isMyTurn }) =>
     $canPlay && !$isRestricted && $isMyTurn ? 'pointer' : 'not-allowed'};
   position: relative;
@@ -671,7 +676,7 @@ const CardMotion = styled(motion.div)`
   user-select: none;
   box-sizing: border-box;
   transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-14px)' : 'translateY(0)')};
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease, filter 0.25s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease;
 
   opacity: ${({ $isRestricted, $isMyTurn }) =>
     $isRestricted ? 0.4 : $isMyTurn ? 1 : 0.45};
@@ -687,12 +692,9 @@ const CardMotion = styled(motion.div)`
   &::before {
     content: '';
     position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle at top left,
-      ${({ $color }) => `${$color}18`} 0%,
-      transparent 70%
-    );
+    inset: 2px;
+    border: 0.5px dashed rgba(197, 160, 89, 0.4);
+    border-radius: calc(${THEME.radius.lg} - 2px);
     pointer-events: none;
   }
 `;
@@ -820,14 +822,12 @@ const CardNameText = styled.div`
 `;
 
 const CardDescSnippet = styled.div`
-  font-size: 9.5px;
+  font-size: 9px;
   color: #334155;
   font-weight: 600;
-  line-height: 1.15;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.25;
+  margin-top: 2px;
+  word-break: keep-all;
 `;
 
 const RestrictionBadge = styled.div`
@@ -947,7 +947,7 @@ export default function LoveLetterBoard({
   const opponents = roomState?.players?.filter((p) => p.id !== currentUser?.id) || [];
   const currentTurnPlayer = roomState?.players?.find((p) => p.id === roomState?.turnPlayerId);
 
-  // Listen for Real-Time Action Showcase broadcast from server
+  // Listen for Real-Time Action Showcase & Action Result broadcast from server
   useEffect(() => {
     if (!socket) return;
     let timer = null;
@@ -960,8 +960,10 @@ export default function LoveLetterBoard({
       }, 1800);
     };
     socket.on('game:action-showcase', handleActionShowcase);
+    socket.on('game:action-result', handleActionShowcase);
     return () => {
       socket.off('game:action-showcase', handleActionShowcase);
+      socket.off('game:action-result', handleActionShowcase);
       if (timer) clearTimeout(timer);
     };
   }, [socket]);
@@ -1227,10 +1229,28 @@ export default function LoveLetterBoard({
         </NavControls>
       </TopNavBar>
 
+      {/* 1. STICKY TOP TURN RIBBON (No Collision) */}
+      <StickyTurnRibbon $isMyTurn={isMyTurn}>
+        {isMyTurn ? (
+          <>
+            <Sparkles size={13} color={THEME.gold} />
+            <span>[내 턴] 카드를 터치하여 사용하세요</span>
+          </>
+        ) : (
+          <>
+            <span className="turn-highlight">THINKING</span>
+            <span>[{currentTurnPlayer?.nickname || '상대방'}] 님이 생각 중입니다</span>
+          </>
+        )}
+      </StickyTurnRibbon>
+
       {/* ========================================================= */}
-      {/* 2. MAIN FELT TABLE AREA (100dvh - 38px) */}
+      {/* 2. MAIN FELT TABLE AREA (100dvh - 38px - 26px) */}
       {/* ========================================================= */}
-      <TableArea>
+      <TableArea style={{ height: 'calc(100dvh - 64px)', maxHeight: 'calc(100dvh - 64px)' }}>
+        {/* Real-Time Action Result Visualizer & Animations */}
+        <ActionVisualizer lastAction={roomState?.lastActionDetail} />
+
         {/* ========================================================= */}
         {/* AREA 1: Opponents Seats (25% Height) */}
         {/* ========================================================= */}
@@ -1310,37 +1330,7 @@ export default function LoveLetterBoard({
         {/* AREA 2: Center Table (25% Height) */}
         {/* ========================================================= */}
         <CenterTableArea>
-          {/* Floating Action Toast */}
-          <AnimatePresence>
-            {activeToast && (
-              <FloatingToast
-                initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-              >
-                <span>💬</span>
-                <span>{activeToast}</span>
-              </FloatingToast>
-            )}
-          </AnimatePresence>
-
-          {/* Big Clear Turn Banner */}
-          <CenterTurnBanner $isMyTurn={isMyTurn}>
-            {isMyTurn ? (
-              <>
-                <Sparkles size={14} color={THEME.gold} />
-                <span style={{ letterSpacing: '0.04em' }}>[YOUR TURN] 카드를 선택하세요</span>
-              </>
-            ) : (
-              <>
-                <span style={{ color: THEME.gold }}>THINKING:</span>
-                <span>[{currentTurnPlayer?.nickname || '상대방'}] 님의 턴</span>
-              </>
-            )}
-          </CenterTurnBanner>
-
-          {/* Centered Deck Slot */}
+          {/* Centered Minimal Deck Slot */}
           <DeckSlot
             onClick={() => setDrawerOpen(true)}
             title="남은 덱 카드 수 (탭하여 카드 가이드 열기)"
@@ -1349,32 +1339,19 @@ export default function LoveLetterBoard({
               W
             </MiniDeckCardVisual>
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ fontFamily: THEME.font.serif, fontSize: '10px', color: THEME.burgundy, fontWeight: 800, letterSpacing: '0.04em' }}>
+              <span style={{ fontFamily: THEME.font.serif, fontSize: '9.5px', color: THEME.burgundy, fontWeight: 800, letterSpacing: '0.04em' }}>
                 DECK
               </span>
-              <span style={{ fontSize: '13px', fontWeight: 900 }}>
+              <span style={{ fontSize: '13px', fontWeight: 900, color: THEME.foreground }}>
                 {roomState?.deckCount || 0}장
               </span>
             </div>
-            {(roomState?.setAsideOpenCards || []).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px', borderLeft: `1px solid ${THEME.border}`, paddingLeft: '6px' }}>
-                <span style={{ fontSize: '9px', color: THEME.mutedForeground }}>제외:</span>
-                {roomState.setAsideOpenCards.map((card, idx) => {
-                  const meta = CARD_DATA[card.value] || {};
-                  return (
-                    <span key={idx} style={{ fontSize: '9px', fontWeight: 800, color: meta.color }}>
-                      {card.value}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
           </DeckSlot>
 
           {/* Active Direct Targeting Banner Overlay */}
           {isTargetingMode && (
             <TargetingBanner>
-              <Crosshair size={15} color={THEME.burgundy} />
+              <Crosshair size={14} color={THEME.burgundy} />
               <span style={{ fontFamily: THEME.font.serif, fontSize: '11px', fontWeight: 800, color: THEME.foreground, letterSpacing: '0.04em' }}>
                 TARGET: 지목할 상대를 터치하세요
               </span>
@@ -1834,40 +1811,46 @@ export default function LoveLetterBoard({
       <SideDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title="⚙️ 방 설정 및 게임 가이드"
+        title="살롱 설정 & 게임 가이드"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Room Info & Invite Code */}
           <div
             style={{
-              padding: '10px 12px',
-              backgroundColor: THEME.secondary,
-              borderRadius: THEME.radius.md,
+              padding: '10px 14px',
+              backgroundColor: '#ffffff',
+              backgroundImage: THEME.gradients.cardMarble,
+              border: `1px solid ${THEME.gold}`,
+              borderRadius: THEME.radius.lg,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              boxShadow: '0 2px 8px rgba(9, 13, 22, 0.05)',
             }}
           >
             <div>
-              <div style={{ fontSize: '11px', color: THEME.mutedForeground }}>방 코드 (터치하여 복사)</div>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: THEME.goldLight, letterSpacing: '1px' }}>
+              <div style={{ fontSize: '10.5px', color: '#64748b', fontFamily: THEME.font.serif, fontWeight: 700, letterSpacing: '0.04em' }}>
+                INVITE CODE (초대 코드)
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: 900, color: THEME.burgundy, letterSpacing: '3px', fontFamily: THEME.font.mono }}>
                 {roomState?.code}
               </div>
             </div>
-            <Button $variant="outline" $size="sm" onClick={handleCopyCode} style={{ height: '30px' }}>
-              {copiedCode ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
+            <Button $variant="default" $size="sm" onClick={handleCopyCode} style={{ height: '30px', fontSize: '12px' }}>
+              {copiedCode ? <Check size={13} color={THEME.emerald} /> : <Copy size={13} />}
               <span style={{ marginLeft: '4px' }}>{copiedCode ? '복사됨' : '복사'}</span>
             </Button>
           </div>
 
           {/* Voice & Sound Controls */}
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '8px' }}>
-              🎛️ 음성 통화 및 사운드 설정
+            <div style={{ fontSize: '12px', fontWeight: 800, color: THEME.foreground, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: THEME.font.koreanSerif }}>
+              <Sliders size={13} color={THEME.gold} />
+              <span>통신 & 오디오 제어</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <Button
-                $variant={webrtc?.isMicOn ? 'emerald' : 'outline'}
+                $variant={webrtc?.isMicOn ? 'gold' : 'secondary'}
                 $size="sm"
                 onClick={webrtc?.toggleMic}
                 style={{ height: '36px', fontSize: '12px' }}
@@ -1892,12 +1875,12 @@ export default function LoveLetterBoard({
                 onClick={toggleSFX}
                 style={{ height: '36px', fontSize: '12px' }}
               >
-                <span>{sfxEnabled ? '🎵' : '🔇'}</span>
+                <Volume2 size={14} color={sfxEnabled ? THEME.gold : THEME.mutedForeground} />
                 <span style={{ marginLeft: '4px' }}>효과음 {sfxEnabled ? 'ON' : 'OFF'}</span>
               </Button>
 
               <Button
-                $variant={stt?.isSTTEnabled ? 'emerald' : 'outline'}
+                $variant={stt?.isSTTEnabled ? 'gold' : 'secondary'}
                 $size="sm"
                 onClick={stt?.toggleSTT}
                 style={{ height: '36px', fontSize: '12px' }}
@@ -1910,55 +1893,72 @@ export default function LoveLetterBoard({
 
           {/* Action History Log */}
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '6px' }}>
-              📜 전체 액션 히스토리
+            <div style={{ fontSize: '12px', fontWeight: 800, color: THEME.foreground, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: THEME.font.koreanSerif }}>
+              <History size={13} color={THEME.gold} />
+              <span>살롱 액션 기록</span>
             </div>
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                maxHeight: '140px',
+                maxHeight: '130px',
                 overflowY: 'auto',
                 fontSize: '11px',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${THEME.border}`,
+                borderRadius: THEME.radius.md,
+                padding: '6px',
               }}
             >
-              {(roomState?.actionLogs || []).map((log) => (
-                <div
-                  key={log.id}
-                  style={{
-                    padding: '5px 8px',
-                    backgroundColor: THEME.secondary,
-                    borderRadius: THEME.radius.sm,
-                    color: THEME.foreground,
-                  }}
-                >
-                  {log.text}
-                </div>
-              ))}
+              {(roomState?.actionLogs || []).length === 0 ? (
+                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '10px' }}>기록된 액션이 없습니다.</div>
+              ) : (
+                roomState.actionLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    style={{
+                      padding: '4px 6px',
+                      backgroundColor: 'rgba(241, 245, 249, 0.6)',
+                      borderRadius: THEME.radius.sm,
+                      color: THEME.foreground,
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {log.text}
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
           {/* 1~8 Card Guide */}
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginBottom: '6px' }}>
-              🃏 러브레터 1~8번 카드 가이드
+            <div style={{ fontSize: '12px', fontWeight: 800, color: THEME.foreground, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: THEME.font.koreanSerif }}>
+              <BookOpen size={13} color={THEME.gold} />
+              <span>러브레터 1~8번 카드 도감</span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '11px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
               {Object.values(CARD_DATA).map((c) => (
                 <div
                   key={c.value}
                   style={{
-                    padding: '5px 8px',
-                    backgroundColor: THEME.secondary,
+                    padding: '8px 10px',
+                    backgroundColor: '#ffffff',
+                    backgroundImage: THEME.gradients.cardMarble,
                     borderRadius: THEME.radius.md,
-                    borderLeft: `3px solid ${c.color}`,
+                    border: '1px solid rgba(197, 160, 89, 0.45)',
+                    boxShadow: '0 2px 6px rgba(9, 13, 22, 0.04)',
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: c.color, marginBottom: '1px' }}>
-                    {c.icon} {c.value}. {c.name} ({c.nameEn}) - 총 {c.count}장
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <div style={{ fontWeight: 800, color: THEME.foreground, fontSize: '12px', fontFamily: THEME.font.koreanSerif }}>
+                      <span style={{ color: THEME.gold, fontFamily: THEME.font.serif, fontWeight: 900, marginRight: '4px' }}>{c.value}.</span>
+                      {c.name} <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>({c.nameEn})</span>
+                    </div>
+                    <Badge $variant="gold" style={{ fontSize: '9.5px', padding: '0 6px' }}>총 {c.count}장</Badge>
                   </div>
-                  <div style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
+                  <div style={{ color: '#475569', fontSize: '10.5px', lineHeight: 1.35, wordBreak: 'keep-all' }}>
                     {c.desc}
                   </div>
                 </div>

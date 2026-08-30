@@ -211,4 +211,75 @@ console.log('▶ Test 5: Prince (5) Discarding Princess (8) Instant Elimination'
   console.log('  ✅ Test 5 Passed: Discarding Princess via Prince instantly eliminates player.\n');
 }
 
-console.log('🎉 ALL 5 UNIT TESTS PASSED SUCCESSFULLY!\n');
+// 6. 2-Player Round Start Deck Setup Test (No 3-card open removal)
+console.log('▶ Test 6: 2-Player Round Start (Unified 1 secret card set aside, 0 open cards)');
+{
+  const room = {
+    code: 'TEST06',
+    hostId: 'user_1',
+    gameState: 'LOBBY',
+    players: [
+      { id: 'user_1', nickname: 'Alice', isReady: true, hand: [], discardPile: [] },
+      { id: 'user_2', nickname: 'Bob', isReady: true, hand: [], discardPile: [] },
+    ],
+    deck: [],
+    roundNumber: 1,
+    targetTokens: 4,
+    actionLogs: [],
+  };
+
+  startRound(mockIo, room);
+
+  assert.strictEqual(room.setAsideOpenCards.length, 0, '2-player game must NOT set aside 3 open cards');
+  assert(room.setAsideSecretCard !== null, '1 secret card must be set aside');
+  assert.strictEqual(room.players[0].hand.length, 2, 'Turn player (Alice) draws 1 card, total hand 2');
+  assert.strictEqual(room.players[1].hand.length, 1, 'Non-turn player (Bob) starts with hand 1');
+  assert.strictEqual(room.deck.length, 12, 'Deck should have 16 - 1 (secret) - 2 (Alice) - 1 (Bob) = 12 cards');
+  console.log('  ✅ Test 6 Passed: 2-player mode correctly uses unified deck setup without 3 open cards.\n');
+}
+
+// 7. Structured Action Detail Verification Test
+console.log('▶ Test 7: Structured Action Detail Payload Verification');
+{
+  const room = {
+    code: 'TEST07',
+    gameState: 'PLAYING',
+    turnPlayerId: 'user_1',
+    players: [
+      {
+        id: 'user_1',
+        nickname: 'Alice',
+        hand: [{ id: 'c_guard_1', value: 1, name: '경비병', nameEn: 'Guard', icon: '🛡️', color: '#3182CE' }],
+        discardPile: [],
+        isEliminated: false,
+        isProtected: false,
+      },
+      {
+        id: 'user_2',
+        nickname: 'Bob',
+        hand: [{ id: 'c_priest_1', value: 2, name: '사제', nameEn: 'Priest', icon: '📜', color: '#4FD1C5' }],
+        discardPile: [],
+        isEliminated: false,
+        isProtected: false,
+      },
+    ],
+    deck: [{ id: 'c_baron_1', value: 3, name: '남작' }],
+    actionLogs: [],
+  };
+
+  const res = executePlayCard(mockIo, room, 'user_1', {
+    cardId: 'c_guard_1',
+    targetUserId: 'user_2',
+    guessValue: 2,
+  });
+
+  assert.strictEqual(res.success, true);
+  assert(res.actionDetail, 'executePlayCard must return actionDetail');
+  assert.strictEqual(res.actionDetail.resultType, 'GUARD_SUCCESS');
+  assert.strictEqual(res.actionDetail.eliminatedPlayerId, 'user_2');
+  assert.strictEqual(res.actionDetail.revealedCard.value, 2);
+  assert.strictEqual(room.lastActionDetail.resultType, 'GUARD_SUCCESS');
+  console.log('  ✅ Test 7 Passed: Structured actionDetail payload verified.\n');
+}
+
+console.log('🎉 ALL 7 UNIT TESTS PASSED SUCCESSFULLY!\n');

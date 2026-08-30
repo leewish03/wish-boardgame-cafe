@@ -427,7 +427,7 @@ export default function App() {
     }
   }, [socket, connected, handleReconnectRequest]);
 
-  // Listen for room:state broadcast
+  // Listen for room:state and room:resumed broadcast
   useEffect(() => {
     if (!socket) return;
 
@@ -441,9 +441,28 @@ export default function App() {
       }
     };
 
+    const handleRoomResumed = (payload) => {
+      setRoomState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          isPaused: false,
+          pausedPlayerId: null,
+          pauseExpiresAt: null,
+        };
+      });
+      setToastMessage('플레이어가 복귀하여 게임이 재개되었습니다!');
+      sfx.playTurnAlert();
+    };
+
     socket.on('room:state', handleRoomState);
-    return () => socket.off('room:state', handleRoomState);
-  }, [socket]);
+    socket.on('room:resumed', handleRoomResumed);
+
+    return () => {
+      socket.off('room:state', handleRoomState);
+      socket.off('room:resumed', handleRoomResumed);
+    };
+  }, [socket, sfx]);
 
   // Handle Entry (Nickname submission)
   const handleEnterLobby = (e) => {

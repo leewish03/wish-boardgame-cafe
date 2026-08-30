@@ -1,7 +1,8 @@
 | Task | Description | Status | Evidence |
 | :--- | :--- | :--- | :--- |
-| Task 1 | 럭셔리 타이포그래피(Cinzel, Noto Serif KR, Cormorant Garamond) 및 이탈리아 카라라 대리석 텍스처 에셋 구성 (`index.html`, `src/shared/theme.js`) | completed | `index.html` 폰트 링크 삽입, `theme.js` VIP 살롱 토큰 구축 완료 |
-| Task 2 | 대리석 판석 슬랩 & 더블 헤어라인 브라스 공통 컴포넌트 개편 (`src/shared/components.jsx`) | completed | `Card` / `Dialog` 대리석 판석 + 0.5px 더블 브라스 인레이, 옵시디언 버튼 구축 완료 |
-| Task 3 | 진입 화면(Entry), 로비(Lobby), 대기실(Room) 이모지 완전 제거 및 럭셔리 살롱 전폭 리디자인 (`src/App.jsx`) | completed | 🎲/☕/🤖/✨ 전면 삭제, W 모노그램 씰, 딥 옵시디언 슬레이트 엔터 버튼, 살롱 카드 그리드 적용 |
-| Task 4 | 러브레터 인게임 보드 헤리티지 럭셔리 타이포 및 미니멀 정돈 (`src/games/love-letter/LoveLetterBoard.jsx`) | completed | [YOUR TURN], SELECT TARGET, THINKING... 영문 세리프 및 모노그램 덱 정돈 완료 |
-| Task 5 | 4중 자동화 QA 파이프라인(AST 심볼, 룰, 세션, E2E) 검증 및 빌드/배포 | completed | `npm test` 4/4 테스트 통과 (0.81s), `npm run build` 성공 |
+| Task 1 | 3분 일시정지 중 재접속(reconnect) 0초 즉각 복구 & 1초 하트비트 동기화 (`server/shared/roomManager.js`, `server/games/love-letter.js`, `src/shared/useSessionGuard.js`) | completed | `npm test` Unit Test 3 & 4 통과, `room:resumed` 즉시 브로드캐스트 |
+| Task 2 | 2인전 3장 오픈 제거 룰 삭제 & 백엔드/프론트엔드 동기화 (`server/games/love-letter.js`, `LoveLetterBoard.jsx`) | completed | `npm test` Test 6 통과 및 덱 UI 간소화 |
+| Task 3 | 색상 미니멀리즘(카라라 대리석+골드 단일화), 손패 텍스트 말줄임 전문 노출, 중앙 메시지 겹침 해소 (`LoveLetterBoard.jsx`) | completed | 무지개 보더 제거, `StickyTurnRibbon` 상단 분리, 말줄임 해소 |
+| Task 4 | 사이드 드로어(설정/가이드) 전면 리디자인 (구식 이모지 삭제, 럭셔리 토글 스위치 도입) (`LoveLetterBoard.jsx`, `components.jsx`) | completed | Lucide 아이콘 및 대리석 카드 도감 박스 적용 |
+| Task 5 | 1~8번 액션 결과 브로드캐스트 & 풀 모션 애니메이션 시스템 구축 (`ActionVisualizer.jsx`, `LoveLetterBoard.jsx`) | completed | `ActionVisualizer` 생성 및 실시간 액션 연출 연동 |
+| Task 6 | 4-Layer 자동화 테스트(`npm test`) 및 Vite 프로덕션 빌드 검증 후 Git 배포 | completed | `npm test` 100% 통과, `npm run build` 성공, GitHub master push |

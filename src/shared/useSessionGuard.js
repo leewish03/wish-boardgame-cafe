@@ -183,4 +183,45 @@ export function useSessionGuard({
       window.removeEventListener('online', handleResume);
     };
   }, [socket, onReconnectRequest]);
+
+  // 4. 1-Second Heartbeat & Session State Verification Polling
+  useEffect(() => {
+    if (!socket || (screen !== 'waitingRoom' && screen !== 'game')) return;
+
+    const intervalId = setInterval(() => {
+      const session = loadSession();
+      if (!session || !session.roomCode || !session.userId || !session.sessionToken) return;
+
+      if (!socket.connected) {
+        socket.connect();
+        if (typeof onReconnectRequest === 'function') {
+          onReconnectRequest(session);
+        }
+        return;
+      }
+
+      socket.emit(
+        'session:heartbeat',
+        {
+          roomCode: session.roomCode,
+          userId: session.userId,
+          sessionToken: session.sessionToken,
+        },
+        (res) => {
+          if (res?.success) {
+            // Desync check: if client thinks room is paused, but server is unpaused (or vice-versa)
+            if (roomState && roomState.isPaused && !res.isPaused) {
+              if (typeof onReconnectRequest === 'function') {
+                onReconnectRequest(session);
+              }
+            }
+          }
+        }
+      );
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [socket, screen, roomState, onReconnectRequest]);
 }

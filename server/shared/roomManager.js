@@ -42,6 +42,7 @@ export function getPublicRoomState(room, requestUserId = null) {
     roundWinner: room.roundWinner,
     gameWinner: room.gameWinner,
     lastActionLog: room.lastActionLog || null,
+    lastActionDetail: room.lastActionDetail || null,
     actionLogs: room.actionLogs || [],
     chatMessages: (room.chatMessages || []).slice(-30),
     isPaused: !!room.isPaused,
@@ -313,13 +314,21 @@ export function initRoomManager(io) {
         socketToUser[socket.id] = { roomCode: code, userId };
         socket.join(code);
 
-        // Check if room was paused because of this player
-        if (room.isPaused && room.pausedPlayerId === userId) {
+        // Check if room was paused because of this player (or any player)
+        if (room.isPaused && (room.pausedPlayerId === userId || !room.players.some(p => p.isDisconnected))) {
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
             room.pauseTimeout = null;
           }
+          room.isPaused = false;
+          room.pausedPlayerId = null;
+          room.pauseExpiresAt = null;
           resumeGameTimer(io, room);
+          io.to(code).emit('room:resumed', {
+            resumedByUserId: userId,
+            resumedAt: Date.now(),
+            turnPlayerId: room.turnPlayerId,
+          });
         }
 
         // Notify WebRTC peer reconnect
@@ -343,6 +352,41 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') {
           callback({ success: false, error: '재접속 처리 중 오류가 발생했습니다.' });
         }
+      }
+    });
+
+    // 3.1 Session Heartbeat & State Verification
+    socket.on('session:heartbeat', (payload, callback) => {
+      const mapping = socketToUser[socket.id];
+      if (!mapping) {
+        if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
+        return;
+      }
+      const { roomCode, userId } = mapping;
+      const room = rooms[roomCode];
+      if (!room) {
+        if (typeof callback === 'function') callback({ success: false, error: '방 없음' });
+        return;
+      }
+
+      const player = room.players.find((p) => p.id === userId);
+      if (player && player.isDisconnected) {
+        player.isDisconnected = false;
+        player.disconnectedAt = null;
+      }
+
+      if (typeof callback === 'function') {
+        callback({
+          success: true,
+          roomCode,
+          userId,
+          isPaused: !!room.isPaused,
+          pausedPlayerId: room.pausedPlayerId || null,
+          pauseExpiresAt: room.pauseExpiresAt || null,
+          gameState: room.gameState,
+          turnPlayerId: room.turnPlayerId,
+          serverTime: Date.now(),
+        });
       }
     });
 

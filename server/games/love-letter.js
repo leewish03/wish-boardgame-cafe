@@ -76,14 +76,9 @@ export function startRound(io, room) {
 
   const deck = generateDeck(room.players.length);
 
-  // 1 secret card set aside
+  // 1 secret card set aside (all player counts unified)
   room.setAsideSecretCard = deck.pop();
   room.setAsideOpenCards = [];
-
-  // If 2 players, 3 cards face up
-  if (room.players.length === 2) {
-    room.setAsideOpenCards = [deck.pop(), deck.pop(), deck.pop()];
-  }
 
   // Deal 1 card each
   room.players.forEach((p) => {
@@ -297,10 +292,18 @@ export function executePlayCard(io, room, userId, payload) {
 
   logAction(room, `[${player.nickname}] 님이 [${card.name}(${card.value})] 카드를 냈습니다.`);
 
+  let resultType = 'UNKNOWN';
+  let resultDescription = '';
+  let eliminatedPlayerId = null;
+  let eliminatedPlayerNickname = null;
+  let revealedCard = null;
+
   // 1. Guard (1)
   if (card.value === 1) {
     if (!target) {
-      logAction(room, `지목 가능한 상대가 없어 경비병 효과가 무효화되었습니다.`);
+      resultType = 'TARGET_INVALID_NOOP';
+      resultDescription = '지목 가능한 상대가 없어 경비병 효과가 무효화되었습니다.';
+      logAction(room, resultDescription);
     } else {
       const guess = Number(guessValue);
       if (guess >= 2 && guess <= 8) {
@@ -309,15 +312,16 @@ export function executePlayCard(io, room, userId, payload) {
           target.isEliminated = true;
           target.discardPile.push(...target.hand);
           target.hand = [];
-          logAction(
-            room,
-            `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFS[guess]?.name}]였습니다! 탈락!`
-          );
+          resultType = 'GUARD_SUCCESS';
+          eliminatedPlayerId = target.id;
+          eliminatedPlayerNickname = target.nickname;
+          revealedCard = targetCard;
+          resultDescription = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFS[guess]?.name}]였습니다! 탈락!`;
+          logAction(room, resultDescription);
         } else {
-          logAction(
-            room,
-            `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFS[guess]?.name}]를 가지고 있지 않습니다.`
-          );
+          resultType = 'GUARD_FAIL';
+          resultDescription = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFS[guess]?.name}]를 가지고 있지 않습니다.`;
+          logAction(room, resultDescription);
         }
       }
     }
@@ -326,24 +330,30 @@ export function executePlayCard(io, room, userId, payload) {
   // 2. Priest (2)
   else if (card.value === 2) {
     if (!target) {
-      logAction(room, `지목 가능한 상대가 없어 사제 효과가 무효화되었습니다.`);
+      resultType = 'TARGET_INVALID_NOOP';
+      resultDescription = '지목 가능한 상대가 없어 사제 효과가 무효화되었습니다.';
+      logAction(room, resultDescription);
     } else {
       const targetCard = target.hand[0];
+      resultType = 'PRIEST_PEEK';
+      resultDescription = `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 비밀리에 확인했습니다.`;
       if (targetCard && player.socketId) {
         io.to(player.socketId).emit('game:priest-result', {
           targetUserId: target.id,
           targetNickname: target.nickname,
           card: targetCard,
         });
-        logAction(room, `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 비밀리에 확인했습니다.`);
       }
+      logAction(room, resultDescription);
     }
   }
 
   // 3. Baron (3)
   else if (card.value === 3) {
     if (!target) {
-      logAction(room, `지목 가능한 상대가 없어 남작 효과가 무효화되었습니다.`);
+      resultType = 'TARGET_INVALID_NOOP';
+      resultDescription = '지목 가능한 상대가 없어 남작 효과가 무효화되었습니다.';
+      logAction(room, resultDescription);
     } else {
       const myCard = player.hand[0];
       const targetCard = target.hand[0];
@@ -353,14 +363,26 @@ export function executePlayCard(io, room, userId, payload) {
           target.isEliminated = true;
           target.discardPile.push(...target.hand);
           target.hand = [];
-          logAction(room, `⚔️ 남작 결투! [${player.nickname}] 승리! [${target.nickname}] (${targetCard.name}) 탈락!`);
+          resultType = 'BARON_WIN';
+          eliminatedPlayerId = target.id;
+          eliminatedPlayerNickname = target.nickname;
+          revealedCard = targetCard;
+          resultDescription = `⚔️ 남작 결투! [${player.nickname}] 승리! [${target.nickname}] (${targetCard.name}) 탈락!`;
+          logAction(room, resultDescription);
         } else if (myCard.value < targetCard.value) {
           player.isEliminated = true;
           player.discardPile.push(...player.hand);
           player.hand = [];
-          logAction(room, `⚔️ 남작 결투! [${target.nickname}] 승리! [${player.nickname}] (${myCard.name}) 탈락!`);
+          resultType = 'BARON_LOSE';
+          eliminatedPlayerId = player.id;
+          eliminatedPlayerNickname = player.nickname;
+          revealedCard = myCard;
+          resultDescription = `⚔️ 남작 결투! [${target.nickname}] 승리! [${player.nickname}] (${myCard.name}) 탈락!`;
+          logAction(room, resultDescription);
         } else {
-          logAction(room, `⚔️ 남작 결투! [${player.nickname}] 와 [${target.nickname}] 의 카드 숫자가 같습니다. (무승부)`);
+          resultType = 'BARON_TIE';
+          resultDescription = `⚔️ 남작 결투! [${player.nickname}] 와 [${target.nickname}] 의 카드 숫자가 같습니다. (무승부)`;
+          logAction(room, resultDescription);
         }
       }
     }
@@ -369,25 +391,34 @@ export function executePlayCard(io, room, userId, payload) {
   // 4. Handmaid (4)
   else if (card.value === 4) {
     player.isProtected = true;
-    logAction(room, `🌸 [${player.nickname}] 님이 하녀를 소환하여 다음 턴까지 모든 공격에 면역됩니다.`);
+    resultType = 'HANDMAID_PROTECT';
+    resultDescription = `🌸 [${player.nickname}] 님이 하녀를 소환하여 다음 턴까지 모든 공격에 면역됩니다.`;
+    logAction(room, resultDescription);
   }
 
   // 5. Prince (5)
   else if (card.value === 5) {
-    // Prince can target self
     const princeTarget = target || player;
 
     if (princeTarget && !princeTarget.isEliminated) {
       const discarded = princeTarget.hand.pop();
       if (discarded) {
         princeTarget.discardPile.push(discarded);
-        logAction(room, `👑 왕자의 명령! [${princeTarget.nickname}] 님이 [${discarded.name}] 카드를 버렸습니다.`);
+        revealedCard = discarded;
 
         // If Princess is discarded, eliminate!
         if (discarded.value === 8) {
           princeTarget.isEliminated = true;
-          logAction(room, `👸 공주 카드가 버려졌습니다! [${princeTarget.nickname}] 즉시 탈락!`);
+          resultType = 'PRINCE_PRINCESS_ELIMINATED';
+          eliminatedPlayerId = princeTarget.id;
+          eliminatedPlayerNickname = princeTarget.nickname;
+          resultDescription = `👸 공주 카드가 버려졌습니다! [${princeTarget.nickname}] 즉시 탈락!`;
+          logAction(room, resultDescription);
         } else {
+          resultType = 'PRINCE_DISCARD';
+          resultDescription = `👑 왕자의 명령! [${princeTarget.nickname}] 님이 [${discarded.name}] 카드를 버렸습니다.`;
+          logAction(room, resultDescription);
+
           // Draw new card
           let newCard = room.deck.length > 0 ? room.deck.pop() : room.setAsideSecretCard;
           if (newCard) {
@@ -401,53 +432,89 @@ export function executePlayCard(io, room, userId, payload) {
   // 6. King (6)
   else if (card.value === 6) {
     if (!target) {
-      logAction(room, `지목 가능한 상대가 없어 국왕 효과가 무효화되었습니다.`);
+      resultType = 'TARGET_INVALID_NOOP';
+      resultDescription = '지목 가능한 상대가 없어 국왕 효과가 무효화되었습니다.';
+      logAction(room, resultDescription);
     } else {
       const myCard = player.hand[0];
       const targetCard = target.hand[0];
       if (myCard && targetCard) {
         player.hand = [targetCard];
         target.hand = [myCard];
-        logAction(room, `🤴 국왕의 칙령! [${player.nickname}] 와 [${target.nickname}] 의 손패가 맞교환되었습니다.`);
+        resultType = 'KING_SWAP';
+        resultDescription = `🤴 국왕의 칙령! [${player.nickname}] 와 [${target.nickname}] 의 손패가 맞교환되었습니다.`;
+        logAction(room, resultDescription);
       }
     }
   }
 
   // 7. Countess (7)
   else if (card.value === 7) {
-    logAction(room, `🌹 [${player.nickname}] 님이 백작부인을 우아하게 내려놓았습니다.`);
+    resultType = 'COUNTESS_PLAY';
+    resultDescription = `🌹 [${player.nickname}] 님이 백작부인을 우아하게 내려놓았습니다.`;
+    logAction(room, resultDescription);
   }
 
   // 8. Princess (8)
   else if (card.value === 8) {
     player.isEliminated = true;
-    logAction(room, `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`);
+    resultType = 'PRINCESS_SELF_ELIMINATED';
+    eliminatedPlayerId = player.id;
+    eliminatedPlayerNickname = player.nickname;
+    revealedCard = card;
+    resultDescription = `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`;
+    logAction(room, resultDescription);
   }
 
-  // Broadcast Action Showcase to all players in the room
-  const showcasePayload = {
+  // Build structured Action Detail
+  const finalTarget = target || (card.value === 5 ? (targetUserId === player.id ? player : target) : null);
+  const actionDetail = {
+    actionId: `act_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    actionType: card.nameEn ? card.nameEn.toUpperCase() : 'UNKNOWN',
     actorId: player.id,
     actorNickname: player.nickname,
     actorAvatar: player.avatarUrl,
-    card: {
+    targetId: finalTarget ? finalTarget.id : null,
+    targetNickname: finalTarget ? finalTarget.nickname : null,
+    targetAvatar: finalTarget ? finalTarget.avatarUrl : null,
+    playedCard: {
       id: card.id,
       name: card.name,
+      nameEn: card.nameEn,
       value: card.value,
+      icon: card.icon,
+      color: card.color,
       desc: card.desc,
     },
-    targetId: target?.id || (card.value === 5 ? (targetUserId === player.id ? player.id : target?.id) : null),
-    targetNickname: target?.nickname || (card.value === 5 && targetUserId === player.id ? player.nickname : null),
-    guessValue: guessValue ? Number(guessValue) : null,
-    guessCardName: guessValue ? CARD_DEFS[Number(guessValue)]?.name : null,
+    guessedCard: guessValue ? {
+      value: Number(guessValue),
+      name: CARD_DEFS[Number(guessValue)]?.name || null,
+    } : null,
+    resultType,
+    resultDescription,
+    eliminatedPlayerId,
+    eliminatedPlayerNickname,
+    revealedCard,
+    timestamp: Date.now(),
   };
-  io.to(room.code).emit('game:action-showcase', showcasePayload);
+
+  room.lastActionDetail = actionDetail;
+
+  // Broadcast Structured Action Result & Showcase
+  io.to(room.code).emit('game:action-result', actionDetail);
+  io.to(room.code).emit('game:action-showcase', {
+    ...actionDetail,
+    card: actionDetail.playedCard,
+    guessValue: actionDetail.guessedCard?.value || null,
+    guessCardName: actionDetail.guessedCard?.name || null,
+  });
 
   broadcastRoomState(io, room.code);
 
   // Check round transition
   passTurnToNextPlayer(io, room);
 
-  return { success: true };
+  return { success: true, actionDetail };
 }
 
 export function pauseGameTimer(room) {
@@ -469,6 +536,7 @@ export function pauseGameTimer(room) {
 export function resumeGameTimer(io, room) {
   if (!room || room.gameState !== 'PLAYING') return;
 
+  const previousPausedPlayerId = room.pausedPlayerId;
   room.isPaused = false;
   room.pausedPlayerId = null;
   room.pauseExpiresAt = null;
@@ -488,6 +556,12 @@ export function resumeGameTimer(io, room) {
       autoPlayTimeout(io, room, room.turnPlayerId);
     }, remaining + 1000);
   }
+
+  io.to(room.code).emit('room:resumed', {
+    resumedByUserId: previousPausedPlayerId || null,
+    resumedAt: Date.now(),
+    turnPlayerId: room.turnPlayerId,
+  });
 
   broadcastRoomState(io, room.code);
 }
