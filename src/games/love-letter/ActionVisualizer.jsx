@@ -218,7 +218,7 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
     const timer = setTimeout(() => {
       setVisible(false);
       if (typeof onDismiss === 'function') onDismiss();
-    }, 4200);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, [lastAction, onDismiss]);

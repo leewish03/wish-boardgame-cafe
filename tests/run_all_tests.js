@@ -12,6 +12,7 @@ const testSuites = [
   { name: '3. Session Protection & 3-Min Reconnection Tests', file: 'tests/reconnection.test.js' },
   { name: '4. Full Multiplayer E2E Game Flow Simulation', file: 'tests/e2e_game_flow.test.js' },
   { name: '5. Real Socket Card Play & Action Broadcast E2E', file: 'tests/reproduce_card_play_e2e.test.js' },
+  { name: '6. AI Bot Heuristics & Tie-Break Rules Tests', file: 'tests/ai_bot_heuristics.test.js' },
 ];
 
 async function runTest(suite) {

@@ -183,39 +183,117 @@ class SFXEngine {
     }
   }
 
-  // 5. Victory Fanfare (Celebratory Major Chord Arpeggio: C5 -> E5 -> G5 -> C6)
-  playVictoryFanfare() {
+  // 6. Clock Tick Sound (Urgent 5-second countdown wooden tick)
+  playClockTick() {
     if (!this.enabled) return;
     try {
       const ctx = this.getAudioContext();
       if (!ctx) return;
 
       const now = ctx.currentTime;
-      const notes = [
-        { freq: 523.25, time: 0.0, dur: 0.12 }, // C5
-        { freq: 659.25, time: 0.1, dur: 0.12 }, // E5
-        { freq: 783.99, time: 0.2, dur: 0.12 }, // G5
-        { freq: 1046.5, time: 0.3, dur: 0.45 }, // C6 (long)
-      ];
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-      notes.forEach(({ freq, time, dur }) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.035);
 
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, now + time);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
 
-        gain.gain.setValueAtTime(0.25, now + time);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now + time);
-        osc.stop(now + time + dur);
-      });
+      osc.start(now);
+      osc.stop(now + 0.035);
     } catch (e) {
-      console.warn('SFX Fanfare Error:', e);
+      console.warn('SFX Clock Tick Error:', e);
+    }
+  }
+
+  // 7. Web Haptics (Vibration API)
+  hapticTap() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(10);
+      }
+    } catch (e) {}
+  }
+
+  hapticSnap() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(25);
+      }
+    } catch (e) {}
+  }
+
+  hapticImpact() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([50, 30, 50]);
+      }
+    } catch (e) {}
+  }
+
+  // 8. Procedural Salon Ambience BGM (Subtle low-pass drone & acoustic warmth)
+  startSalonAmbience() {
+    if (this.ambienceNode || !this.enabled) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(110, now); // A2
+
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(164.81, now); // E3
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(320, now);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.03, now + 2.0); // Gentle fade-in
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+
+      this.ambienceNode = { osc1, osc2, gain };
+    } catch (e) {
+      console.warn('SFX Ambience Start Error:', e);
+    }
+  }
+
+  stopSalonAmbience() {
+    if (!this.ambienceNode) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (ctx) {
+        const now = ctx.currentTime;
+        this.ambienceNode.gain.gain.linearRampToValueAtTime(0.001, now + 1.0);
+        setTimeout(() => {
+          if (this.ambienceNode) {
+            this.ambienceNode.osc1.stop();
+            this.ambienceNode.osc2.stop();
+            this.ambienceNode = null;
+          }
+        }, 1100);
+      } else {
+        this.ambienceNode = null;
+      }
+    } catch (e) {
+      this.ambienceNode = null;
     }
   }
 }

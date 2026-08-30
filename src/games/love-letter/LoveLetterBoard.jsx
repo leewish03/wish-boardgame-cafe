@@ -37,6 +37,7 @@ import {
   Sliders,
   BookOpen,
   History,
+  Music,
 } from 'lucide-react';
 
 // =========================================================================
@@ -637,6 +638,99 @@ const MyStatusRight = styled.div`
   gap: 6px;
 `;
 
+const SmartTargetActionBar = styled(motion.div)`
+  width: 100%;
+  max-width: 480px;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.lg};
+  padding: 6px 10px;
+  box-shadow: 0 4px 16px rgba(197, 160, 89, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 40;
+  margin-bottom: 4px;
+`;
+
+const TargetChipRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+const TargetChip = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #ffffff;
+  border: 1px solid ${THEME.gold};
+  border-radius: ${THEME.radius.full};
+  color: ${THEME.foreground};
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: ${THEME.goldLight};
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  &.active {
+    background: ${THEME.gold};
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(197, 160, 89, 0.5);
+  }
+
+  &.self {
+    border-color: ${THEME.burgundy};
+    color: ${THEME.burgundy};
+  }
+`;
+
+const InlineGuessRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 0 2px;
+  border-top: 1px dashed rgba(197, 160, 89, 0.3);
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+const InlineGuessChip = styled.button`
+  padding: 3px 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: ${THEME.radius.sm};
+  border: 1px solid ${({ $color = THEME.gold }) => $color};
+  background: #ffffff;
+  color: ${({ $color = THEME.gold }) => $color};
+  cursor: ${({ disabled }) => (disabled ? 'not-allowed' : 'pointer')};
+  opacity: ${({ disabled }) => (disabled ? 0.4 : 1)};
+  white-space: nowrap;
+  transition: all 0.15s;
+
+  &:hover:not(:disabled) {
+    background: ${({ $color = THEME.gold }) => $color};
+    color: #ffffff;
+  }
+`;
+
 const HandCardsWrapper = styled.div`
   display: flex;
   align-items: center;
@@ -898,6 +992,96 @@ const SmartGuessButton = styled.button`
   }
 `;
 
+function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, children }) {
+  const [timeLeft, setTimeLeft] = useState(turnTimeLimit);
+
+  useEffect(() => {
+    if (!isTurn) return;
+    const update = () => {
+      if (!turnStartTime) {
+        setTimeLeft(turnTimeLimit);
+        return;
+      }
+      const elapsedSec = (Date.now() - turnStartTime) / 1000;
+      const remaining = Math.max(0, Math.ceil(turnTimeLimit - elapsedSec));
+      setTimeLeft(remaining);
+      if (remaining <= 5 && remaining > 0) {
+        sfx.playClockTick();
+        sfx.hapticTap();
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [isTurn, turnStartTime, turnTimeLimit]);
+
+  if (!isTurn) return children;
+
+  const progress = Math.min(1, Math.max(0, timeLeft / (turnTimeLimit || 60)));
+  const radius = 24;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference * (1 - progress);
+  const isUrgent = timeLeft <= 5;
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg
+        style={{
+          position: 'absolute',
+          top: -4,
+          left: -4,
+          width: 56,
+          height: 56,
+          transform: 'rotate(-90deg)',
+          pointerEvents: 'none',
+          zIndex: 5,
+        }}
+      >
+        <circle
+          cx="28"
+          cy="28"
+          r={radius}
+          fill="transparent"
+          stroke={isUrgent ? 'rgba(239, 68, 68, 0.25)' : 'rgba(197, 160, 89, 0.25)'}
+          strokeWidth="3"
+        />
+        <circle
+          cx="28"
+          cy="28"
+          r={radius}
+          fill="transparent"
+          stroke={isUrgent ? '#ef4444' : '#c5a059'}
+          strokeWidth="3"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.8s linear, stroke 0.3s' }}
+        />
+      </svg>
+      {isUrgent && (
+        <span
+          style={{
+            position: 'absolute',
+            bottom: -6,
+            backgroundColor: '#ef4444',
+            color: '#ffffff',
+            fontSize: '8.5px',
+            fontWeight: 900,
+            padding: '1px 4px',
+            borderRadius: '8px',
+            zIndex: 10,
+            lineHeight: 1,
+            boxShadow: '0 2px 5px rgba(239, 68, 68, 0.5)',
+          }}
+        >
+          {timeLeft}s
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
 // =========================================================================
 // LoveLetterBoard Main Component
 // =========================================================================
@@ -912,6 +1096,7 @@ export default function LoveLetterBoard({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [ambienceEnabled, setAmbienceEnabled] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Selected Hand Card Index for 2-Step Touch (0 or 1 or null)
@@ -1077,7 +1262,7 @@ export default function LoveLetterBoard({
   // Card Selection & Play Actions (2-Step Safety Touch)
   // =========================================================================
 
-  // Step 1: Tap card to select/unselect
+  // Step 1: Tap card to select/unselect (With 1-Tap Target Sheet Trigger)
   const handleCardTap = (index, card) => {
     if (!isMyTurn || myPlayer?.isEliminated) return;
 
@@ -1087,13 +1272,23 @@ export default function LoveLetterBoard({
       return;
     }
 
+    sfx.hapticTap();
+
     if (selectedCardIndex === index) {
       // Unselect
       setSelectedCardIndex(null);
       setIsTargetingMode(false);
+      setGuardTargetPlayer(null);
     } else {
       setSelectedCardIndex(index);
-      setIsTargetingMode(false);
+      setGuardTargetPlayer(null);
+
+      // If targeted card (1, 2, 3, 5, 6), auto-open bottom target action bar
+      if ([1, 2, 3, 5, 6].includes(card.value)) {
+        setIsTargetingMode(true);
+      } else {
+        setIsTargetingMode(false);
+      }
     }
   };
 
@@ -1107,7 +1302,6 @@ export default function LoveLetterBoard({
     // 1. Guard (1)
     if (card.value === 1) {
       if (eligibleOpponents.length === 0) {
-        // Everyone protected -> play without target
         executePlay(card.id, null, null);
       } else {
         setIsTargetingMode(true);
@@ -1116,7 +1310,6 @@ export default function LoveLetterBoard({
     // 2. Priest (2) / 3. Baron (3) / 6. King (6)
     else if (card.value === 2 || card.value === 3 || card.value === 6) {
       if (eligibleOpponents.length === 0) {
-        // Everyone protected -> play without target
         executePlay(card.id, null, null);
       } else {
         setIsTargetingMode(true);
@@ -1134,12 +1327,13 @@ export default function LoveLetterBoard({
 
   // Step 3: Direct Table Seat Click in Targeting Mode
   const handleSeatClick = (targetPlayer) => {
-    if (!isTargetingMode || !selectedCard) return;
+    if (!selectedCard) return;
 
-    // Guard (1) -> Open Smart Guess Modal
+    sfx.hapticSnap();
+
+    // Guard (1) -> Set target and prepare guess
     if (selectedCard.value === 1) {
       setGuardTargetPlayer(targetPlayer);
-      // Pick the first available number that has remaining cards >= 1
       let defaultGuess = 2;
       for (let n = 2; n <= 8; n++) {
         const remaining = (CARD_DATA[n]?.count || 0) - (cardCounter[n] || 0);
@@ -1153,13 +1347,14 @@ export default function LoveLetterBoard({
       setIsTargetingMode(false);
     } else {
       // Priest (2), Baron (3), Prince (5), King (6)
-      executePlay(selectedCard.id, targetPlayer.id, null);
+      executePlay(selectedCard.id, targetPlayer?.id, null);
       setIsTargetingMode(false);
     }
   };
 
   // Execute Play Card Socket Event
   const executePlay = (cardId, targetUserId, guessValue) => {
+    sfx.hapticSnap();
     sfx.playCardPlay();
     socket.emit(
       'game:play-card',
@@ -1177,6 +1372,7 @@ export default function LoveLetterBoard({
     setSelectedCardIndex(null);
     setIsTargetingMode(false);
     setGuardModalOpen(false);
+    setGuardTargetPlayer(null);
   };
 
   // Open Discard History Modal
@@ -1283,12 +1479,18 @@ export default function LoveLetterBoard({
                 {isTurn && !isTargetable && <ThinkingBadge>THINKING...</ThinkingBadge>}
 
                 <AvatarWrapper>
-                  <AvatarImg
-                    src={p.avatarUrl}
-                    alt={p.nickname}
-                    $isTurn={isTurn}
-                    $isSpeaking={isSpeaking}
-                  />
+                  <RadialTurnTimer
+                    isTurn={isTurn}
+                    turnStartTime={roomState?.turnStartTime}
+                    turnTimeLimit={roomState?.turnTimeLimit || 60}
+                  >
+                    <AvatarImg
+                      src={p.avatarUrl}
+                      alt={p.nickname}
+                      $isTurn={isTurn}
+                      $isSpeaking={isSpeaking}
+                    />
+                  </RadialTurnTimer>
                   {bubble && <SpeechBubble>{bubble.text}</SpeechBubble>}
                 </AvatarWrapper>
 
@@ -1353,12 +1555,15 @@ export default function LoveLetterBoard({
             <TargetingBanner>
               <Crosshair size={14} color={THEME.burgundy} />
               <span style={{ fontFamily: THEME.font.serif, fontSize: '11px', fontWeight: 800, color: THEME.foreground, letterSpacing: '0.04em' }}>
-                TARGET: 지목할 상대를 터치하세요
+                TARGET: 아래 타겟 칩이나 상대 좌석을 터치하세요
               </span>
               <Button
                 $variant="outline"
                 $size="sm"
-                onClick={() => setIsTargetingMode(false)}
+                onClick={() => {
+                  setIsTargetingMode(false);
+                  setGuardTargetPlayer(null);
+                }}
                 style={{ padding: '2px 6px', height: '22px', fontSize: '10px', marginLeft: '4px' }}
               >
                 <X size={11} />
@@ -1375,10 +1580,16 @@ export default function LoveLetterBoard({
           {/* My Minimal Status Bar */}
           <MyStatusBar>
             <MyStatusLeft>
-              <AffectionTokenBadge
-                count={myPlayer?.tokens || 0}
-                target={roomState?.targetTokens || 4}
-              />
+              <RadialTurnTimer
+                isTurn={isMyTurn}
+                turnStartTime={roomState?.turnStartTime}
+                turnTimeLimit={roomState?.turnTimeLimit || 60}
+              >
+                <AffectionTokenBadge
+                  count={myPlayer?.tokens || 0}
+                  target={roomState?.targetTokens || 4}
+                />
+              </RadialTurnTimer>
               {myPlayer?.isProtected && (
                 <Badge $variant="emerald" style={{ padding: '1px 6px', fontSize: '10px' }}>
                   🌸 보호막 활성
@@ -1392,18 +1603,6 @@ export default function LoveLetterBoard({
             </MyStatusLeft>
 
             <MyStatusRight>
-              {/* If Prince is in targeting mode, provide self-target button */}
-              {isTargetingMode && selectedCard?.value === 5 && (
-                <Button
-                  $variant="gold"
-                  $size="sm"
-                  onClick={() => handleSeatClick(currentUser)}
-                  style={{ height: '22px', padding: '0 8px', fontSize: '10px' }}
-                >
-                  🎯 나 자신 지목
-                </Button>
-              )}
-
               <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>내 낸 패:</span>
               <DiscardPileStack
                 discardPile={myPlayer?.discardPile}
@@ -1412,6 +1611,90 @@ export default function LoveLetterBoard({
               />
             </MyStatusRight>
           </MyStatusBar>
+
+          {/* 1-Tap Smart Target Action Bar (Thumb Zone) */}
+          <AnimatePresence>
+            {isTargetingMode && selectedCard && (
+              <SmartTargetActionBar
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 10, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800 }}>
+                  <span style={{ color: THEME.gold }}>
+                    🎯 [{selectedCard.name}] 대상 지목:
+                  </span>
+                  <button
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', padding: '0 4px' }}
+                    onClick={() => {
+                      setIsTargetingMode(false);
+                      setGuardTargetPlayer(null);
+                    }}
+                  >
+                    ✕ 취소
+                  </button>
+                </div>
+
+                <TargetChipRow>
+                  {selectedCard.value === 5 && (
+                    <TargetChip
+                      className="self"
+                      onClick={() => {
+                        sfx.hapticSnap();
+                        handleSeatClick(currentUser);
+                      }}
+                    >
+                      👤 나 자신
+                    </TargetChip>
+                  )}
+                  {opponents
+                    .filter((p) => !p.isEliminated && (selectedCard.value === 5 || !p.isProtected))
+                    .map((p) => {
+                      const isSelectedTarget = guardTargetPlayer?.id === p.id;
+                      return (
+                        <TargetChip
+                          key={p.id}
+                          className={isSelectedTarget ? 'active' : ''}
+                          onClick={() => {
+                            sfx.hapticSnap();
+                            handleSeatClick(p);
+                          }}
+                        >
+                          {p.isBot ? '🤖 ' : '👑 '} {p.nickname}
+                        </TargetChip>
+                      );
+                    })}
+                </TargetChipRow>
+
+                {/* Inline Guard Quick Guess Chips */}
+                {selectedCard.value === 1 && guardTargetPlayer && (
+                  <InlineGuessRow>
+                    <span style={{ fontSize: '10px', color: THEME.mutedForeground, marginRight: '4px' }}>추측:</span>
+                    {[2, 3, 4, 5, 6, 7, 8].map((n) => {
+                      const meta = CARD_DATA[n];
+                      const remaining = (meta?.count || 0) - (cardCounter[n] || 0);
+                      const isZero = remaining <= 0;
+                      return (
+                        <InlineGuessChip
+                          key={n}
+                          $color={meta?.color}
+                          disabled={isZero}
+                          onClick={() => {
+                            sfx.hapticSnap();
+                            executePlay(selectedCard.id, guardTargetPlayer.id, n);
+                          }}
+                          title={isZero ? '0장 남음 (소진됨)' : `${remaining}장 남음`}
+                        >
+                          {meta?.icon} {n}.{meta?.name}
+                        </InlineGuessChip>
+                      );
+                    })}
+                  </InlineGuessRow>
+                )}
+              </SmartTargetActionBar>
+            )}
+          </AnimatePresence>
 
           {/* Hand Cards (2-Step Touch) */}
           <HandCardsWrapper>
@@ -1781,12 +2064,17 @@ export default function LoveLetterBoard({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter style={{ flexDirection: 'column', gap: '8px' }}>
+          {roomState?.gameState === 'ROUND_END' && (
+            <div style={{ fontSize: '11px', color: THEME.gold, fontWeight: 700, textAlign: 'center' }}>
+              ⏳ 약 7초 후 자동으로 다음 라운드가 시작됩니다 (방장 즉시 시작 가능)
+            </div>
+          )}
           {roomState?.hostId === currentUser?.id ? (
             <Button $variant="gold" $fullWidth onClick={handleNextRoundOrRestart}>
               <Play size={16} />
               <span>
-                {roomState?.gameState === 'GAME_OVER' ? '새 게임 시작' : '다음 라운드 시작'}
+                {roomState?.gameState === 'GAME_OVER' ? '새 게임 시작' : '다음 라운드 즉시 시작'}
               </span>
             </Button>
           ) : (
@@ -1796,10 +2084,10 @@ export default function LoveLetterBoard({
                 color: THEME.mutedForeground,
                 textAlign: 'center',
                 width: '100%',
-                padding: '8px 0',
+                padding: '4px 0',
               }}
             >
-              방장이 다음 라운드를 시작할 때까지 대기 중입니다...
+              방장이 다음 라운드를 시작하거나 자동 전환을 대기 중입니다...
             </div>
           )}
         </DialogFooter>
@@ -1880,10 +2168,25 @@ export default function LoveLetterBoard({
               </Button>
 
               <Button
+                $variant={ambienceEnabled ? 'gold' : 'secondary'}
+                $size="sm"
+                onClick={() => {
+                  const next = !ambienceEnabled;
+                  setAmbienceEnabled(next);
+                  if (next) sfx.startSalonAmbience();
+                  else sfx.stopSalonAmbience();
+                }}
+                style={{ height: '36px', fontSize: '12px' }}
+              >
+                <Music size={14} />
+                <span style={{ marginLeft: '4px' }}>살롱 BGM {ambienceEnabled ? 'ON' : 'OFF'}</span>
+              </Button>
+
+              <Button
                 $variant={stt?.isSTTEnabled ? 'gold' : 'secondary'}
                 $size="sm"
                 onClick={stt?.toggleSTT}
-                style={{ height: '36px', fontSize: '12px' }}
+                style={{ height: '36px', fontSize: '12px', gridColumn: 'span 2' }}
               >
                 <MessageSquare size={14} />
                 <span style={{ marginLeft: '4px' }}>STT 자막 {stt?.isSTTEnabled ? 'ON' : 'OFF'}</span>

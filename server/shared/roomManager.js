@@ -7,6 +7,7 @@ import {
   resumeGameTimer,
   handleForfeitedPlayer,
 } from '../games/love-letter.js';
+import { createBotPlayer } from '../games/love-letter-ai.js';
 
 export const rooms = {}; // key: roomCode (UPPERCASE) -> room data
 export const socketToUser = {}; // key: socketId -> { roomCode, userId }
@@ -48,12 +49,15 @@ export function getPublicRoomState(room, requestUserId = null) {
     isPaused: !!room.isPaused,
     pausedPlayerId: room.pausedPlayerId || null,
     pauseExpiresAt: room.pauseExpiresAt || null,
+    autoAdvanceExpiresAt: room.autoAdvanceExpiresAt || null,
     players: room.players.map((p) => {
       const isSelf = p.id === requestUserId;
       return {
         id: p.id,
         nickname: p.nickname || p.name || '플레이어',
         avatarUrl: p.avatarUrl || p.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${p.id}`,
+        isBot: !!p.isBot,
+        personality: p.personality || null,
         isReady: p.isReady,
         tokens: p.tokens || 0,
         isEliminated: p.isEliminated || false,
@@ -440,6 +444,85 @@ export function initRoomManager(io) {
       } catch (err) {
         console.error('room:ready error:', err);
         if (typeof callback === 'function') callback({ success: false, error: '준비 상태 변경 오류' });
+      }
+    });
+
+    // 4.1 Add AI Bot to Room
+    socket.on('room:add-bot', (payload, callback) => {
+      try {
+        const mapping = socketToUser[socket.id];
+        if (!mapping) {
+          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
+          return;
+        }
+        const { roomCode, userId } = mapping;
+        const room = rooms[roomCode];
+        if (!room || room.gameState !== 'LOBBY') {
+          if (typeof callback === 'function') callback({ success: false, error: '로비 상태에서만 봇을 추가할 수 있습니다.' });
+          return;
+        }
+        if (room.hostId !== userId) {
+          if (typeof callback === 'function') callback({ success: false, error: '방장만 봇을 추가할 수 있습니다.' });
+          return;
+        }
+        if (room.players.length >= room.maxPlayers) {
+          if (typeof callback === 'function') callback({ success: false, error: `최대 ${room.maxPlayers}명까지만 입장할 수 있습니다.` });
+          return;
+        }
+
+        const bot = createBotPlayer(room.players);
+        room.players.push(bot);
+        broadcastRoomState(io, roomCode);
+        if (typeof callback === 'function') callback({ success: true, bot });
+      } catch (err) {
+        console.error('room:add-bot error:', err);
+        if (typeof callback === 'function') callback({ success: false, error: '봇 추가 중 오류 발생' });
+      }
+    });
+
+    // 4.2 Remove AI Bot from Room
+    socket.on('room:remove-bot', (payload, callback) => {
+      try {
+        const mapping = socketToUser[socket.id];
+        if (!mapping) {
+          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
+          return;
+        }
+        const { roomCode, userId } = mapping;
+        const room = rooms[roomCode];
+        if (!room || room.gameState !== 'LOBBY') {
+          if (typeof callback === 'function') callback({ success: false, error: '로비 상태에서만 봇을 제거할 수 있습니다.' });
+          return;
+        }
+        if (room.hostId !== userId) {
+          if (typeof callback === 'function') callback({ success: false, error: '방장만 봇을 제거할 수 있습니다.' });
+          return;
+        }
+
+        const { botId } = payload || {};
+        let botIdx = -1;
+        if (botId) {
+          botIdx = room.players.findIndex((p) => p.id === botId && p.isBot);
+        } else {
+          for (let i = room.players.length - 1; i >= 0; i--) {
+            if (room.players[i].isBot) {
+              botIdx = i;
+              break;
+            }
+          }
+        }
+
+        if (botIdx === -1) {
+          if (typeof callback === 'function') callback({ success: false, error: '제거할 수 있는 AI 봇이 없습니다.' });
+          return;
+        }
+
+        const removed = room.players.splice(botIdx, 1)[0];
+        broadcastRoomState(io, roomCode);
+        if (typeof callback === 'function') callback({ success: true, removedBotId: removed.id });
+      } catch (err) {
+        console.error('room:remove-bot error:', err);
+        if (typeof callback === 'function') callback({ success: false, error: '봇 제거 중 오류 발생' });
       }
     });
 

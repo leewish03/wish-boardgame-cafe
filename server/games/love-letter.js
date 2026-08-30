@@ -1,8 +1,9 @@
-// =========================================================================
-// Love Letter Game Engine Module (All 8 Cards, Edge Cases, Authoritative Rules)
-// =========================================================================
-
 import { rooms, socketToUser, broadcastRoomState } from '../shared/roomManager.js';
+import {
+  decideBotAction,
+  recordPriestMemory,
+  invalidatePlayerMemory,
+} from './love-letter-ai.js';
 
 export const CARD_DEFS = {
   1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#3182CE', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
@@ -57,11 +58,16 @@ export function startRound(io, room) {
     clearTimeout(room.pauseTimeout);
     room.pauseTimeout = null;
   }
+  if (room.roundAutoAdvanceTimer) {
+    clearTimeout(room.roundAutoAdvanceTimer);
+    room.roundAutoAdvanceTimer = null;
+  }
 
   room.isPaused = false;
   room.pausedPlayerId = null;
   room.pauseExpiresAt = null;
   room.savedTurnRemainingMs = null;
+  room.autoAdvanceExpiresAt = null;
 
   room.gameState = 'PLAYING';
   room.roundWinner = null;
@@ -76,7 +82,7 @@ export function startRound(io, room) {
 
   const deck = generateDeck(room.players.length);
 
-  // 1 secret card set aside (all player counts unified)
+  // 1 secret card set aside
   room.setAsideSecretCard = deck.pop();
   room.setAsideOpenCards = [];
 
@@ -87,9 +93,14 @@ export function startRound(io, room) {
 
   room.deck = deck;
 
-  // Decide first player
-  if (!room.turnPlayerId || !room.players.some((p) => p.id === room.turnPlayerId)) {
-    room.turnPlayerId = room.hostId;
+  // Decide first player (inherit from roundWinnerId if available)
+  if (
+    room.roundWinnerId &&
+    room.players.some((p) => p.id === room.roundWinnerId && !p.isEliminated)
+  ) {
+    room.turnPlayerId = room.roundWinnerId;
+  } else if (!room.turnPlayerId || !room.players.some((p) => p.id === room.turnPlayerId)) {
+    room.turnPlayerId = room.hostId || room.players[0].id;
   }
 
   logAction(room, `=== 라운드 ${room.roundNumber} 시작! ===`);
@@ -124,6 +135,24 @@ export function startTurn(io, room) {
   room.turnStartTime = Date.now();
   logAction(room, `[${turnPlayer.nickname}] 님의 턴입니다. (남은 덱: ${room.deck.length}장)`);
   broadcastRoomState(io, room.code);
+
+  // If Turn Player is AI Bot, trigger intelligent thinking delay
+  if (turnPlayer.isBot) {
+    const thinkDelay = 900 + Math.floor(Math.random() * 600);
+    setTimeout(() => {
+      if (
+        room.gameState === 'PLAYING' &&
+        room.turnPlayerId === turnPlayer.id &&
+        !room.isPaused
+      ) {
+        const botAction = decideBotAction(room, turnPlayer);
+        if (botAction) {
+          executePlayCard(io, room, turnPlayer.id, botAction);
+        }
+      }
+    }, thinkDelay);
+    return;
+  }
 
   // Auto-play timer fallback if limit set
   if (room.turnTimeLimit && room.turnTimeLimit > 0) {
@@ -164,15 +193,24 @@ export function passTurnToNextPlayer(io, room) {
     } else {
       // Tie-break: sum of discard piles
       let bestSum = -1;
-      let tieWinner = candidates[0] || alivePlayers[0];
+      let tieWinners = [];
+
       candidates.forEach((c) => {
         const sum = (c.discardPile || []).reduce((acc, card) => acc + (card?.value || 0), 0);
         if (sum > bestSum) {
           bestSum = sum;
-          tieWinner = c;
+          tieWinners = [c];
+        } else if (sum === bestSum) {
+          tieWinners.push(c);
         }
       });
-      endRound(io, room, tieWinner, `덱 소진 동점 판정! 버린 카드 점수 총합 승리!`);
+
+      if (tieWinners.length === 1) {
+        endRound(io, room, tieWinners[0], `덱 소진 동점 판정! 버린 카드 점수 총합 승리!`);
+      } else {
+        // Co-winners tie!
+        endRound(io, room, tieWinners, `덱 소진 동점 판정! 최고점 공동 승리!`);
+      }
     }
     return;
   }
@@ -201,31 +239,59 @@ export function endRound(io, room, winner, reason) {
     clearTimeout(room.turnTimer);
     room.turnTimer = null;
   }
+  if (room.roundAutoAdvanceTimer) {
+    clearTimeout(room.roundAutoAdvanceTimer);
+    room.roundAutoAdvanceTimer = null;
+  }
 
   room.gameState = 'ROUND_END';
 
-  if (winner) {
-    winner.tokens = (winner.tokens || 0) + 1;
+  const winnersList = Array.isArray(winner) ? winner : (winner ? [winner] : []);
+
+  if (winnersList.length > 0) {
+    winnersList.forEach((w) => {
+      w.tokens = (w.tokens || 0) + 1;
+    });
+
+    const primaryWinner = winnersList[0];
+    room.roundWinnerId = primaryWinner.id;
     room.roundWinner = {
-      id: winner.id,
-      nickname: winner.nickname,
-      avatarUrl: winner.avatarUrl,
+      id: primaryWinner.id,
+      nickname: winnersList.map((w) => w.nickname).join(', '),
+      avatarUrl: primaryWinner.avatarUrl,
       reason,
-      tokens: winner.tokens,
+      tokens: primaryWinner.tokens,
+      isCoWinner: winnersList.length > 1,
     };
-    logAction(room, `🎉 [${winner.nickname}] 라운드 승리! (토큰 ${winner.tokens}/${room.targetTokens}개) - ${reason}`);
+
+    logAction(
+      room,
+      `🎉 [${room.roundWinner.nickname}] 라운드 승리! (토큰 ${primaryWinner.tokens}/${room.targetTokens}개) - ${reason}`
+    );
 
     // Check game over
-    if (winner.tokens >= room.targetTokens) {
+    const champion = winnersList.find((w) => w.tokens >= room.targetTokens);
+    if (champion) {
       room.gameState = 'GAME_OVER';
       room.gameWinner = {
-        id: winner.id,
-        nickname: winner.nickname,
-        avatarUrl: winner.avatarUrl,
-        tokens: winner.tokens,
+        id: champion.id,
+        nickname: champion.nickname,
+        avatarUrl: champion.avatarUrl,
+        tokens: champion.tokens,
       };
-      logAction(room, `🏆 [${winner.nickname}] 최종 우승!`);
+      logAction(room, `🏆 [${champion.nickname}] 최종 우승!`);
     }
+  }
+
+  // 7-second Auto Advance Timer (Prevents host AFK deadlock)
+  if (room.gameState === 'ROUND_END') {
+    room.autoAdvanceExpiresAt = Date.now() + 7000;
+    room.roundAutoAdvanceTimer = setTimeout(() => {
+      if (room.gameState === 'ROUND_END') {
+        room.roundNumber = (room.roundNumber || 1) + 1;
+        startRound(io, room);
+      }
+    }, 7000);
   }
 
   broadcastRoomState(io, room.code);
@@ -352,6 +418,10 @@ export function executePlayCard(io, room, userId, payload) {
           card: targetCard,
         });
       }
+      // If player is Bot, record memory
+      if (player.isBot && targetCard) {
+        recordPriestMemory(player, target.id, targetCard.value);
+      }
       logAction(room, resultDescription);
     }
   }
@@ -415,6 +485,11 @@ export function executePlayCard(io, room, userId, payload) {
         princeTarget.discardPile.push(discarded);
         revealedCard = discarded;
 
+        // Invalidate all bots' memory for this target
+        (room.players || []).forEach((p) => {
+          if (p.isBot) invalidatePlayerMemory(p, princeTarget.id);
+        });
+
         // If Princess is discarded, eliminate!
         if (discarded.value === 8) {
           princeTarget.isEliminated = true;
@@ -454,6 +529,18 @@ export function executePlayCard(io, room, userId, payload) {
         resultType = 'KING_SWAP';
         resultDescription = `🤴 국왕의 칙령! [${player.nickname}] 와 [${target.nickname}] 의 손패가 맞교환되었습니다.`;
         logAction(room, resultDescription);
+
+        // If player is Bot, record swapped card
+        if (player.isBot && myCard) {
+          recordPriestMemory(player, target.id, myCard.value);
+        }
+        // Invalidate other bots' memory for both players
+        (room.players || []).forEach((p) => {
+          if (p.isBot && p.id !== player.id) {
+            invalidatePlayerMemory(p, player.id);
+            invalidatePlayerMemory(p, target.id);
+          }
+        });
       }
     }
   }

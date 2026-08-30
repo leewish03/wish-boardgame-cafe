@@ -48,6 +48,9 @@ import {
   Crown,
   Edit2,
   User,
+  Bot,
+  UserPlus,
+  Trash2,
 } from 'lucide-react';
 
 // =========================================================================
@@ -630,6 +633,32 @@ export default function App() {
     socket.emit('room:ready', {});
   };
 
+  // Add AI Bot to Room
+  const handleAddBot = () => {
+    if (!socket) return;
+    sfx.playCardDraw();
+    socket.emit('room:add-bot', {}, (res) => {
+      if (!res?.success) {
+        setToastMessage(res?.error || 'AI 봇 추가 실패');
+      } else {
+        setToastMessage(`🤖 AI 봇 [${res.bot.nickname}] 이(가) 살롱에 입장했습니다!`);
+      }
+    });
+  };
+
+  // Remove AI Bot from Room
+  const handleRemoveBot = (botId) => {
+    if (!socket) return;
+    sfx.playCardDraw();
+    socket.emit('room:remove-bot', { botId }, (res) => {
+      if (!res?.success) {
+        setToastMessage(res?.error || 'AI 봇 제거 실패');
+      } else {
+        setToastMessage('AI 봇이 살롱에서 퇴장했습니다.');
+      }
+    });
+  };
+
   // Host Starts Game
   const handleStartGame = () => {
     if (!socket) return;
@@ -946,8 +975,35 @@ export default function App() {
             </CardHeader>
 
             <CardContent>
-              <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, marginBottom: '12px', textTransform: 'uppercase' }}>
-                PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4})
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, textTransform: 'uppercase' }}>
+                  PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4})
+                </div>
+                {isHost && (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <Button
+                      $variant="outline"
+                      $size="sm"
+                      onClick={handleAddBot}
+                      disabled={(roomState?.players?.length || 0) >= (roomState?.maxPlayers || 4)}
+                      style={{ height: '26px', fontSize: '11px', padding: '0 8px' }}
+                    >
+                      <UserPlus size={13} />
+                      <span style={{ marginLeft: '4px' }}>+ AI 봇 추가</span>
+                    </Button>
+                    {roomState?.players?.some((p) => p.isBot) && (
+                      <Button
+                        $variant="secondary"
+                        $size="sm"
+                        onClick={() => handleRemoveBot()}
+                        style={{ height: '26px', fontSize: '11px', padding: '0 8px' }}
+                      >
+                        <Trash2 size={13} />
+                        <span style={{ marginLeft: '4px' }}>- 봇 제거</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -965,7 +1021,7 @@ export default function App() {
                         padding: '10px 14px',
                         backgroundColor: '#ffffff',
                         borderRadius: THEME.radius.md,
-                        border: `1px solid ${isMe ? THEME.gold : '#e2e8f0'}`,
+                        border: `1px solid ${isMe ? THEME.gold : p.isBot ? 'rgba(197, 160, 89, 0.4)' : '#e2e8f0'}`,
                         boxShadow: '0 1px 4px rgba(9, 13, 22, 0.04)',
                       }}
                     >
@@ -973,19 +1029,38 @@ export default function App() {
                         <img
                           src={p.avatarUrl}
                           alt={p.nickname || '플레이어'}
-                          style={{ width: '34px', height: '34px', borderRadius: '50%', border: `1px solid ${THEME.gold}` }}
+                          style={{ width: '34px', height: '34px', borderRadius: '50%', border: `1px solid ${p.isBot ? THEME.emerald : THEME.gold}` }}
                         />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {p.nickname || '플레이어'}
+                            {p.isBot && <Bot size={14} color={THEME.emerald} />}
                             {isPlayerHost && <Crown size={14} color={THEME.gold} />}
                             {isMe && <span style={{ fontSize: '11px', color: THEME.goldAntique }}>(나)</span>}
                           </div>
+                          {p.isBot && (
+                            <div style={{ fontSize: '10px', color: THEME.mutedForeground }}>
+                              지능형 살롱 VIP 봇
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div>
-                        {isPlayerHost ? (
+                        {p.isBot ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Badge $variant="emerald">BOT READY</Badge>
+                            {isHost && (
+                              <button
+                                style={{ background: 'transparent', border: 'none', color: THEME.rose, cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
+                                onClick={() => handleRemoveBot(p.id)}
+                                title="봇 제거"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ) : isPlayerHost ? (
                           <Badge $variant="gold">HOST</Badge>
                         ) : p.isReady ? (
                           <Badge $variant="emerald">READY</Badge>
