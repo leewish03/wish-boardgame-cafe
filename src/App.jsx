@@ -115,9 +115,9 @@ const MainContent = styled.main`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px 16px;
-  max-width: 1080px;
+  justify-content: ${({ $isGame }) => ($isGame ? 'flex-start' : 'center')};
+  padding: ${({ $isGame }) => ($isGame ? '0' : '24px 16px')};
+  max-width: ${({ $isGame }) => ($isGame ? '100%' : '1080px')};
   width: 100%;
   margin: 0 auto;
 `;
@@ -203,9 +203,26 @@ export default function App() {
   const [screen, setScreen] = useState('entry');
 
   // User State
-  const [nickname, setNickname] = useState('');
-  const [avatarSeed, setAvatarSeed] = useState(`wish_${Math.random().toString(36).substr(2, 5)}`);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [nickname, setNickname] = useState(() => {
+    const saved = loadSession();
+    return saved?.nickname || '';
+  });
+  const [avatarSeed, setAvatarSeed] = useState(() => {
+    const saved = loadSession();
+    return saved?.avatarUrl ? saved.avatarUrl.split('seed=')[1] || `wish_${Math.random().toString(36).substr(2, 5)}` : `wish_${Math.random().toString(36).substr(2, 5)}`;
+  });
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = loadSession();
+    if (saved?.nickname) {
+      return {
+        id: saved.userId || `user_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        sessionToken: saved.sessionToken || null,
+        nickname: saved.nickname,
+        avatarUrl: saved.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${saved.nickname}`,
+      };
+    }
+    return null;
+  });
 
   // Active Tab in Lobby: 'games' | 'join'
   const [activeTab, setActiveTab] = useState('games');
@@ -246,12 +263,13 @@ export default function App() {
         },
         (res) => {
           if (res?.success) {
-            setCurrentUser({
+            const restoredUser = {
               id: session.userId,
               sessionToken: session.sessionToken,
               nickname: session.nickname || res.player?.nickname || '플레이어',
-              avatarUrl: session.avatarUrl || res.player?.avatarUrl,
-            });
+              avatarUrl: session.avatarUrl || res.player?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${session.userId}`,
+            };
+            setCurrentUser(restoredUser);
             setRoomState(res.gameState);
             if (res.gameState?.gameState === 'LOBBY') {
               setScreen('waitingRoom');
@@ -290,6 +308,7 @@ export default function App() {
     if (!socket) return;
 
     const handleRoomState = (state) => {
+      if (!state) return;
       setRoomState(state);
       if (state.gameState === 'LOBBY') {
         setScreen('waitingRoom');
@@ -314,6 +333,10 @@ export default function App() {
       avatarUrl,
     };
     setCurrentUser(userObj);
+    saveSession({
+      nickname: trimmed,
+      avatarUrl,
+    });
     setScreen('lobby');
     sfx.playCardDraw();
   };
@@ -338,31 +361,34 @@ export default function App() {
     if (!socket) return;
     sfx.playCardPlay();
 
+    const currentNick = currentUser?.nickname || nickname.trim() || '방장';
+    const currentAvatar = currentUser?.avatarUrl || avatarUrl;
+
     socket.emit(
       'room:create',
       {
         gameType: selectedGameForCreate,
-        nickname: currentUser.nickname,
-        avatarUrl: currentUser.avatarUrl,
+        nickname: currentNick,
+        avatarUrl: currentAvatar,
         targetTokens,
         maxPlayers,
         turnTimeLimit,
       },
       (res) => {
         if (res?.success) {
-          saveSession({
-            roomCode: res.roomCode,
-            userId: res.userId,
-            sessionToken: res.sessionToken,
-            nickname: currentUser.nickname,
-            avatarUrl: currentUser.avatarUrl,
-          });
-          setCurrentUser((prev) => ({
-            ...prev,
+          const updatedUser = {
             id: res.userId,
             sessionToken: res.sessionToken,
-          }));
+            nickname: currentNick,
+            avatarUrl: currentAvatar,
+          };
+          saveSession({
+            roomCode: res.roomCode,
+            ...updatedUser,
+          });
+          setCurrentUser(updatedUser);
           setCreateDialogOpen(false);
+          setScreen('waitingRoom');
         } else {
           setToastMessage(res?.error || '방 생성에 실패했습니다.');
         }
@@ -377,27 +403,30 @@ export default function App() {
     if (!code || !socket) return;
 
     sfx.playCardPlay();
+    const currentNick = currentUser?.nickname || nickname.trim() || '플레이어';
+    const currentAvatar = currentUser?.avatarUrl || avatarUrl;
+
     socket.emit(
       'room:join',
       {
         roomCode: code,
-        nickname: currentUser.nickname,
-        avatarUrl: currentUser.avatarUrl,
+        nickname: currentNick,
+        avatarUrl: currentAvatar,
       },
       (res) => {
         if (res?.success) {
-          saveSession({
-            roomCode: res.roomCode,
-            userId: res.userId,
-            sessionToken: res.sessionToken,
-            nickname: currentUser.nickname,
-            avatarUrl: currentUser.avatarUrl,
-          });
-          setCurrentUser((prev) => ({
-            ...prev,
+          const updatedUser = {
             id: res.userId,
             sessionToken: res.sessionToken,
-          }));
+            nickname: currentNick,
+            avatarUrl: currentAvatar,
+          };
+          saveSession({
+            roomCode: res.roomCode,
+            ...updatedUser,
+          });
+          setCurrentUser(updatedUser);
+          setScreen('waitingRoom');
         } else {
           setToastMessage(res?.error || '방 입장에 실패했습니다.');
         }
@@ -459,24 +488,26 @@ export default function App() {
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
-      {/* Top Header */}
-      <AppHeader>
-        <BrandLogo>
-          <span className="logo-icon">🎲</span>
-          <span>
-            Wish <span className="gold-text">Boardgame Cafe</span>
-          </span>
-        </BrandLogo>
+      {/* Top Header (Hidden during full-screen game) */}
+      {screen !== 'game' && (
+        <AppHeader>
+          <BrandLogo>
+            <span className="logo-icon">🎲</span>
+            <span>
+              Wish <span className="gold-text">Boardgame Cafe</span>
+            </span>
+          </BrandLogo>
 
-        {currentUser && (
-          <UserProfileChip>
-            <img src={currentUser.avatarUrl} alt={currentUser.nickname} />
-            <span>{currentUser.nickname}</span>
-          </UserProfileChip>
-        )}
-      </AppHeader>
+          {currentUser?.nickname && (
+            <UserProfileChip>
+              <img src={currentUser.avatarUrl} alt={currentUser.nickname} />
+              <span>{currentUser.nickname}</span>
+            </UserProfileChip>
+          )}
+        </AppHeader>
+      )}
 
-      <MainContent>
+      <MainContent $isGame={screen === 'game'}>
         {/* ========================================================= */}
         {/* SCREEN 1: Entry / Nickname Input */}
         {/* ========================================================= */}
@@ -703,7 +734,7 @@ export default function App() {
 
                 <Button $variant="outline" $size="sm" onClick={handleCopyCode}>
                   {copiedCode ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
-                  <span style={{ fontWeight: 700, letterSpacing: '1px' }}>{roomState?.code}</span>
+                  <span style={{ fontWeight: 700, letterSpacing: '1px' }}>{roomState?.code || '------'}</span>
                 </Button>
               </div>
             </CardHeader>
@@ -714,8 +745,8 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {roomState?.players?.map((p) => {
-                  const isPlayerHost = p.id === roomState.hostId;
+                {(roomState?.players || []).map((p) => {
+                  const isPlayerHost = p.id === roomState?.hostId;
                   const isMe = p.id === currentUser?.id;
 
                   return (
@@ -734,12 +765,12 @@ export default function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <img
                           src={p.avatarUrl}
-                          alt={p.nickname}
+                          alt={p.nickname || '플레이어'}
                           style={{ width: '36px', height: '36px', borderRadius: '50%' }}
                         />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            {p.nickname}
+                            {p.nickname || '플레이어'}
                             {isPlayerHost && <Crown size={14} color={THEME.gold} />}
                             {isMe && <span style={{ fontSize: '11px', color: THEME.goldLight }}>(나)</span>}
                           </div>

@@ -8,67 +8,70 @@ export function useSTT(socket, roomCode, userId) {
 
   const recognitionRef = useRef(null);
 
-  // Initialize Speech Recognition
+  // Initialize Speech Recognition safely
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+    try {
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      console.warn('Web Speech API is not supported in this browser.');
-      return;
+      if (!SpeechRecognition) {
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'ko-KR';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        // Auto-restart if user still has STT enabled
+        if (recognitionRef.current && isSTTEnabled) {
+          try {
+            recognition.start();
+          } catch (e) {
+            // ignore already started error
+          }
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn('STT Error:', event.error);
+        if (event.error === 'not-allowed') {
+          setIsSTTEnabled(false);
+        }
+      };
+
+      recognition.onresult = (event) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        const trimmed = finalTranscript.trim();
+        if (trimmed && socket && roomCode) {
+          socket.emit('stt:transcript', {
+            roomCode,
+            userId,
+            text: trimmed,
+            timestamp: Date.now(),
+          });
+        }
+      };
+
+      recognitionRef.current = recognition;
+    } catch (e) {
+      console.warn('SpeechRecognition initialization error:', e);
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ko-KR';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      // Auto-restart if user still has STT enabled
-      if (recognitionRef.current && isSTTEnabled) {
-        try {
-          recognition.start();
-        } catch (e) {
-          // ignore already started error
-        }
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.warn('STT Error:', event.error);
-      if (event.error === 'not-allowed') {
-        setIsSTTEnabled(false);
-      }
-    };
-
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      const trimmed = finalTranscript.trim();
-      if (trimmed && socket && roomCode) {
-        socket.emit('stt:transcript', {
-          roomCode,
-          userId,
-          text: trimmed,
-          timestamp: Date.now(),
-        });
-      }
-    };
-
-    recognitionRef.current = recognition;
 
     return () => {
       if (recognitionRef.current) {
@@ -103,7 +106,7 @@ export function useSTT(socket, roomCode, userId) {
     if (!socket) return;
 
     const handleTranscript = (data) => {
-      const { userId: speakerId, text, timestamp } = data;
+      const { userId: speakerId, text, timestamp } = data || {};
       if (!text) return;
 
       const item = {
