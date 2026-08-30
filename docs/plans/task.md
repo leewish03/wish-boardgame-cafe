@@ -1,10 +1,21 @@
-# [Task Tracker] Wish Boardgame Salon - 공간 애니메이션 & 무모달(In-Place) 인게임 혁신
+# [Task Tracker] Wish Boardgame Cafe - Love Letter 전면 재구축 (17 Phases)
 
-| Phase | Task | Status | Owner | Evidence |
+| Phase | Task Description | Status | Owner | Evidence |
 |---|---|---|---|---|
-| 1. Brainstorm & PRD | 서브에이전트 bkit-pm-lead 투입: UI 글 배제, 공간 카드 비행/드로우/공격 애니메이션, 모바일 다이얼로그 오프셋 버그, 사망 시 크래시 원인 분석 및 PRD 수립 | ⏳ In Progress | bkit-pm-lead | Pending |
-| 2. Tech Architecture | 서브에이전트 bkit-cto-lead 투입: Framer Motion layoutId 기반 패 드로우/제출 비행 엔진, 무모달(In-Place) 타겟팅, 사망/라운드종료 소켓 동기화 크래시 방어 설계 | ⏳ Pending | bkit-cto-lead | Pending |
-| 3. Plan Approval | 사용자에게 implementation_plan.md 제시 및 피드백/승인 획득 | ⏳ Pending | Orchestrator | Pending |
-| 4. Development (Do) | bkit-developer 구현: 거대 팝업 제거 -> 카드 자체 비행(Spatial Flight) & 타겟 공격 연출, 드로우 모션, Guard 그리드 모바일 정렬 픽스, 사망 동기화 픽스 | ⏳ Pending | bkit-developer | Pending |
-| 5. QA & Verification | bkit-qa-engineer 검증: AI 사망/라운드 종료 엣지 케이스 시뮬레이션, 빌드/AST 분석, Gap Detection | ⏳ Pending | bkit-qa-engineer | Pending |
-| 6. Final Delivery | 최종 소스 커밋/푸시 및 walkthrough.md 작성 | ⏳ Pending | Orchestrator | Pending |
+| Phase 0 | Freeze & Baseline Unit Test Harness | ✅ Completed | Orchestrator / Dev | `tests/love_letter_rules.test.js` (7/7 Passed), `tests/ai_bot_heuristics.test.js` (5/5 Passed) |
+| Phase 1 | Pure TypeScript Core Engine (`packages/love-letter-core`) | ✅ Completed | Dev / Core | `cards.ts`, `types.ts`, `state.ts`, `commands.ts`, `events.ts`, `rules.ts`, `engine.ts`, `reducer.ts`, `selectors.ts` |
+| Phase 2 | Shared Protocol & Envelopes (`packages/protocol`) | ✅ Completed | CTO / Dev | `socketEvents.ts`, `envelopes.ts` (`GameEventEnvelope`, `GameSnapshot`, `RoomSnapshot`) |
+| Phase 3 | New Server Controller & Services (`server/core`) | ✅ Completed | Server Dev | `LoveLetterService.js`, `RoomRepository.js`, `TurnCoordinator.js`, `AiBotController.js` |
+| Phase 4 | Game Stability, Turn Coordinator & Heuristics AI | ✅ Completed | Server Dev | 1.4s presentation pacing delay, Memory-aware Guard snipes & Countess prioritization |
+| Phase 5 | Connection Recovery, State Versioning & Snapshots | ✅ Completed | CTO / Dev | Monotonic `stateVersion`, unified `game:event` & `game:snapshot` envelope broadcasting |
+| Phase 6 | New Client Modular Architecture & Screen Routing | ✅ Completed | Frontend Dev | `AppRouter.tsx`, `EntryScreen.tsx`, `LobbyScreen.tsx`, `WaitingRoomScreen.tsx`, `LoveLetterGame.tsx` |
+| Phase 7 | New Game Board Layout (VIP Salon Marble Surface & Hierarchy) | ✅ Completed | UI/UX Dev | Carrara Marble radial surface, Obsidian, Champagne Brass foil frame & hierarchy |
+| Phase 8 | Mobile Drag & Drop Card Interaction + In-Place Targeting | ✅ Completed | Motion Dev | `drag="y"`, `dragConstraints={{ top: -140, bottom: 0 }}`, drop onto `ActionStage`, spring snapback |
+| Phase 9 | Client Presentation Machine & Action Queue Timeline | ✅ Completed | Architecture | `useActionTimeline.ts` (1.1s sequential visual queuing before turn timer advancement) |
+| Phase 10 | 8 Card Action Visual Sequences & In-Place Animations | ✅ Completed | Motion Dev | Guard Snipe beam, Priest Secret reveal, Baron Duel comparison, Handmaid Shield, Prince Discard, King Swap, Countess Flower, Princess Instant Shatter |
+| Phase 11 | Heraldic Emblem & Luxury Marble Card Design Overhaul | ✅ Completed | Designer | Custom SVG Heraldic Emblems (`heraldicIcons.tsx`) for all 8 cards, luxury typography & foil frame |
+| Phase 12 | Round End & Match Result Screen Transition | ✅ Completed | Frontend Dev | `RoundResult.tsx`, `MatchResult.tsx`, token tallies & auto-advance countdown |
+| Phase 13 | High-End VIP Lobby & Waiting Room Modular TSX | ✅ Completed | Frontend Dev | `LobbyScreen.tsx` with Live Now / Coming Soon slots, `WaitingRoomScreen.tsx` with bot addition & ready states |
+| Phase 14 | Voice (WebRTC) & STT Sub-system Re-integration | ✅ Completed | Fullstack Dev | `GameHud.tsx` mic toggle, speaking indicator ring, STT speech bubble integration |
+| Phase 15 | Mobile QA & Automated AI Multi-Game Simulation Testkit | ✅ Completed | QA Lead | `tests/full_game_ts_simulation.test.js` (10 Matches / 330 turns with 0 deadlocks & 0 errors) |
+| Phase 16 | Legacy Code Clean-up, Final Build & Production Verification | ✅ Completed | QA / Orchestrator | `npm run build` (Vite 465.05 kB bundle, 0 errors), AST Analysis (21 files 100% pass) |
