@@ -209,7 +209,7 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!lastAction || !lastAction.playedCard) {
+    if (!lastAction || !lastAction?.playedCard) {
       setVisible(false);
       return;
     }
@@ -223,7 +223,7 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
     return () => clearTimeout(timer);
   }, [lastAction, onDismiss]);
 
-  if (!visible || !lastAction || !lastAction.playedCard) return null;
+  if (!visible || !lastAction || !lastAction?.playedCard) return null;
 
   const {
     actorNickname,
@@ -235,13 +235,13 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
     resultType,
     resultDescription,
     eliminatedPlayerId,
-  } = lastAction;
+  } = lastAction || {};
 
   const isGuardSuccess = resultType === 'GUARD_SUCCESS';
   const isGuardFail = resultType === 'GUARD_FAIL';
-  const isBaron = resultType?.startsWith('BARON');
+  const isBaron = resultType?.startsWith?.('BARON');
   const isHandmaid = resultType === 'HANDMAID_PROTECT' || playedCard?.value === 4;
-  const isPrince = resultType?.startsWith('PRINCE') || playedCard?.value === 5;
+  const isPrince = resultType?.startsWith?.('PRINCE') || playedCard?.value === 5;
   const isKing = resultType === 'KING_SWAP' || playedCard?.value === 6;
   const isPrincessEliminated = resultType === 'PRINCESS_SELF_ELIMINATED' || (isPrince && resultType === 'PRINCE_PRINCESS_ELIMINATED');
 
@@ -256,7 +256,7 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
         >
           <BannerHeader>
             <PlayerBadge>
-              {actorAvatar && <img src={actorAvatar} alt={actorNickname} />}
+              {actorAvatar && <img src={actorAvatar} alt={actorNickname || '플레이어'} />}
               <span>{actorNickname || '플레이어'}</span>
             </PlayerBadge>
 
@@ -271,15 +271,15 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
             )}
 
             <CardChip>
-              <span className="val">{playedCard.value}</span>
-              <span>{playedCard.name}</span>
+              <span className="val">{playedCard?.value ?? ''}</span>
+              <span>{playedCard?.name || '카드'}</span>
             </CardChip>
           </BannerHeader>
 
           {guessedCard && (
             <div style={{ fontSize: '11.5px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>추측 카드:</span>
-              <strong style={{ color: THEME.burgundy }}>[{guessedCard.value}] {guessedCard.name}</strong>
+              <strong style={{ color: THEME.burgundy }}>[{guessedCard?.value}] {guessedCard?.name}</strong>
             </div>
           )}
 

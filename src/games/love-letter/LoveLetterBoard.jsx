@@ -440,7 +440,7 @@ const DiscardMoreBadge = styled.span`
 function DiscardPileStack({ discardPile = [], onOpenHistory, playerName = '' }) {
   if (!discardPile || discardPile.length === 0) {
     return (
-      <DiscardStackWrapper onClick={() => onOpenHistory({ playerName, discardPile })}>
+      <DiscardStackWrapper onClick={() => onOpenHistory?.({ playerName, discardPile })}>
         <span style={{ fontSize: '9px', color: THEME.mutedForeground }}>낸 패 없음</span>
       </DiscardStackWrapper>
     );
@@ -451,15 +451,16 @@ function DiscardPileStack({ discardPile = [], onOpenHistory, playerName = '' }) 
 
   return (
     <DiscardStackWrapper
-      onClick={() => onOpenHistory({ playerName, discardPile })}
+      onClick={() => onOpenHistory?.({ playerName, discardPile })}
       title={`${playerName}님이 낸 카드 목록 보기 (총 ${discardPile.length}장)`}
     >
       <DiscardOverlapRow>
         {visibleCards.map((card, idx) => {
-          const meta = CARD_DATA[card.value] || {};
+          if (!card) return null;
+          const meta = CARD_DATA[card?.value] || {};
           return (
-            <MiniDiscardChip key={`${card.id || card.value}-${idx}`} $color={meta.color} $index={idx}>
-              {card.value}
+            <MiniDiscardChip key={`${card?.id || card?.value || idx}-${idx}`} $color={meta.color} $index={idx}>
+              {card?.value ?? ''}
             </MiniDiscardChip>
           );
         })}
@@ -1225,11 +1226,11 @@ export default function LoveLetterBoard({
   // Countess Constraint Evaluation
   // =========================================================================
   const hasCountess = useMemo(() => {
-    return myPlayer?.hand?.some((c) => c.value === 7) || false;
+    return myPlayer?.hand?.some((c) => c?.value === 7) || false;
   }, [myPlayer?.hand]);
 
   const hasPrinceOrKing = useMemo(() => {
-    return myPlayer?.hand?.some((c) => c.value === 5 || c.value === 6) || false;
+    return myPlayer?.hand?.some((c) => c?.value === 5 || c?.value === 6) || false;
   }, [myPlayer?.hand]);
 
   const isCountessForced = hasCountess && hasPrinceOrKing;
@@ -1242,19 +1243,19 @@ export default function LoveLetterBoard({
 
     // 1. All players' discard piles
     (roomState?.players || []).forEach((p) => {
-      (p.discardPile || []).forEach((c) => {
-        if (counts[c.value] !== undefined) counts[c.value]++;
+      (p?.discardPile || []).forEach((c) => {
+        if (c?.value && counts[c.value] !== undefined) counts[c.value]++;
       });
     });
 
     // 2. Set aside open cards (2-player game)
     (roomState?.setAsideOpenCards || []).forEach((c) => {
-      if (counts[c.value] !== undefined) counts[c.value]++;
+      if (c?.value && counts[c.value] !== undefined) counts[c.value]++;
     });
 
     // 3. My own hand
     (myPlayer?.hand || []).forEach((c) => {
-      if (counts[c.value] !== undefined) counts[c.value]++;
+      if (c?.value && counts[c.value] !== undefined) counts[c.value]++;
     });
 
     return counts;
@@ -1266,10 +1267,10 @@ export default function LoveLetterBoard({
 
   // Step 1: Tap card to select/unselect (With 1-Tap Target Sheet Trigger)
   const handleCardTap = (index, card) => {
-    if (!isMyTurn || myPlayer?.isEliminated) return;
+    if (!card || !isMyTurn || myPlayer?.isEliminated) return;
 
     // Block Prince(5)/King(6) when Countess(7) is present
-    if (isCountessForced && (card.value === 5 || card.value === 6)) {
+    if (isCountessForced && (card?.value === 5 || card?.value === 6)) {
       alert('백작부인(7)을 손에 쥐고 있을 때는 반드시 백작부인을 먼저 사용해야 합니다!');
       return;
     }
@@ -1286,7 +1287,7 @@ export default function LoveLetterBoard({
       setGuardTargetPlayer(null);
 
       // If targeted card (1, 2, 3, 5, 6), auto-open bottom target action bar
-      if ([1, 2, 3, 5, 6].includes(card.value)) {
+      if ([1, 2, 3, 5, 6].includes(card?.value)) {
         setIsTargetingMode(true);
       } else {
         setIsTargetingMode(false);
@@ -1299,31 +1300,31 @@ export default function LoveLetterBoard({
     if (!card || !isMyTurn || myPlayer?.isEliminated) return;
 
     // Eligible opponents (alive & not protected)
-    const eligibleOpponents = opponents.filter((p) => !p.isEliminated && !p.isProtected);
+    const eligibleOpponents = opponents.filter((p) => !p?.isEliminated && !p?.isProtected);
 
     // 1. Guard (1)
-    if (card.value === 1) {
+    if (card?.value === 1) {
       if (eligibleOpponents.length === 0) {
-        executePlay(card.id, null, null);
+        executePlay(card?.id, null, null);
       } else {
         setIsTargetingMode(true);
       }
     }
     // 2. Priest (2) / 3. Baron (3) / 6. King (6)
-    else if (card.value === 2 || card.value === 3 || card.value === 6) {
+    else if (card?.value === 2 || card?.value === 3 || card?.value === 6) {
       if (eligibleOpponents.length === 0) {
-        executePlay(card.id, null, null);
+        executePlay(card?.id, null, null);
       } else {
         setIsTargetingMode(true);
       }
     }
     // 5. Prince (5) - can target anyone alive (including self)
-    else if (card.value === 5) {
+    else if (card?.value === 5) {
       setIsTargetingMode(true);
     }
     // 4. Handmaid (4) / 7. Countess (7) / 8. Princess (8)
     else {
-      executePlay(card.id, null, null);
+      executePlay(card?.id, null, null);
     }
   };
 
@@ -1334,7 +1335,7 @@ export default function LoveLetterBoard({
     sfx.hapticSnap();
 
     // Guard (1) -> Set target and prepare guess
-    if (selectedCard.value === 1) {
+    if (selectedCard?.value === 1) {
       setGuardTargetPlayer(targetPlayer);
       let defaultGuess = 2;
       for (let n = 2; n <= 8; n++) {
@@ -1349,7 +1350,7 @@ export default function LoveLetterBoard({
       setIsTargetingMode(false);
     } else {
       // Priest (2), Baron (3), Prince (5), King (6)
-      executePlay(selectedCard.id, targetPlayer?.id, null);
+      executePlay(selectedCard?.id, targetPlayer?.id, null);
       setIsTargetingMode(false);
     }
   };
@@ -1463,6 +1464,7 @@ export default function LoveLetterBoard({
         {/* ========================================================= */}
         <OpponentsArea>
           {opponents.map((p) => {
+            if (!p) return null;
             const isTurn = p.id === roomState?.turnPlayerId;
             const isSpeaking = webrtc?.speakingUsers?.[p.id];
             const bubble = stt?.activeBubbles?.[p.id];
@@ -1470,8 +1472,8 @@ export default function LoveLetterBoard({
             // Direct Table Targeting availability
             const isTargetable =
               isTargetingMode &&
-              !p.isEliminated &&
-              (selectedCard?.value === 5 || !p.isProtected);
+              !p?.isEliminated &&
+              (selectedCard?.value === 5 || !p?.isProtected);
 
             const isDimmed = isTargetingMode && !isTargetable;
 
@@ -1498,7 +1500,7 @@ export default function LoveLetterBoard({
                   >
                     <AvatarImg
                       src={p.avatarUrl}
-                      alt={p.nickname}
+                      alt={p.nickname || '상대'}
                       $isTurn={isTurn}
                       $isSpeaking={isSpeaking}
                     />
@@ -1628,7 +1630,7 @@ export default function LoveLetterBoard({
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800 }}>
                   <span style={{ color: THEME.gold }}>
-                    🎯 [{selectedCard.name}] 대상 지목:
+                    🎯 [{selectedCard?.name || '카드'}] 대상 지목:
                   </span>
                   <button
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', padding: '0 4px' }}
@@ -1642,7 +1644,7 @@ export default function LoveLetterBoard({
                 </div>
 
                 <TargetChipRow>
-                  {selectedCard.value === 5 && (
+                  {selectedCard?.value === 5 && (
                     <TargetChip
                       className="self"
                       onClick={() => {
@@ -1654,9 +1656,9 @@ export default function LoveLetterBoard({
                     </TargetChip>
                   )}
                   {opponents
-                    .filter((p) => !p.isEliminated && (selectedCard.value === 5 || !p.isProtected))
+                    .filter((p) => !p?.isEliminated && (selectedCard?.value === 5 || !p?.isProtected))
                     .map((p) => {
-                      const isSelectedTarget = guardTargetPlayer?.id === p.id;
+                      const isSelectedTarget = guardTargetPlayer?.id === p?.id;
                       return (
                         <TargetChip
                           key={p.id}
@@ -1666,14 +1668,14 @@ export default function LoveLetterBoard({
                             handleSeatClick(p);
                           }}
                         >
-                          {p.isBot ? '🤖 ' : '👑 '} {p.nickname}
+                          {p?.isBot ? '🤖 ' : '👑 '} {p?.nickname}
                         </TargetChip>
                       );
                     })}
                 </TargetChipRow>
 
                 {/* Inline Guard Quick Guess Chips */}
-                {selectedCard.value === 1 && guardTargetPlayer && (
+                {selectedCard?.value === 1 && guardTargetPlayer && (
                   <InlineGuessRow>
                     <span style={{ fontSize: '10px', color: THEME.mutedForeground, marginRight: '4px' }}>추측:</span>
                     {[2, 3, 4, 5, 6, 7, 8].map((n) => {
@@ -1687,7 +1689,7 @@ export default function LoveLetterBoard({
                           disabled={isZero}
                           onClick={() => {
                             sfx.hapticSnap();
-                            executePlay(selectedCard.id, guardTargetPlayer.id, n);
+                            executePlay(selectedCard?.id, guardTargetPlayer?.id, n);
                           }}
                           title={isZero ? '0장 남음 (소진됨)' : `${remaining}장 남음`}
                         >
@@ -1705,20 +1707,21 @@ export default function LoveLetterBoard({
           <HandCardsWrapper>
             <AnimatePresence>
               {myPlayer?.hand?.map((card, idx) => {
-                const cardMeta = CARD_DATA[card.value] || {};
+                if (!card) return null;
+                const cardMeta = CARD_DATA[card?.value] || {};
                 const isSelected = selectedCardIndex === idx;
-                const isRestricted = isCountessForced && (card.value === 5 || card.value === 6);
-                const isForced = isCountessForced && card.value === 7;
+                const isRestricted = isCountessForced && (card?.value === 5 || card?.value === 6);
+                const isForced = isCountessForced && card?.value === 7;
 
                 return (
                   <CardMotion
-                    key={card.id || `${card.value}-${idx}`}
+                    key={card?.id || `${card?.value || idx}-${idx}`}
                     $color={cardMeta.color}
                     $isSelected={isSelected}
                     $isRestricted={isRestricted}
                     $isForced={isForced}
                     $isMyTurn={isMyTurn}
-                    $canPlay={isMyTurn && !myPlayer.isEliminated}
+                    $canPlay={isMyTurn && !myPlayer?.isEliminated}
                     initial={{ y: 30, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -50, opacity: 0, scale: 0.8 }}
@@ -1736,7 +1739,7 @@ export default function LoveLetterBoard({
 
                     <CardHeaderRow>
                       <CardValueBadge $color={cardMeta.color}>
-                        {card.value}
+                        {card?.value}
                       </CardValueBadge>
                       <span style={{ fontSize: '10px', color: cardMeta.color, fontWeight: 800 }}>
                         {cardMeta.nameEn}
@@ -1746,9 +1749,9 @@ export default function LoveLetterBoard({
                     <CardEmblem>{cardMeta.icon}</CardEmblem>
 
                     <CardFooterInfo>
-                      <CardNameText>{card.name}</CardNameText>
-                      <CardDescSnippet title={card.desc}>
-                        {card.desc}
+                      <CardNameText>{card?.name}</CardNameText>
+                      <CardDescSnippet title={card?.desc}>
+                        {card?.desc}
                       </CardDescSnippet>
                     </CardFooterInfo>
                   </CardMotion>
@@ -1760,7 +1763,7 @@ export default function LoveLetterBoard({
           {/* 2-Step Action Control Bar */}
           <ActionControlBar>
             {isMyTurn && !myPlayer?.isEliminated ? (
-              selectedCard && (
+              selectedCard ? (
                 <Button
                   $variant="gold"
                   $size="default"
@@ -1775,10 +1778,10 @@ export default function LoveLetterBoard({
                 >
                   <Sparkles size={16} />
                   <span>
-                    ✨ [{selectedCard.name} ({selectedCard.value})] 카드 사용하기
+                    ✨ [{selectedCard?.name || '카드'} ({selectedCard?.value ?? ''})] 카드 사용하기
                   </span>
                 </Button>
-              )
+              ) : null
             ) : myPlayer?.isEliminated ? (
               <div
                 style={{
@@ -1856,7 +1859,7 @@ export default function LoveLetterBoard({
             onClick={() =>
               executePlay(selectedCard?.id, guardTargetPlayer?.id, selectedGuessValue)
             }
-            disabled={!guardTargetPlayer || (CARD_DATA[selectedGuessValue]?.count - (cardCounter[selectedGuessValue] || 0) <= 0)}
+            disabled={!guardTargetPlayer || (((CARD_DATA[selectedGuessValue]?.count || 0) - (cardCounter[selectedGuessValue] || 0)) <= 0)}
           >
             추측 제출
           </Button>
@@ -1881,7 +1884,7 @@ export default function LoveLetterBoard({
                 width: '130px',
                 height: '180px',
                 padding: '12px',
-                borderColor: CARD_DATA[priestData.card.value]?.color || THEME.gold,
+                borderColor: CARD_DATA[priestData?.card?.value]?.color || THEME.gold,
                 textAlign: 'center',
                 display: 'flex',
                 flexDirection: 'column',
@@ -1892,21 +1895,21 @@ export default function LoveLetterBoard({
                 style={{
                   fontSize: '1.4rem',
                   fontWeight: 900,
-                  color: CARD_DATA[priestData.card.value]?.color || THEME.gold,
+                  color: CARD_DATA[priestData?.card?.value]?.color || THEME.gold,
                   textAlign: 'left',
                 }}
               >
-                {priestData.card.value}
+                {priestData?.card?.value}
               </div>
               <div style={{ fontSize: '2.8rem', margin: '4px 0' }}>
-                {CARD_DATA[priestData.card.value]?.icon}
+                {CARD_DATA[priestData?.card?.value]?.icon}
               </div>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 800 }}>
-                  {priestData.card.name}
+                  {priestData?.card?.name}
                 </div>
                 <div style={{ fontSize: '10px', color: THEME.mutedForeground, marginTop: '2px' }}>
-                  {CARD_DATA[priestData.card.value]?.desc}
+                  {CARD_DATA[priestData?.card?.value]?.desc}
                 </div>
               </div>
             </Card>
@@ -1947,10 +1950,11 @@ export default function LoveLetterBoard({
             </div>
           ) : (
             discardHistoryTarget.discardPile.map((card, idx) => {
-              const meta = CARD_DATA[card.value] || {};
+              if (!card) return null;
+              const meta = CARD_DATA[card?.value] || {};
               return (
                 <div
-                  key={`${card.id || card.value}-${idx}`}
+                  key={`${card?.id || card?.value || idx}-${idx}`}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1958,7 +1962,7 @@ export default function LoveLetterBoard({
                     padding: '8px 12px',
                     backgroundColor: THEME.secondary,
                     borderRadius: THEME.radius.md,
-                    borderLeft: `3px solid ${meta.color}`,
+                    borderLeft: `3px solid ${meta.color || THEME.gold}`,
                   }}
                 >
                   <span style={{ fontSize: '11px', color: THEME.mutedForeground, width: '24px', fontWeight: 700 }}>
@@ -1966,8 +1970,8 @@ export default function LoveLetterBoard({
                   </span>
                   <span style={{ fontSize: '18px' }}>{meta.icon}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '12px', fontWeight: 800, color: meta.color }}>
-                      {card.value}. {meta.name} ({meta.nameEn})
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: meta.color || THEME.gold }}>
+                      {card?.value}. {meta.name} ({meta.nameEn})
                     </div>
                     <div style={{ fontSize: '10px', color: THEME.mutedForeground, marginTop: '2px' }}>
                       {meta.desc}
@@ -2024,46 +2028,50 @@ export default function LoveLetterBoard({
                 전원 손패 공개:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {roomState.players.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      backgroundColor: '#ffffff',
-                      border: `1px solid ${THEME.border}`,
-                      borderRadius: THEME.radius.md,
-                      fontSize: '11px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: 700, color: THEME.foreground }}>{p.nickname}</span>
-                      <AffectionTokenBadge
-                        count={p.tokens || 0}
-                        target={roomState?.targetTokens || 4}
-                        size="sm"
-                      />
+                {roomState.players.map((p) => {
+                  if (!p) return null;
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 10px',
+                        backgroundColor: '#ffffff',
+                        border: `1px solid ${THEME.border}`,
+                        borderRadius: THEME.radius.md,
+                        fontSize: '11px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 700, color: THEME.foreground }}>{p.nickname}</span>
+                        <AffectionTokenBadge
+                          count={p.tokens || 0}
+                          target={roomState?.targetTokens || 4}
+                          size="sm"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {p.hand && p.hand.length > 0 ? (
+                          p.hand.map((c, i) => {
+                            if (!c) return null;
+                            const meta = CARD_DATA[c?.value] || {};
+                            return (
+                              <Badge key={i} $variant="gold" style={{ fontSize: '10px' }}>
+                                {meta.icon} {c?.value} {meta.name}
+                              </Badge>
+                            );
+                          })
+                        ) : (
+                          <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
+                            {p.isEliminated ? '☠️ 탈락' : '없음'}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {p.hand && p.hand.length > 0 ? (
-                        p.hand.map((c, i) => {
-                          const meta = CARD_DATA[c.value] || {};
-                          return (
-                            <Badge key={i} $variant="gold" style={{ fontSize: '10px' }}>
-                              {meta.icon} {c.value} {meta.name}
-                            </Badge>
-                          );
-                        })
-                      ) : (
-                        <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
-                          {p.isEliminated ? '☠️ 탈락' : '없음'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2325,7 +2333,7 @@ export default function LoveLetterBoard({
       {/* 11. REAL-TIME CARD ACTION SHOWCASE MODAL */}
       {/* ========================================================= */}
       <AnimatePresence>
-        {actionShowcase && (
+        {actionShowcase && actionShowcase.card && (
           <ShowcaseBackdrop
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2333,7 +2341,7 @@ export default function LoveLetterBoard({
             transition={{ duration: 0.2 }}
           >
             <ShowcaseCardBox
-              $color={CARD_DATA[actionShowcase.card.value]?.color}
+              $color={CARD_DATA[actionShowcase.card?.value]?.color}
               initial={{ scale: 0.7, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.8, y: -20, opacity: 0 }}
@@ -2348,22 +2356,22 @@ export default function LoveLetterBoard({
                 <span style={{ color: THEME.gold }}>님이 카드 사용!</span>
               </ShowcaseHeader>
 
-              <ShowcaseCardVisual $color={CARD_DATA[actionShowcase.card.value]?.color}>
+              <ShowcaseCardVisual $color={CARD_DATA[actionShowcase.card?.value]?.color}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 900, color: CARD_DATA[actionShowcase.card.value]?.color }}>
-                    {actionShowcase.card.value}
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: CARD_DATA[actionShowcase.card?.value]?.color }}>
+                    {actionShowcase.card?.value}
                   </span>
-                  <span style={{ fontSize: '9px', fontWeight: 800, color: CARD_DATA[actionShowcase.card.value]?.color }}>
-                    {CARD_DATA[actionShowcase.card.value]?.nameEn}
+                  <span style={{ fontSize: '9px', fontWeight: 800, color: CARD_DATA[actionShowcase.card?.value]?.color }}>
+                    {CARD_DATA[actionShowcase.card?.value]?.nameEn}
                   </span>
                 </div>
 
                 <div style={{ fontSize: '32px' }}>
-                  {CARD_DATA[actionShowcase.card.value]?.icon}
+                  {CARD_DATA[actionShowcase.card?.value]?.icon}
                 </div>
 
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>
-                  {actionShowcase.card.name}
+                  {actionShowcase.card?.name}
                 </div>
               </ShowcaseCardVisual>
 
@@ -2380,7 +2388,7 @@ export default function LoveLetterBoard({
                 )}
                 {!actionShowcase.targetNickname && !actionShowcase.guessCardName && (
                   <div style={{ color: THEME.mutedForeground }}>
-                    {actionShowcase.card.desc}
+                    {actionShowcase.card?.desc}
                   </div>
                 )}
               </ShowcaseFooter>
