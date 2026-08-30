@@ -53,6 +53,15 @@ export function startRound(io, room) {
     clearTimeout(room.turnTimer);
     room.turnTimer = null;
   }
+  if (room.pauseTimeout) {
+    clearTimeout(room.pauseTimeout);
+    room.pauseTimeout = null;
+  }
+
+  room.isPaused = false;
+  room.pausedPlayerId = null;
+  room.pauseExpiresAt = null;
+  room.savedTurnRemainingMs = null;
 
   room.gameState = 'PLAYING';
   room.roundWinner = null;
@@ -220,6 +229,7 @@ export function endRound(io, room, winner, reason) {
 }
 
 export function autoPlayTimeout(io, room, userId) {
+  if (!room || room.isPaused) return;
   const player = room.players.find((p) => p.id === userId);
   if (!player || player.isEliminated || room.turnPlayerId !== userId) return;
 
@@ -248,6 +258,10 @@ export function autoPlayTimeout(io, room, userId) {
 }
 
 export function executePlayCard(io, room, userId, payload) {
+  if (!room) return { success: false, error: '방이 존재하지 않습니다.' };
+  if (room.isPaused) {
+    return { success: false, error: '게임이 일시정지 상태입니다. (플레이어 재접속 대기 중)' };
+  }
   const { cardId, targetUserId, guessValue } = payload || {};
   const player = room.players.find((p) => p.id === userId);
 
@@ -418,7 +432,93 @@ export function executePlayCard(io, room, userId, payload) {
   return { success: true };
 }
 
-function logAction(room, text) {
+export function pauseGameTimer(room) {
+  if (!room) return;
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+  if (room.turnStartTime && room.turnTimeLimit && room.turnTimeLimit > 0) {
+    const elapsed = Date.now() - room.turnStartTime;
+    const remaining = room.turnTimeLimit * 1000 - elapsed;
+    room.savedTurnRemainingMs = Math.max(1000, remaining);
+  } else {
+    room.savedTurnRemainingMs = null;
+  }
+  logAction(room, '⏸️ 플레이어 연결 끊김으로 게임이 일시정지되었습니다.');
+}
+
+export function resumeGameTimer(io, room) {
+  if (!room || room.gameState !== 'PLAYING') return;
+
+  room.isPaused = false;
+  room.pausedPlayerId = null;
+  room.pauseExpiresAt = null;
+  if (room.pauseTimeout) {
+    clearTimeout(room.pauseTimeout);
+    room.pauseTimeout = null;
+  }
+
+  logAction(room, '▶️ 게임이 다시 재개되었습니다.');
+
+  if (room.turnTimeLimit && room.turnTimeLimit > 0) {
+    const remaining = room.savedTurnRemainingMs || room.turnTimeLimit * 1000;
+    room.savedTurnRemainingMs = null;
+    room.turnStartTime = Date.now();
+    if (room.turnTimer) clearTimeout(room.turnTimer);
+    room.turnTimer = setTimeout(() => {
+      autoPlayTimeout(io, room, room.turnPlayerId);
+    }, remaining + 1000);
+  }
+
+  broadcastRoomState(io, room.code);
+}
+
+export function handleForfeitedPlayer(io, room, userId, removePlayer = false) {
+  if (!room) return;
+  const player = room.players.find((p) => p.id === userId);
+  if (!player) return;
+
+  // Clear pause state if this player was the cause
+  if (room.pauseTimeout && room.pausedPlayerId === userId) {
+    clearTimeout(room.pauseTimeout);
+    room.pauseTimeout = null;
+  }
+  room.isPaused = false;
+  room.pausedPlayerId = null;
+  room.pauseExpiresAt = null;
+
+  player.isEliminated = true;
+  if (player.hand && player.hand.length > 0) {
+    player.discardPile.push(...player.hand);
+    player.hand = [];
+  }
+
+  logAction(room, `🚪 [${player.nickname}] 님이 게임에서 기권(탈락) 처리되었습니다.`);
+
+  if (removePlayer) {
+    room.players = room.players.filter((p) => p.id !== userId);
+  }
+
+  const alivePlayers = room.players.filter((p) => !p.isEliminated);
+  if (alivePlayers.length <= 1) {
+    endRound(io, room, alivePlayers[0] || null, '상대방 전원 탈락/기권 승리!');
+    return;
+  }
+
+  if (room.turnPlayerId === userId) {
+    passTurnToNextPlayer(io, room);
+  } else {
+    // If not their turn and game is ongoing, resume game timer if needed
+    if (room.gameState === 'PLAYING') {
+      resumeGameTimer(io, room);
+    } else {
+      broadcastRoomState(io, room.code);
+    }
+  }
+}
+
+export function logAction(room, text) {
   if (!room) return;
   room.lastActionLog = text;
   if (!room.actionLogs) room.actionLogs = [];

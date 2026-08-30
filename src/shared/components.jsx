@@ -565,3 +565,183 @@ export function Toast({ message, onClose }) {
 
   return <ToastContainer>{message}</ToastContainer>;
 }
+
+// =========================================================================
+// 9. PauseOverlay Component (3-minute Grace Period Overlay)
+// =========================================================================
+
+const PauseOverlayContainer = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background-color: rgba(9, 9, 11, 0.88);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: ${fadeIn} 0.3s ease-out;
+  color: ${THEME.foreground};
+  user-select: none;
+`;
+
+const PauseCard = styled.div`
+  max-width: 480px;
+  width: 100%;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  border-radius: ${THEME.radius.xl};
+  padding: 32px 24px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(245, 158, 11, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  animation: ${zoomIn} 0.25s ease-out;
+`;
+
+const PauseIconCircle = styled.div`
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.15);
+  border: 2px solid ${THEME.gold};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: ${THEME.gold};
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+`;
+
+const PauseTitle = styled.h2`
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0;
+  color: ${THEME.foreground};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const PauseSubtitle = styled.div`
+  font-size: 14px;
+  color: ${THEME.mutedForeground};
+  line-height: 1.5;
+
+  strong {
+    color: ${THEME.goldLight};
+    font-weight: 700;
+  }
+`;
+
+const TimerBox = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(9, 9, 11, 0.8);
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.lg};
+  padding: 14px 28px;
+  width: 100%;
+  max-width: 280px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+`;
+
+const TimerLabel = styled.span`
+  font-size: 11px;
+  font-weight: 600;
+  color: ${THEME.mutedForeground};
+  text-transform: uppercase;
+  letter-spacing: 1px;
+`;
+
+const TimerCountdown = styled.div`
+  font-size: 2.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: ${THEME.gold};
+  letter-spacing: 2px;
+  line-height: 1;
+`;
+
+const PauseInfoFooter = styled.p`
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  line-height: 1.4;
+`;
+
+export function PauseOverlay({
+  open,
+  pausedPlayerNickname = '플레이어',
+  pauseExpiresAt,
+  onForfeit,
+}) {
+  const [secondsRemaining, setSecondsRemaining] = React.useState(180);
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const updateTimer = () => {
+      if (!pauseExpiresAt) {
+        setSecondsRemaining(180);
+        return;
+      }
+      const msLeft = pauseExpiresAt - Date.now();
+      const secs = Math.max(0, Math.ceil(msLeft / 1000));
+      setSecondsRemaining(secs);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [open, pauseExpiresAt]);
+
+  if (!open) return null;
+
+  const minutes = Math.floor(secondsRemaining / 60);
+  const seconds = secondsRemaining % 60;
+  const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  return (
+    <PauseOverlayContainer>
+      <PauseCard>
+        <PauseIconCircle>⏳</PauseIconCircle>
+
+        <PauseTitle>게임 일시정지 (Pause)</PauseTitle>
+
+        <PauseSubtitle>
+          <strong>[{pausedPlayerNickname}]</strong> 님의 네트워크 연결이 끊겼습니다.
+          <br />
+          재접속을 위해 잠시 게임을 일시정지합니다.
+        </PauseSubtitle>
+
+        <TimerBox>
+          <TimerLabel>재접속 대기 시간</TimerLabel>
+          <TimerCountdown>{formattedTime}</TimerCountdown>
+        </TimerBox>
+
+        <PauseInfoFooter>
+          해당 플레이어가 3분 이내에 다시 접속하면 게임이 자동으로 이어집니다.
+          <br />
+          (3분 초과 시 해당 플레이어는 자동 기권 처리됩니다)
+        </PauseInfoFooter>
+
+        {onForfeit && (
+          <Button
+            $variant="destructive"
+            $size="sm"
+            onClick={onForfeit}
+            style={{ marginTop: '8px' }}
+          >
+            게임 포기하고 나가기
+          </Button>
+        )}
+      </PauseCard>
+    </PauseOverlayContainer>
+  );
+}
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styled, { css } from 'styled-components';
 import { THEME } from './shared/theme';
 import {
@@ -25,6 +25,12 @@ import { useSocket } from './shared/useSocket';
 import { useWebRTC } from './shared/useWebRTC';
 import { useSTT } from './shared/useSTT';
 import { sfx } from './shared/sfx';
+import {
+  useSessionGuard,
+  saveSession,
+  loadSession,
+  clearSession,
+} from './shared/useSessionGuard';
 import LoveLetterBoard from './games/love-letter/LoveLetterBoard';
 import {
   Coffee,
@@ -226,6 +232,59 @@ export default function App() {
 
   const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${avatarSeed}`;
 
+  // Handle Automatic Session Reconnect
+  const handleReconnectRequest = useCallback(
+    (session) => {
+      if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken) return;
+
+      socket.emit(
+        'room:reconnect',
+        {
+          roomCode: session.roomCode,
+          userId: session.userId,
+          sessionToken: session.sessionToken,
+        },
+        (res) => {
+          if (res?.success) {
+            setCurrentUser({
+              id: session.userId,
+              sessionToken: session.sessionToken,
+              nickname: session.nickname || res.player?.nickname || '플레이어',
+              avatarUrl: session.avatarUrl || res.player?.avatarUrl,
+            });
+            setRoomState(res.gameState);
+            if (res.gameState?.gameState === 'LOBBY') {
+              setScreen('waitingRoom');
+            } else {
+              setScreen('game');
+            }
+            setToastMessage('이전 게임 세션에 자동으로 재접속되었습니다!');
+          } else {
+            clearSession();
+          }
+        }
+      );
+    },
+    [socket]
+  );
+
+  // Screen Wake Lock, beforeunload & visibilitychange guard hook
+  useSessionGuard({
+    socket,
+    roomState,
+    screen,
+    onReconnectRequest: handleReconnectRequest,
+  });
+
+  // Attempt auto-reconnect on initial socket connection if session exists
+  useEffect(() => {
+    if (!socket || !connected) return;
+    const session = loadSession();
+    if (session && session.roomCode && session.userId && session.sessionToken) {
+      handleReconnectRequest(session);
+    }
+  }, [socket, connected, handleReconnectRequest]);
+
   // Listen for room:state broadcast
   useEffect(() => {
     if (!socket) return;
@@ -291,6 +350,18 @@ export default function App() {
       },
       (res) => {
         if (res?.success) {
+          saveSession({
+            roomCode: res.roomCode,
+            userId: res.userId,
+            sessionToken: res.sessionToken,
+            nickname: currentUser.nickname,
+            avatarUrl: currentUser.avatarUrl,
+          });
+          setCurrentUser((prev) => ({
+            ...prev,
+            id: res.userId,
+            sessionToken: res.sessionToken,
+          }));
           setCreateDialogOpen(false);
         } else {
           setToastMessage(res?.error || '방 생성에 실패했습니다.');
@@ -314,7 +385,20 @@ export default function App() {
         avatarUrl: currentUser.avatarUrl,
       },
       (res) => {
-        if (!res?.success) {
+        if (res?.success) {
+          saveSession({
+            roomCode: res.roomCode,
+            userId: res.userId,
+            sessionToken: res.sessionToken,
+            nickname: currentUser.nickname,
+            avatarUrl: currentUser.avatarUrl,
+          });
+          setCurrentUser((prev) => ({
+            ...prev,
+            id: res.userId,
+            sessionToken: res.sessionToken,
+          }));
+        } else {
           setToastMessage(res?.error || '방 입장에 실패했습니다.');
         }
       }
@@ -359,8 +443,9 @@ export default function App() {
   // Leave Room
   const handleLeaveRoom = () => {
     if (socket) {
-      socket.emit('room:leave');
+      socket.emit('room:forfeit', {}, () => {});
     }
+    clearSession();
     setRoomState(null);
     setScreen('lobby');
   };

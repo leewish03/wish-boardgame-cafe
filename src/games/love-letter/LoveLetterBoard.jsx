@@ -12,6 +12,7 @@ import {
   DialogDescription,
   DialogFooter,
   SideDrawer,
+  PauseOverlay,
 } from '../../shared/components';
 import { sfx } from '../../shared/sfx';
 import {
@@ -450,6 +451,7 @@ export default function LoveLetterBoard({
   const [targetModalOpen, setTargetModalOpen] = useState(false);
   const [priestResultModalOpen, setPriestResultModalOpen] = useState(false);
   const [priestData, setPriestData] = useState(null);
+  const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
 
   const [selectedTargetId, setSelectedTargetId] = useState(null);
   const [selectedGuessValue, setSelectedGuessValue] = useState(2);
@@ -637,7 +639,12 @@ export default function LoveLetterBoard({
             <span>기록</span>
           </Button>
 
-          <Button $variant="destructive" $size="sm" onClick={onLeave}>
+          <Button
+            $variant="destructive"
+            $size="sm"
+            onClick={() => setForfeitModalOpen(true)}
+            title="게임 포기 및 나가기"
+          >
             <LogOut size={15} />
           </Button>
         </NavControls>
@@ -1035,6 +1042,45 @@ export default function LoveLetterBoard({
           </div>
         </div>
       </SideDrawer>
+
+      {/* 9. 3-Minute Pause Overlay */}
+      <PauseOverlay
+        open={!!roomState?.isPaused}
+        pausedPlayerNickname={
+          roomState?.players?.find((p) => p.id === roomState?.pausedPlayerId)?.nickname || '플레이어'
+        }
+        pauseExpiresAt={roomState?.pauseExpiresAt}
+        onForfeit={() => setForfeitModalOpen(true)}
+      />
+
+      {/* 10. Forfeit Confirmation Dialog */}
+      <Dialog open={forfeitModalOpen} onClose={() => setForfeitModalOpen(false)}>
+        <DialogHeader>
+          <DialogTitle>🚪 게임 포기 및 퇴장</DialogTitle>
+          <DialogDescription>
+            정말 게임을 포기하고 퇴장하시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+
+        <div style={{ margin: '12px 0', fontSize: '13px', color: THEME.mutedForeground, lineHeight: 1.5 }}>
+          진행 중인 게임에서 퇴장하시면 즉시 <strong style={{ color: THEME.rose }}>기권(패배)</strong> 처리되며, 3분 대기 없이 방에서 완전히 나갑니다.
+        </div>
+
+        <DialogFooter>
+          <Button $variant="outline" onClick={() => setForfeitModalOpen(false)}>
+            계속 플레이
+          </Button>
+          <Button
+            $variant="destructive"
+            onClick={() => {
+              setForfeitModalOpen(false);
+              onLeave && onLeave();
+            }}
+          >
+            게임 포기 및 퇴장
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </BoardContainer>
   );
 }
