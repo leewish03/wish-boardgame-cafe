@@ -5,12 +5,14 @@ import cors from 'cors';
 import { OAuth2Client } from 'google-auth-library';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, 'dist');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,8 +26,10 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Serve static React build files in production
-app.use(express.static(path.join(__dirname, 'dist')));
+// Serve static React build files in production if dist exists
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
 
 const PORT = process.env.PORT || 3001;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -911,7 +915,12 @@ io.on('connection', (socket) => {
 
 // Fallback to index.html for SPA client routing
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(503).send('서버 빌드 중입니다. 잠시 후 새로고침 해주세요.');
+  }
 });
 
 server.listen(PORT, () => {
