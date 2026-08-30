@@ -47,6 +47,9 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
               disabledReason={isCountessLocked ? '백작부인 필수 사용' : undefined}
               enableDrag={isMyTurn && !isCountessLocked}
               onClick={() => isMyTurn && !isCountessLocked && onSelectCard(card.id)}
+              onDragStart={() => {
+                if (onDragStateChange) onDragStateChange(true);
+              }}
               onDragEnd={(_, info) => {
                 if (onDragStateChange) onDragStateChange(false);
                 if (info.offset.y < -50 && isMyTurn && !isCountessLocked) {

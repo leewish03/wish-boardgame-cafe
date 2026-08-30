@@ -6,6 +6,9 @@ interface RoundResultModalProps {
   isOpen: boolean;
   roundNumber: number;
   winnerName: string;
+  winnerReason?: string;
+  winnerTokens?: number;
+  targetTokens?: number;
   isHost: boolean;
   onNextRound: () => void;
 }
@@ -14,9 +17,25 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({
   isOpen,
   roundNumber,
   winnerName,
+  winnerReason = '마지막 생존자 승리!',
+  winnerTokens = 1,
+  targetTokens = 4,
   isHost,
   onNextRound,
 }) => {
+  // Wax seal stamps generator
+  const renderTokens = () => {
+    const tokens = [];
+    for (let i = 0; i < targetTokens; i++) {
+      tokens.push(
+        <HeartStamp key={i} $active={i < winnerTokens}>
+          {i < winnerTokens ? '♥' : '○'}
+        </HeartStamp>
+      );
+    }
+    return tokens;
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -36,12 +55,21 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({
             <WaxSealStamp>💌</WaxSealStamp>
             <RoundBadge>ROUND {roundNumber} WINNER</RoundBadge>
             <WinnerName>👑 {winnerName}</WinnerName>
-            <TokenAwarded>호감도 토큰(♥) 1개 획득!</TokenAwarded>
+            <WinnerReasonText>{winnerReason}</WinnerReasonText>
 
-            {isHost && (
+            <TokenStampContainer>
+              <TokenLabel>호감도 획득 현황 ({winnerTokens}/{targetTokens}):</TokenLabel>
+              <StampRow>{renderTokens()}</StampRow>
+            </TokenStampContainer>
+
+            {isHost ? (
               <NextRoundBtn onClick={onNextRound}>
                 다음 라운드 시작하기 ➔
               </NextRoundBtn>
+            ) : (
+              <WaitingNotice>
+                방장이 다음 라운드를 시작하거나 자동 진행 대기 중입니다...
+              </WaitingNotice>
             )}
           </ResultCard>
         </Overlay>
@@ -68,14 +96,14 @@ const ResultCard = styled.div`
   background: #18181b;
   border: 2px solid #d4af37;
   border-radius: 16px;
-  padding: 28px 20px;
+  padding: 24px 20px;
   text-align: center;
   box-shadow: 0 0 40px rgba(212, 175, 55, 0.4);
 `;
 
 const WaxSealStamp = styled.div`
-  font-size: 48px;
-  margin-bottom: 8px;
+  font-size: 44px;
+  margin-bottom: 6px;
   filter: drop-shadow(0 4px 12px rgba(225, 29, 72, 0.5));
 `;
 
@@ -88,27 +116,62 @@ const RoundBadge = styled.span`
 `;
 
 const WinnerName = styled.h2`
-  margin: 6px 0;
+  margin: 6px 0 2px;
   font-size: 20px;
   font-weight: 800;
   color: #fef08a;
 `;
 
-const TokenAwarded = styled.p`
-  margin: 0 0 20px;
-  font-size: 13px;
-  color: #f43f5e;
+const WinnerReasonText = styled.p`
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #a1a1aa;
+`;
+
+const TokenStampContainer = styled.div`
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 18px;
+`;
+
+const TokenLabel = styled.div`
+  font-size: 11px;
+  color: #d4af37;
   font-weight: 600;
+  margin-bottom: 6px;
+`;
+
+const StampRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+`;
+
+const HeartStamp = styled.span<{ $active: boolean }>`
+  font-size: 22px;
+  color: ${props => (props.$active ? '#f43f5e' : '#52525b')};
+  filter: ${props => (props.$active ? 'drop-shadow(0 0 8px #f43f5e)' : 'none')};
+  transition: all 0.3s ease;
 `;
 
 const NextRoundBtn = styled.button`
   width: 100%;
   padding: 12px;
-  background: #d4af37;
+  background: linear-gradient(135deg, #d4af37 0%, #aa820a 100%);
   color: #18181b;
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3);
+`;
+
+const WaitingNotice = styled.div`
+  font-size: 12px;
+  color: #d4af37;
+  padding: 10px;
 `;

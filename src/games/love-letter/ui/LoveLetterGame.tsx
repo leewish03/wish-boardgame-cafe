@@ -204,6 +204,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         selectedCardId={selectedCardId}
         onSelectCard={handleSelectCard}
         onPlayCardDrag={handleSelectCard}
+        onDragStateChange={setIsDraggingCard}
       />
 
       {/* Modals & Dialogs */}
@@ -233,6 +234,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         isOpen={gameState.matchState === 'ROUND_END'}
         roundNumber={gameState.roundNumber}
         winnerName={roundWinner?.nickname || '승자'}
+        winnerTokens={roundWinner?.tokens || 1}
+        targetTokens={gameState.config?.targetTokens || 4}
         isHost={me?.isHost || false}
         onNextRound={() => onStartNextRound && onStartNextRound()}
       />
@@ -240,6 +243,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       <MatchResultModal
         isOpen={gameState.matchState === 'GAME_OVER'}
         championName={matchWinner?.nickname || '우승자'}
+        targetTokens={gameState.config?.targetTokens || 4}
+        onPlayAgain={onStartNextRound}
         onReturnToLobby={onLeaveRoom}
       />
 

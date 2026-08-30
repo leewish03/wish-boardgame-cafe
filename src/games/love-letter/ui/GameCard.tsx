@@ -14,6 +14,7 @@ interface GameCardProps {
   isDragging?: boolean;
   disabledReason?: string;
   onClick?: () => void;
+  onDragStart?: () => void;
   onDragEnd?: (e: any, info: any) => void;
   enableDrag?: boolean;
   compact?: boolean;
@@ -26,6 +27,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   isDisabled = false,
   disabledReason,
   onClick,
+  onDragStart,
   onDragEnd,
   enableDrag = false,
   compact = false,
@@ -45,10 +47,17 @@ export const GameCard: React.FC<GameCardProps> = ({
       $compact={compact}
       onClick={!isDisabled ? onClick : undefined}
       drag={enableDrag && !isDisabled ? 'y' : false}
-      dragConstraints={{ top: -140, bottom: 0 }}
-      dragElastic={0.15}
+      dragConstraints={{ top: -160, bottom: 0 }}
+      dragElastic={0.2}
       dragSnapToOrigin
+      onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      whileDrag={{
+        scale: 1.03,
+        y: -8,
+        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4), 0 0 24px rgba(212, 175, 55, 0.65)',
+        zIndex: 100,
+      }}
       whileHover={!isDisabled ? { y: -6, scale: 1.02 } : undefined}
       whileTap={!isDisabled ? { scale: 0.98 } : undefined}
       layout

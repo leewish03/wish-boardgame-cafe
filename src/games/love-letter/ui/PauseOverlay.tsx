@@ -29,8 +29,12 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
             exit={{ scale: 0.8 }}
           >
             <ClockIcon>⏳</ClockIcon>
-            <PauseTitle>플레이어 연결 끊김 일시정지</PauseTitle>
-            <PauseDesc>[{pausedPlayerName}] 님의 재접속을 기다리는 중입니다 (최대 3분 유예)</PauseDesc>
+            <PauseTitle>연결 복구 진행 중</PauseTitle>
+            <PauseDesc>
+              <strong>{pausedPlayerName}</strong> 님의 연결을 복구하고 있습니다…
+              <br />
+              <SubNotice>(모바일 백그라운드 유예 및 재접속 대기 중)</SubNotice>
+            </PauseDesc>
             <ForfeitBtn onClick={onForfeit}>기권하고 나가기</ForfeitBtn>
           </PauseBox>
         </Overlay>
@@ -42,7 +46,7 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.82);
   backdrop-filter: blur(8px);
   z-index: 1800;
   display: flex;
@@ -55,30 +59,38 @@ const PauseBox = styled.div`
   width: 100%;
   max-width: 360px;
   background: #18181b;
-  border: 1.5px solid #f59e0b;
+  border: 1.5px solid #d4af37;
   border-radius: 16px;
   padding: 24px;
   text-align: center;
-  box-shadow: 0 0 30px rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 35px rgba(212, 175, 55, 0.4);
 `;
 
 const ClockIcon = styled.div`
-  font-size: 40px;
+  font-size: 38px;
   margin-bottom: 8px;
 `;
 
 const PauseTitle = styled.h3`
   margin: 0 0 6px;
   font-size: 16px;
-  color: #f59e0b;
-  font-weight: 700;
+  color: #fef08a;
+  font-weight: 800;
 `;
 
 const PauseDesc = styled.p`
   margin: 0 0 20px;
-  font-size: 12px;
+  font-size: 13px;
+  color: #e4e4e7;
+  line-height: 1.5;
+  strong {
+    color: #d4af37;
+  }
+`;
+
+const SubNotice = styled.span`
+  font-size: 11px;
   color: #a1a1aa;
-  line-height: 1.4;
 `;
 
 const ForfeitBtn = styled.button`
@@ -90,4 +102,5 @@ const ForfeitBtn = styled.button`
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 `;
