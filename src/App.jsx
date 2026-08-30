@@ -402,7 +402,20 @@ export default function App() {
             }
             setToastMessage('이전 게임 세션에 자동으로 재접속되었습니다!');
           } else {
-            clearSession();
+            // Only clear room info, preserve nickname & avatar
+            saveSession({
+              nickname: session.nickname,
+              avatarUrl: session.avatarUrl,
+            });
+            if (session.nickname) {
+              setNickname(session.nickname);
+              setCurrentUser({
+                id: session.userId || `user_${Date.now()}`,
+                nickname: session.nickname,
+                avatarUrl: session.avatarUrl,
+              });
+              setScreen('lobby');
+            }
           }
         }
       );

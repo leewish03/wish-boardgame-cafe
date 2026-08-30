@@ -64,6 +64,16 @@ export function useSessionGuard({
   onReconnectRequest,
 }) {
   const wakeLockRef = useRef(null);
+  const roomStateRef = useRef(roomState);
+  const onReconnectRequestRef = useRef(onReconnectRequest);
+
+  useEffect(() => {
+    roomStateRef.current = roomState;
+  }, [roomState]);
+
+  useEffect(() => {
+    onReconnectRequestRef.current = onReconnectRequest;
+  }, [onReconnectRequest]);
 
   // 1. Screen Wake Lock API
   useEffect(() => {
@@ -133,9 +143,9 @@ export function useSessionGuard({
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       const isRoomActive =
-        roomState &&
+        roomStateRef.current &&
         (screen === 'waitingRoom' || screen === 'game') &&
-        roomState.gameState !== 'GAME_OVER';
+        roomStateRef.current.gameState !== 'GAME_OVER';
 
       if (isRoomActive) {
         e.preventDefault();
@@ -150,7 +160,7 @@ export function useSessionGuard({
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [roomState, screen]);
+  }, [screen]);
 
   // 3. visibilitychange, pageshow, focus, online (Auto Reconnect & Sync)
   useEffect(() => {
@@ -164,8 +174,8 @@ export function useSessionGuard({
           }
 
           // Trigger reconnect callback
-          if (typeof onReconnectRequest === 'function') {
-            onReconnectRequest(session);
+          if (typeof onReconnectRequestRef.current === 'function') {
+            onReconnectRequestRef.current(session);
           }
         }
       }
@@ -182,7 +192,7 @@ export function useSessionGuard({
       window.removeEventListener('focus', handleResume);
       window.removeEventListener('online', handleResume);
     };
-  }, [socket, onReconnectRequest]);
+  }, [socket]);
 
   // 4. 1-Second Heartbeat & Session State Verification Polling
   useEffect(() => {
@@ -194,8 +204,8 @@ export function useSessionGuard({
 
       if (!socket.connected) {
         socket.connect();
-        if (typeof onReconnectRequest === 'function') {
-          onReconnectRequest(session);
+        if (typeof onReconnectRequestRef.current === 'function') {
+          onReconnectRequestRef.current(session);
         }
         return;
       }
@@ -209,10 +219,11 @@ export function useSessionGuard({
         },
         (res) => {
           if (res?.success) {
-            // Desync check: if client thinks room is paused, but server is unpaused (or vice-versa)
-            if (roomState && roomState.isPaused && !res.isPaused) {
-              if (typeof onReconnectRequest === 'function') {
-                onReconnectRequest(session);
+            // Desync check: if client thinks room is paused, but server is unpaused
+            const currentRoomState = roomStateRef.current;
+            if (currentRoomState && currentRoomState.isPaused && !res.isPaused) {
+              if (typeof onReconnectRequestRef.current === 'function') {
+                onReconnectRequestRef.current(session);
               }
             }
           }
@@ -223,5 +234,5 @@ export function useSessionGuard({
     return () => {
       clearInterval(intervalId);
     };
-  }, [socket, screen, roomState, onReconnectRequest]);
+  }, [socket, screen]);
 }

@@ -292,7 +292,7 @@ export const CardFooter = styled.div`
 const DialogOverlayWrapper = styled.div`
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 2000;
   background-color: rgba(9, 13, 22, 0.75);
   backdrop-filter: blur(10px);
   animation: ${fadeIn} 0.2s ease-out;
@@ -803,12 +803,12 @@ export function PauseOverlay({
 
         {onForfeit && (
           <Button
-            $variant="outline"
+            $variant="destructive"
             $size="sm"
             onClick={onForfeit}
-            style={{ marginTop: '8px', borderColor: THEME.destructive, color: THEME.destructive }}
+            style={{ marginTop: '10px', height: '36px', fontSize: '13px', fontWeight: 800, padding: '0 18px' }}
           >
-            기다리지 않고 나가기 (기권)
+            🚪 기다리지 않고 나가기 (기권)
           </Button>
         )}
       </PauseCard>

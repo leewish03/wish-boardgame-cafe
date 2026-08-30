@@ -357,136 +357,172 @@ export function initRoomManager(io) {
 
     // 3.1 Session Heartbeat & State Verification
     socket.on('session:heartbeat', (payload, callback) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) {
-        if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
-        return;
-      }
-      const { roomCode, userId } = mapping;
-      const room = rooms[roomCode];
-      if (!room) {
-        if (typeof callback === 'function') callback({ success: false, error: '방 없음' });
-        return;
-      }
+      try {
+        let mapping = socketToUser[socket.id];
+        const { roomCode, userId, sessionToken } = payload || {};
+        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
+        const uId = mapping?.userId || userId;
+        const room = rooms[code];
 
-      const player = room.players.find((p) => p.id === userId);
-      if (player && player.isDisconnected) {
-        player.isDisconnected = false;
-        player.disconnectedAt = null;
-      }
+        if (!room) {
+          if (typeof callback === 'function') callback({ success: false, error: '방 없음' });
+          return;
+        }
 
-      if (typeof callback === 'function') {
-        callback({
-          success: true,
-          roomCode,
-          userId,
-          isPaused: !!room.isPaused,
-          pausedPlayerId: room.pausedPlayerId || null,
-          pauseExpiresAt: room.pauseExpiresAt || null,
-          gameState: room.gameState,
-          turnPlayerId: room.turnPlayerId,
-          serverTime: Date.now(),
-        });
+        const player = room.players.find((p) => p.id === uId);
+        if (!player) {
+          if (typeof callback === 'function') callback({ success: false, error: '플레이어 없음' });
+          return;
+        }
+
+        if (sessionToken && player.sessionToken && player.sessionToken !== sessionToken) {
+          if (typeof callback === 'function') callback({ success: false, error: '인증 실패' });
+          return;
+        }
+
+        // Auto-heal socket mapping if missing or changed
+        if (!mapping || player.socketId !== socket.id) {
+          if (player.socketId && player.socketId !== socket.id) {
+            delete socketToUser[player.socketId];
+          }
+          player.socketId = socket.id;
+          socketToUser[socket.id] = { roomCode: code, userId: uId };
+          socket.join(code);
+        }
+
+        if (player.isDisconnected) {
+          player.isDisconnected = false;
+          player.disconnectedAt = null;
+        }
+
+        if (typeof callback === 'function') {
+          callback({
+            success: true,
+            roomCode: code,
+            userId: uId,
+            isPaused: !!room.isPaused,
+            pausedPlayerId: room.pausedPlayerId || null,
+            pauseExpiresAt: room.pauseExpiresAt || null,
+            gameState: room.gameState,
+            turnPlayerId: room.turnPlayerId,
+            serverTime: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.error('session:heartbeat error:', err);
+        if (typeof callback === 'function') callback({ success: false, error: '하트비트 오류' });
       }
     });
 
     // 4. Ready Toggle
     socket.on('room:ready', (payload, callback) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) {
-        if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
-        return;
-      }
-      const { roomCode, userId } = mapping;
-      const room = rooms[roomCode];
-      if (!room || room.gameState !== 'LOBBY') {
-        if (typeof callback === 'function') callback({ success: false, error: '로비 상태가 아님' });
-        return;
-      }
+      try {
+        const mapping = socketToUser[socket.id];
+        if (!mapping) {
+          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
+          return;
+        }
+        const { roomCode, userId } = mapping;
+        const room = rooms[roomCode];
+        if (!room || room.gameState !== 'LOBBY') {
+          if (typeof callback === 'function') callback({ success: false, error: '로비 상태가 아님' });
+          return;
+        }
 
-      const player = room.players.find((p) => p.id === userId);
-      if (player && player.id !== room.hostId) {
-        player.isReady = payload?.isReady !== undefined ? !!payload.isReady : !player.isReady;
-        broadcastRoomState(io, roomCode);
-        if (typeof callback === 'function') callback({ success: true, isReady: player.isReady });
-      } else {
-        if (typeof callback === 'function') callback({ success: true, isReady: true });
+        const player = room.players.find((p) => p.id === userId);
+        if (player && player.id !== room.hostId) {
+          player.isReady = payload?.isReady !== undefined ? !!payload.isReady : !player.isReady;
+          broadcastRoomState(io, roomCode);
+          if (typeof callback === 'function') callback({ success: true, isReady: player.isReady });
+        } else {
+          if (typeof callback === 'function') callback({ success: true, isReady: true });
+        }
+      } catch (err) {
+        console.error('room:ready error:', err);
+        if (typeof callback === 'function') callback({ success: false, error: '준비 상태 변경 오류' });
       }
     });
 
     // 5. Chat Message
     socket.on('chat:message', (payload) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) return;
-      const { roomCode, userId } = mapping;
-      const room = rooms[roomCode];
-      if (!room) return;
+      try {
+        const mapping = socketToUser[socket.id];
+        if (!mapping) return;
+        const { roomCode, userId } = mapping;
+        const room = rooms[roomCode];
+        if (!room) return;
 
-      const sender = room.players.find((p) => p.id === userId);
-      if (!sender || !payload?.text?.trim()) return;
+        const sender = room.players.find((p) => p.id === userId);
+        if (!sender || !payload?.text?.trim()) return;
 
-      const msg = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-        userId: sender.id,
-        nickname: sender.nickname,
-        avatarUrl: sender.avatarUrl,
-        text: payload.text.trim(),
-        timestamp: Date.now(),
-      };
+        const msg = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          userId: sender.id,
+          nickname: sender.nickname,
+          avatarUrl: sender.avatarUrl,
+          text: payload.text.trim(),
+          timestamp: Date.now(),
+        };
 
-      if (!room.chatMessages) room.chatMessages = [];
-      room.chatMessages.push(msg);
+        if (!room.chatMessages) room.chatMessages = [];
+        room.chatMessages.push(msg);
 
-      io.to(roomCode).emit('chat:message', msg);
+        io.to(roomCode).emit('chat:message', msg);
+      } catch (err) {
+        console.error('chat:message error:', err);
+      }
     });
 
     // 6. Explicit Forfeit / Leave Room
     const handleForfeit = (payload, callback) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) {
+      try {
+        let mapping = socketToUser[socket.id];
+        const { roomCode, userId } = payload || {};
+        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
+        const uId = mapping?.userId || userId;
+        delete socketToUser[socket.id];
+
+        const room = rooms[code];
+        if (!room) {
+          if (typeof callback === 'function') callback({ success: true });
+          return;
+        }
+
+        socket.leave(code);
+        socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
+
+        if (room.pauseTimeout && room.pausedPlayerId === uId) {
+          clearTimeout(room.pauseTimeout);
+          room.pauseTimeout = null;
+          room.isPaused = false;
+          room.pausedPlayerId = null;
+          room.pauseExpiresAt = null;
+        }
+
+        if (room.gameState === 'PLAYING') {
+          handleForfeitedPlayer(io, room, uId, true);
+        } else {
+          room.players = room.players.filter((p) => p.id !== uId);
+        }
+
+        if (room.players.length === 0) {
+          if (room.turnTimer) clearTimeout(room.turnTimer);
+          delete rooms[code];
+          if (typeof callback === 'function') callback({ success: true });
+          return;
+        }
+
+        if (room.hostId === uId && room.players.length > 0) {
+          room.hostId = room.players[0].id;
+          room.players[0].isReady = true;
+        }
+
+        broadcastRoomState(io, code);
         if (typeof callback === 'function') callback({ success: true });
-        return;
-      }
-      const { roomCode, userId } = mapping;
-      delete socketToUser[socket.id];
-
-      const room = rooms[roomCode];
-      if (!room) {
+      } catch (err) {
+        console.error('room:forfeit error:', err);
         if (typeof callback === 'function') callback({ success: true });
-        return;
       }
-
-      socket.leave(roomCode);
-      socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
-
-      if (room.pauseTimeout && room.pausedPlayerId === userId) {
-        clearTimeout(room.pauseTimeout);
-        room.pauseTimeout = null;
-        room.isPaused = false;
-        room.pausedPlayerId = null;
-        room.pauseExpiresAt = null;
-      }
-
-      if (room.gameState === 'PLAYING') {
-        handleForfeitedPlayer(io, room, userId, true);
-      } else {
-        room.players = room.players.filter((p) => p.id !== userId);
-      }
-
-      if (room.players.length === 0) {
-        if (room.turnTimer) clearTimeout(room.turnTimer);
-        delete rooms[roomCode];
-        if (typeof callback === 'function') callback({ success: true });
-        return;
-      }
-
-      if (room.hostId === userId) {
-        room.hostId = room.players[0].id;
-        room.players[0].isReady = true;
-      }
-
-      broadcastRoomState(io, roomCode);
-      if (typeof callback === 'function') callback({ success: true });
     };
 
     socket.on('room:forfeit', handleForfeit);

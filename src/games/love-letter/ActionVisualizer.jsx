@@ -223,14 +223,14 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
     return () => clearTimeout(timer);
   }, [lastAction, onDismiss]);
 
-  if (!visible || !lastAction) return null;
+  if (!visible || !lastAction || !lastAction.playedCard) return null;
 
   const {
     actorNickname,
     actorAvatar,
     targetNickname,
     targetAvatar,
-    playedCard,
+    playedCard = {},
     guessedCard,
     resultType,
     resultDescription,

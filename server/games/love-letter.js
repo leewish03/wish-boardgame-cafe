@@ -134,7 +134,8 @@ export function startTurn(io, room) {
 }
 
 export function passTurnToNextPlayer(io, room) {
-  const alivePlayers = room.players.filter((p) => !p.isEliminated);
+  if (!room) return;
+  const alivePlayers = (room.players || []).filter((p) => !p.isEliminated);
 
   // Check 1: Only 1 player left alive
   if (alivePlayers.length <= 1) {
@@ -143,13 +144,13 @@ export function passTurnToNextPlayer(io, room) {
   }
 
   // Check 2: Deck is empty
-  if (room.deck.length === 0) {
+  if (!room.deck || room.deck.length === 0) {
     // Compare highest remaining card value
     let highestVal = -1;
     let candidates = [];
 
     alivePlayers.forEach((p) => {
-      const cardVal = p.hand[0]?.value || 0;
+      const cardVal = p.hand?.[0]?.value || 0;
       if (cardVal > highestVal) {
         highestVal = cardVal;
         candidates = [p];
@@ -159,13 +160,13 @@ export function passTurnToNextPlayer(io, room) {
     });
 
     if (candidates.length === 1) {
-      endRound(io, room, candidates[0], `덱 소진! 최고 카드(${CARD_DEFS[highestVal]?.name}) 보유 승리!`);
+      endRound(io, room, candidates[0], `덱 소진! 최고 카드(${CARD_DEFS[highestVal]?.name || highestVal}) 보유 승리!`);
     } else {
       // Tie-break: sum of discard piles
       let bestSum = -1;
-      let tieWinner = candidates[0];
+      let tieWinner = candidates[0] || alivePlayers[0];
       candidates.forEach((c) => {
-        const sum = c.discardPile.reduce((acc, card) => acc + card.value, 0);
+        const sum = (c.discardPile || []).reduce((acc, card) => acc + (card?.value || 0), 0);
         if (sum > bestSum) {
           bestSum = sum;
           tieWinner = c;
@@ -178,14 +179,21 @@ export function passTurnToNextPlayer(io, room) {
 
   // Move to next alive player
   const currentIndex = room.players.findIndex((p) => p.id === room.turnPlayerId);
-  let nextIndex = (currentIndex + 1) % room.players.length;
+  let nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % room.players.length;
 
-  while (room.players[nextIndex].isEliminated) {
+  let loopCount = 0;
+  while (room.players[nextIndex]?.isEliminated && loopCount < room.players.length * 2) {
     nextIndex = (nextIndex + 1) % room.players.length;
+    loopCount++;
   }
 
-  room.turnPlayerId = room.players[nextIndex].id;
-  startTurn(io, room);
+  if (room.players[nextIndex] && !room.players[nextIndex].isEliminated) {
+    room.turnPlayerId = room.players[nextIndex].id;
+    startTurn(io, room);
+  } else if (alivePlayers.length > 0) {
+    room.turnPlayerId = alivePlayers[0].id;
+    startTurn(io, room);
+  }
 }
 
 export function endRound(io, room, winner, reason) {
@@ -307,20 +315,20 @@ export function executePlayCard(io, room, userId, payload) {
     } else {
       const guess = Number(guessValue);
       if (guess >= 2 && guess <= 8) {
-        const targetCard = target.hand[0];
+        const targetCard = target.hand?.[0];
         if (targetCard && targetCard.value === guess) {
           target.isEliminated = true;
-          target.discardPile.push(...target.hand);
+          target.discardPile.push(...(target.hand || []));
           target.hand = [];
           resultType = 'GUARD_SUCCESS';
           eliminatedPlayerId = target.id;
           eliminatedPlayerNickname = target.nickname;
           revealedCard = targetCard;
-          resultDescription = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFS[guess]?.name}]였습니다! 탈락!`;
+          resultDescription = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFS[guess]?.name || guess}]였습니다! 탈락!`;
           logAction(room, resultDescription);
         } else {
           resultType = 'GUARD_FAIL';
-          resultDescription = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFS[guess]?.name}]를 가지고 있지 않습니다.`;
+          resultDescription = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFS[guess]?.name || guess}]를 가지고 있지 않습니다.`;
           logAction(room, resultDescription);
         }
       }
@@ -334,7 +342,7 @@ export function executePlayCard(io, room, userId, payload) {
       resultDescription = '지목 가능한 상대가 없어 사제 효과가 무효화되었습니다.';
       logAction(room, resultDescription);
     } else {
-      const targetCard = target.hand[0];
+      const targetCard = target.hand?.[0];
       resultType = 'PRIEST_PEEK';
       resultDescription = `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 비밀리에 확인했습니다.`;
       if (targetCard && player.socketId) {
@@ -355,29 +363,29 @@ export function executePlayCard(io, room, userId, payload) {
       resultDescription = '지목 가능한 상대가 없어 남작 효과가 무효화되었습니다.';
       logAction(room, resultDescription);
     } else {
-      const myCard = player.hand[0];
-      const targetCard = target.hand[0];
+      const myCard = player.hand?.[0];
+      const targetCard = target.hand?.[0];
 
       if (myCard && targetCard) {
         if (myCard.value > targetCard.value) {
           target.isEliminated = true;
-          target.discardPile.push(...target.hand);
+          target.discardPile.push(...(target.hand || []));
           target.hand = [];
           resultType = 'BARON_WIN';
           eliminatedPlayerId = target.id;
           eliminatedPlayerNickname = target.nickname;
           revealedCard = targetCard;
-          resultDescription = `⚔️ 남작 결투! [${player.nickname}] 승리! [${target.nickname}] (${targetCard.name}) 탈락!`;
+          resultDescription = `⚔️ 남작 결투! [${player.nickname}] 승리! [${target.nickname}] (${targetCard?.name || ''}) 탈락!`;
           logAction(room, resultDescription);
         } else if (myCard.value < targetCard.value) {
           player.isEliminated = true;
-          player.discardPile.push(...player.hand);
+          player.discardPile.push(...(player.hand || []));
           player.hand = [];
           resultType = 'BARON_LOSE';
           eliminatedPlayerId = player.id;
           eliminatedPlayerNickname = player.nickname;
           revealedCard = myCard;
-          resultDescription = `⚔️ 남작 결투! [${target.nickname}] 승리! [${player.nickname}] (${myCard.name}) 탈락!`;
+          resultDescription = `⚔️ 남작 결투! [${target.nickname}] 승리! [${player.nickname}] (${myCard?.name || ''}) 탈락!`;
           logAction(room, resultDescription);
         } else {
           resultType = 'BARON_TIE';
@@ -401,8 +409,9 @@ export function executePlayCard(io, room, userId, payload) {
     const princeTarget = target || player;
 
     if (princeTarget && !princeTarget.isEliminated) {
-      const discarded = princeTarget.hand.pop();
+      const discarded = princeTarget.hand ? princeTarget.hand.pop() : null;
       if (discarded) {
+        if (!princeTarget.discardPile) princeTarget.discardPile = [];
         princeTarget.discardPile.push(discarded);
         revealedCard = discarded;
 
@@ -416,12 +425,13 @@ export function executePlayCard(io, room, userId, payload) {
           logAction(room, resultDescription);
         } else {
           resultType = 'PRINCE_DISCARD';
-          resultDescription = `👑 왕자의 명령! [${princeTarget.nickname}] 님이 [${discarded.name}] 카드를 버렸습니다.`;
+          resultDescription = `👑 왕자의 명령! [${princeTarget.nickname}] 님이 [${discarded?.name || ''}] 카드를 버렸습니다.`;
           logAction(room, resultDescription);
 
           // Draw new card
-          let newCard = room.deck.length > 0 ? room.deck.pop() : room.setAsideSecretCard;
+          let newCard = (room.deck && room.deck.length > 0) ? room.deck.pop() : room.setAsideSecretCard;
           if (newCard) {
+            if (!princeTarget.hand) princeTarget.hand = [];
             princeTarget.hand.push(newCard);
           }
         }
@@ -436,8 +446,8 @@ export function executePlayCard(io, room, userId, payload) {
       resultDescription = '지목 가능한 상대가 없어 국왕 효과가 무효화되었습니다.';
       logAction(room, resultDescription);
     } else {
-      const myCard = player.hand[0];
-      const targetCard = target.hand[0];
+      const myCard = player.hand?.[0];
+      const targetCard = target.hand?.[0];
       if (myCard && targetCard) {
         player.hand = [targetCard];
         target.hand = [myCard];
@@ -677,15 +687,38 @@ export function registerLoveLetter(io) {
 
     // 2. Play Card
     socket.on('game:play-card', (payload, callback) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) return;
-      const { roomCode, userId } = mapping;
-      const room = rooms[roomCode];
-      if (!room) return;
+      try {
+        let mapping = socketToUser[socket.id];
+        const { roomCode, userId } = payload || {};
+        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
+        const uId = mapping?.userId || userId;
+        const room = rooms[code];
 
-      const result = executePlayCard(io, room, userId, payload);
-      if (typeof callback === 'function') {
-        callback(result);
+        if (!room) {
+          if (typeof callback === 'function') callback({ success: false, error: '방이 존재하지 않습니다.' });
+          return;
+        }
+
+        // Auto-heal socket mapping if missing or changed
+        if (!mapping && uId) {
+          const player = room.players.find((p) => p.id === uId);
+          if (player) {
+            player.socketId = socket.id;
+            socketToUser[socket.id] = { roomCode: code, userId: uId };
+            socket.join(code);
+          }
+        }
+
+        const effectiveUserId = socketToUser[socket.id]?.userId || uId;
+        const result = executePlayCard(io, room, effectiveUserId, payload);
+        if (typeof callback === 'function') {
+          callback(result);
+        }
+      } catch (err) {
+        console.error('game:play-card unhandled error:', err);
+        if (typeof callback === 'function') {
+          callback({ success: false, error: '카드 사용 처리 중 오류가 발생했습니다.' });
+        }
       }
     });
   });

@@ -1977,7 +1977,9 @@ export default function LoveLetterBoard({
           roomState?.players?.find((p) => p.id === roomState?.pausedPlayerId)?.nickname || '플레이어'
         }
         pauseExpiresAt={roomState?.pauseExpiresAt}
-        onForfeit={() => setForfeitModalOpen(true)}
+        onForfeit={() => {
+          onLeave && onLeave();
+        }}
       />
 
       {/* ========================================================= */}
