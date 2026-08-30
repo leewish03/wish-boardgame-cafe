@@ -113,18 +113,23 @@ const BrandLogo = styled.div`
   text-transform: uppercase;
 
   span.logo-seal {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     background: ${THEME.primary};
     border: 1.5px solid ${THEME.gold};
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
-    color: ${THEME.goldLight};
-    font-weight: 800;
+    overflow: hidden;
     box-shadow: 0 2px 6px rgba(9, 13, 22, 0.2);
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      image-rendering: pixelated;
+    }
   }
 
   span.salon-text {
@@ -134,29 +139,34 @@ const BrandLogo = styled.div`
 `;
 
 const MonogramSeal = styled.div`
-  width: 58px;
-  height: 58px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   background: ${THEME.gradients.obsidianButton};
-  border: 1.5px solid ${THEME.gold};
+  border: 2px solid ${THEME.gold};
   box-shadow: 0 6px 18px rgba(9, 13, 22, 0.25), 0 0 14px rgba(197, 160, 89, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: ${THEME.font.serif};
-  font-size: 26px;
-  font-weight: 800;
-  color: ${THEME.goldLight};
   margin-bottom: 14px;
-  letter-spacing: 0;
   position: relative;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+  }
 
   &::before {
     content: '';
     position: absolute;
-    inset: 3px;
-    border: 1px dashed rgba(197, 160, 89, 0.45);
+    inset: 2px;
+    border: 1px dashed rgba(197, 160, 89, 0.55);
     border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
   }
 `;
 
@@ -637,7 +647,9 @@ export default function App() {
       {screen !== 'game' && (
         <AppHeader>
           <BrandLogo>
-            <span className="logo-seal">W</span>
+            <span className="logo-seal">
+              <img src="/assets/owner_logo.jpg" alt="Wish" />
+            </span>
             <span>
               WISH <span className="salon-text">SALON</span>
             </span>
@@ -665,7 +677,7 @@ export default function App() {
           <Card style={{ maxWidth: '440px', width: '100%', padding: '14px' }}>
             <CardHeader style={{ textAlign: 'center', alignItems: 'center' }}>
               <MonogramSeal>
-                <span>W</span>
+                <img src="/assets/owner_logo.jpg" alt="Wish" />
               </MonogramSeal>
               <CardTitle style={{ fontSize: '1.6rem', justifyContent: 'center', letterSpacing: '0.08em' }}>
                 WISH SALON
