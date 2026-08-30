@@ -1,8 +1,10 @@
-| Task | Description | Status | Evidence |
-| :--- | :--- | :--- | :--- |
-| Task 1 | 3분 일시정지 중 재접속(reconnect) 0초 즉각 복구 & 1초 하트비트 동기화 (`server/shared/roomManager.js`, `server/games/love-letter.js`, `src/shared/useSessionGuard.js`) | completed | `npm test` Unit Test 3 & 4 통과, `room:resumed` 즉시 브로드캐스트 |
-| Task 2 | 2인전 3장 오픈 제거 룰 삭제 & 백엔드/프론트엔드 동기화 (`server/games/love-letter.js`, `LoveLetterBoard.jsx`) | completed | `npm test` Test 6 통과 및 덱 UI 간소화 |
-| Task 3 | 색상 미니멀리즘(카라라 대리석+골드 단일화), 손패 텍스트 말줄임 전문 노출, 중앙 메시지 겹침 해소 (`LoveLetterBoard.jsx`) | completed | 무지개 보더 제거, `StickyTurnRibbon` 상단 분리, 말줄임 해소 |
-| Task 4 | 사이드 드로어(설정/가이드) 전면 리디자인 (구식 이모지 삭제, 럭셔리 토글 스위치 도입) (`LoveLetterBoard.jsx`, `components.jsx`) | completed | Lucide 아이콘 및 대리석 카드 도감 박스 적용 |
-| Task 5 | 1~8번 액션 결과 브로드캐스트 & 풀 모션 애니메이션 시스템 구축 (`ActionVisualizer.jsx`, `LoveLetterBoard.jsx`) | completed | `ActionVisualizer` 생성 및 실시간 액션 연출 연동 |
-| Task 6 | 4-Layer 자동화 테스트(`npm test`) 및 Vite 프로덕션 빌드 검증 후 Git 배포 | completed | `npm test` 100% 통과, `npm run build` 성공, GitHub master push |
+# [Task Tracker] Wish Boardgame Salon - 공간 애니메이션 & 무모달(In-Place) 인게임 혁신
+
+| Phase | Task | Status | Owner | Evidence |
+|---|---|---|---|---|
+| 1. Brainstorm & PRD | 서브에이전트 bkit-pm-lead 투입: UI 글 배제, 공간 카드 비행/드로우/공격 애니메이션, 모바일 다이얼로그 오프셋 버그, 사망 시 크래시 원인 분석 및 PRD 수립 | ⏳ In Progress | bkit-pm-lead | Pending |
+| 2. Tech Architecture | 서브에이전트 bkit-cto-lead 투입: Framer Motion layoutId 기반 패 드로우/제출 비행 엔진, 무모달(In-Place) 타겟팅, 사망/라운드종료 소켓 동기화 크래시 방어 설계 | ⏳ Pending | bkit-cto-lead | Pending |
+| 3. Plan Approval | 사용자에게 implementation_plan.md 제시 및 피드백/승인 획득 | ⏳ Pending | Orchestrator | Pending |
+| 4. Development (Do) | bkit-developer 구현: 거대 팝업 제거 -> 카드 자체 비행(Spatial Flight) & 타겟 공격 연출, 드로우 모션, Guard 그리드 모바일 정렬 픽스, 사망 동기화 픽스 | ⏳ Pending | bkit-developer | Pending |
+| 5. QA & Verification | bkit-qa-engineer 검증: AI 사망/라운드 종료 엣지 케이스 시뮬레이션, 빌드/AST 분석, Gap Detection | ⏳ Pending | bkit-qa-engineer | Pending |
+| 6. Final Delivery | 최종 소스 커밋/푸시 및 walkthrough.md 작성 | ⏳ Pending | Orchestrator | Pending |

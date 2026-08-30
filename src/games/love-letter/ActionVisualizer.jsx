@@ -1,224 +1,263 @@
 // =========================================================================
-// ActionVisualizer.jsx - Full Motion Animation & Action Result Visualizer
+// ActionVisualizer.jsx - Slim Banner & Spatial Projectile Beam Engine (Zero-Modal)
 // =========================================================================
 
 import React, { useEffect, useState } from 'react';
-import styled, { keyframes, css } from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { THEME } from '../../shared/theme';
-import { Shield, Sparkles, AlertTriangle, CheckCircle, XCircle, Swords, Eye, Crown, HeartCrack } from 'lucide-react';
+import { Shield, Sparkles, CheckCircle, XCircle, Swords, Eye, Crown, HeartCrack } from 'lucide-react';
 
 // --- Keyframes ---
 const pulseGoldGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 15px rgba(197, 160, 89, 0.4), 0 10px 30px rgba(9, 13, 22, 0.2);
+    box-shadow: 0 4px 16px rgba(197, 160, 89, 0.35), 0 2px 8px rgba(9, 13, 22, 0.15);
   }
   50% {
-    box-shadow: 0 0 35px rgba(197, 160, 89, 0.8), 0 14px 45px rgba(9, 13, 22, 0.35);
+    box-shadow: 0 6px 24px rgba(197, 160, 89, 0.65), 0 4px 12px rgba(9, 13, 22, 0.25);
   }
 `;
 
-const shatterAnimation = keyframes`
-  0% { transform: scale(1) rotate(0deg); opacity: 1; filter: none; }
-  25% { transform: scale(1.15) rotate(4deg); filter: brightness(1.8) drop-shadow(0 0 20px #dc2626); }
-  100% { transform: scale(0.2) rotate(45deg) translateY(40px); opacity: 0; filter: blur(8px); }
+const beamDash = keyframes`
+  0% { stroke-dashoffset: 300; opacity: 0.3; }
+  35% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
 `;
 
-const deflectAnimation = keyframes`
-  0% { transform: translateX(0) scale(1); }
-  30% { transform: translateX(-18px) scale(0.92); }
-  60% { transform: translateX(12px) scale(1.05); }
-  100% { transform: translateX(0) scale(1); }
+const impactExpand = keyframes`
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  40% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.0); opacity: 0; }
 `;
 
-const runeRotate = keyframes`
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+const sparkPop = keyframes`
+  0% { transform: translate(-50%, -50%) scale(0.3) rotate(0deg); opacity: 1; }
+  50% { transform: translate(-50%, -50%) scale(1.4) rotate(45deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.8) rotate(90deg); opacity: 0; }
 `;
 
 // --- Styled Components ---
 
 const VisualizerOverlay = styled.div`
   position: absolute;
-  top: 48px;
+  top: 38px;
   left: 0;
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 900;
+  z-index: 850;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 14px;
+  padding-top: 6px;
+  overflow: hidden;
 `;
 
-const BannerContainer = styled(motion.div)`
+const SlimBannerContainer = styled(motion.div)`
   pointer-events: auto;
-  max-width: 92%;
-  width: 440px;
-  background: ${THEME.gradients.cardMarble};
-  border: 1px solid ${THEME.gold};
+  max-width: 94%;
+  width: 480px;
+  background: #ffffff;
+  background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  background-size: cover;
+  border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.lg};
-  padding: 12px 16px;
-  box-shadow: 0 12px 35px rgba(9, 13, 22, 0.25), 0 0 20px rgba(197, 160, 89, 0.35);
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(9, 13, 22, 0.2), 0 0 16px rgba(197, 160, 89, 0.35);
   animation: ${pulseGoldGlow} 2.4s infinite ease-in-out;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
 
   &::before {
     content: '';
     position: absolute;
-    inset: 3px;
+    inset: 2px;
     border: 0.5px solid rgba(197, 160, 89, 0.4);
-    border-radius: calc(${THEME.radius.lg} - 3px);
+    border-radius: calc(${THEME.radius.lg} - 2px);
     pointer-events: none;
   }
 `;
 
-const BannerHeader = styled.div`
+const BannerTopRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+`;
+
+const ActorTargetGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
 `;
 
 const PlayerBadge = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
 
   img {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
-    border: 1.5px solid ${THEME.gold};
+    border: 1px solid ${THEME.gold};
     object-fit: cover;
   }
 
   span {
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 800;
     color: ${THEME.foreground};
     font-family: ${THEME.font.koreanSerif};
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
-const ActionArrow = styled.div`
-  font-size: 13px;
-  font-weight: 800;
-  color: ${THEME.burgundy};
-  display: flex;
-  align-items: center;
-  gap: 4px;
+const ActionArrow = styled.span`
+  font-size: 11px;
+  font-weight: 900;
+  color: ${THEME.goldLight};
 `;
 
 const CardChip = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background: ${THEME.gradients.obsidianButton};
   border: 1px solid ${THEME.gold};
   border-radius: ${THEME.radius.full};
-  padding: 3px 10px;
+  padding: 2px 8px;
   color: #f8fafc;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   font-family: ${THEME.font.koreanSerif};
+  white-space: nowrap;
+  flex-shrink: 0;
 
   span.val {
     color: ${THEME.gold};
     font-family: ${THEME.font.serif};
     font-weight: 900;
+    font-size: 11px;
   }
 `;
 
-const BannerResultText = styled.div`
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
+const BannerResultRow = styled.div`
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
   color: ${({ $isSuccess, $isEliminated }) =>
-    $isEliminated ? '#991b1b' : $isSuccess ? '#15803d' : '#475569'};
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: ${THEME.radius.md};
-  padding: 6px 10px;
+    $isEliminated ? '#991b1b' : $isSuccess ? '#15803d' : '#334155'};
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: ${THEME.radius.sm};
+  padding: 4px 8px;
   border-left: 3px solid
     ${({ $isSuccess, $isEliminated }) =>
       $isEliminated ? '#dc2626' : $isSuccess ? '#16a34a' : THEME.gold};
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-// --- Special Card Action Effects ---
+// --- Projectile Beam SVG & Impact Layer ---
 
-const CenterEffectModal = styled(motion.div)`
+const ProjectileStage = styled.svg`
   position: absolute;
-  top: 40%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  z-index: 950;
-`;
-
-const MarbleCardPreview = styled.div`
-  width: 90px;
-  height: 125px;
-  background: ${THEME.gradients.cardMarble};
-  border: 1.5px solid ${THEME.gold};
-  border-radius: ${THEME.radius.md};
-  box-shadow: 0 14px 35px rgba(9, 13, 22, 0.35);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px;
-  position: relative;
-
-  ${({ $shatter }) =>
-    $shatter &&
-    css`
-      animation: ${shatterAnimation} 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    `}
-
-  ${({ $deflect }) =>
-    $deflect &&
-    css`
-      animation: ${deflectAnimation} 0.6s ease-in-out;
-    `}
-`;
-
-const ShieldRuneRing = styled.div`
-  position: absolute;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  border: 2px dashed #10b981;
-  box-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
-  animation: ${runeRotate} 6s linear infinite;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 840;
+`;
+
+const ProjectileRay = styled.path`
+  stroke: ${({ $color }) => $color || THEME.gold};
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 16 8;
+  fill: none;
+  filter: drop-shadow(0 0 8px ${({ $glow }) => $glow || 'rgba(212, 175, 55, 0.9)'});
+  animation: ${beamDash} 0.65s ease-out forwards;
+`;
+
+const ImpactPortal = styled.div`
+  position: absolute;
+  left: ${({ $x }) => $x}px;
+  top: ${({ $y }) => $y}px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 860;
+`;
+
+const ImpactWave = styled.div`
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid ${({ $color }) => $color || THEME.gold};
+  box-shadow: 0 0 18px ${({ $glow }) => $glow || 'rgba(212, 175, 55, 0.8)'};
+  animation: ${impactExpand} 0.6s ease-out forwards;
+`;
+
+const HitSpark = styled.div`
+  position: absolute;
+  font-size: 22px;
+  animation: ${sparkPop} 0.55s ease-out forwards;
 `;
 
 export function ActionVisualizer({ lastAction, onDismiss }) {
   const [visible, setVisible] = useState(false);
+  const [coords, setCoords] = useState(null);
 
   useEffect(() => {
     if (!lastAction || !lastAction?.playedCard) {
       setVisible(false);
+      setCoords(null);
       return;
     }
 
     setVisible(true);
+
+    // Calculate actor & target seat coordinates from DOM
+    try {
+      const actorEl = document.querySelector(`[data-player-id="${lastAction.actorId}"]`);
+      const targetEl = lastAction.targetId
+        ? document.querySelector(`[data-player-id="${lastAction.targetId}"]`)
+        : null;
+
+      if (actorEl && targetEl) {
+        const actorRect = actorEl.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        setCoords({
+          startX: actorRect.left + actorRect.width / 2,
+          startY: actorRect.top + actorRect.height / 2,
+          targetX: targetRect.left + targetRect.width / 2,
+          targetY: targetRect.top + targetRect.height / 2,
+        });
+      } else {
+        setCoords(null);
+      }
+    } catch {
+      setCoords(null);
+    }
+
     const timer = setTimeout(() => {
       setVisible(false);
+      setCoords(null);
       if (typeof onDismiss === 'function') onDismiss();
-    }, 2000);
+    }, 2200);
 
     return () => clearTimeout(timer);
   }, [lastAction, onDismiss]);
@@ -245,104 +284,102 @@ export function ActionVisualizer({ lastAction, onDismiss }) {
   const isKing = resultType === 'KING_SWAP' || playedCard?.value === 6;
   const isPrincessEliminated = resultType === 'PRINCESS_SELF_ELIMINATED' || (isPrince && resultType === 'PRINCE_PRINCESS_ELIMINATED');
 
+  // Beam Colors
+  const beamColor = isGuardSuccess || resultType === 'BARON_WIN'
+    ? '#16a34a'
+    : isPrincessEliminated || !!eliminatedPlayerId
+    ? '#dc2626'
+    : isHandmaid
+    ? '#10b981'
+    : THEME.gold;
+
+  const beamGlow = isGuardSuccess
+    ? 'rgba(22, 163, 74, 0.8)'
+    : isPrincessEliminated
+    ? 'rgba(220, 38, 38, 0.8)'
+    : 'rgba(212, 175, 55, 0.9)';
+
   return (
     <VisualizerOverlay>
+      {/* 1. Projectile Laser Beam from Actor to Target */}
+      {coords && (
+        <ProjectileStage>
+          <ProjectileRay
+            $color={beamColor}
+            $glow={beamGlow}
+            d={`M ${coords.startX} ${coords.startY} Q ${(coords.startX + coords.targetX) / 2} ${
+              (coords.startY + coords.targetY) / 2 - 40
+            } ${coords.targetX} ${coords.targetY}`}
+          />
+        </ProjectileStage>
+      )}
+
+      {/* 2. Impact Hit Sparkles at Target */}
+      {coords && (
+        <ImpactPortal $x={coords.targetX} $y={coords.targetY}>
+          <ImpactWave $color={beamColor} $glow={beamGlow} />
+          <HitSpark>
+            {isGuardSuccess ? '🎯' : isPrincessEliminated ? '💥' : isHandmaid ? '🛡️' : '✨'}
+          </HitSpark>
+        </ImpactPortal>
+      )}
+
+      {/* 3. Top Slim Gold-Marble Summary Banner */}
       <AnimatePresence>
-        <BannerContainer
-          initial={{ y: -40, opacity: 0, scale: 0.92 }}
+        <SlimBannerContainer
+          initial={{ y: -30, opacity: 0, scale: 0.95 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
-          exit={{ y: -30, opacity: 0, scale: 0.9 }}
+          exit={{ y: -20, opacity: 0, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 350, damping: 25 }}
         >
-          <BannerHeader>
-            <PlayerBadge>
-              {actorAvatar && <img src={actorAvatar} alt={actorNickname || '플레이어'} />}
-              <span>{actorNickname || '플레이어'}</span>
-            </PlayerBadge>
+          <BannerTopRow>
+            <ActorTargetGroup>
+              <PlayerBadge>
+                {actorAvatar && <img src={actorAvatar} alt={actorNickname || '플레이어'} />}
+                <span>{actorNickname || '플레이어'}</span>
+              </PlayerBadge>
 
-            {targetNickname && (
-              <ActionArrow>
-                ➔
-                <PlayerBadge style={{ marginLeft: '4px' }}>
-                  {targetAvatar && <img src={targetAvatar} alt={targetNickname} />}
-                  <span style={{ color: THEME.mutedForeground }}>{targetNickname}</span>
-                </PlayerBadge>
-              </ActionArrow>
-            )}
+              {targetNickname && (
+                <>
+                  <ActionArrow>➔</ActionArrow>
+                  <PlayerBadge>
+                    {targetAvatar && <img src={targetAvatar} alt={targetNickname} />}
+                    <span style={{ color: THEME.mutedForeground }}>{targetNickname}</span>
+                  </PlayerBadge>
+                </>
+              )}
+            </ActorTargetGroup>
 
             <CardChip>
               <span className="val">{playedCard?.value ?? ''}</span>
               <span>{playedCard?.name || '카드'}</span>
             </CardChip>
-          </BannerHeader>
+          </BannerTopRow>
 
           {guessedCard && (
-            <div style={{ fontSize: '11.5px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>추측 카드:</span>
               <strong style={{ color: THEME.burgundy }}>[{guessedCard?.value}] {guessedCard?.name}</strong>
             </div>
           )}
 
-          <BannerResultText
+          <BannerResultRow
             $isSuccess={isGuardSuccess || resultType === 'BARON_WIN'}
             $isEliminated={!!eliminatedPlayerId}
           >
-            {isGuardSuccess && <CheckCircle size={14} color="#16a34a" />}
-            {isGuardFail && <XCircle size={14} color="#64748b" />}
-            {isPrincessEliminated && <HeartCrack size={14} color="#dc2626" />}
-            {isHandmaid && <Shield size={14} color="#10b981" />}
-            {isBaron && <Swords size={14} color="#c5a059" />}
-            {isKing && <Crown size={14} color="#c5a059" />}
-            {resultType === 'PRIEST_PEEK' && <Eye size={14} color="#6366f1" />}
+            {isGuardSuccess && <CheckCircle size={13} color="#16a34a" />}
+            {isGuardFail && <XCircle size={13} color="#64748b" />}
+            {isPrincessEliminated && <HeartCrack size={13} color="#dc2626" />}
+            {isHandmaid && <Shield size={13} color="#10b981" />}
+            {isBaron && <Swords size={13} color="#c5a059" />}
+            {isKing && <Crown size={13} color="#c5a059" />}
+            {resultType === 'PRIEST_PEEK' && <Eye size={13} color="#6366f1" />}
             <span>{resultDescription}</span>
-          </BannerResultText>
-        </BannerContainer>
+          </BannerResultRow>
+        </SlimBannerContainer>
       </AnimatePresence>
-
-      {/* Special Center Collision / Shield Overlay Effects */}
-      {isHandmaid && (
-        <CenterEffectModal
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.8, opacity: 0 }}
-        >
-          <ShieldRuneRing />
-          <Shield size={44} color="#10b981" />
-          <span style={{ fontSize: '13px', fontWeight: 800, color: '#065f46', fontFamily: THEME.font.koreanSerif, background: 'rgba(255,255,255,0.9)', padding: '2px 8px', borderRadius: '12px' }}>
-            면역 보호막 전개 (다음 턴까지 안전)
-          </span>
-        </CenterEffectModal>
-      )}
-
-      {isGuardSuccess && (
-        <CenterEffectModal
-          initial={{ scale: 0.5, opacity: 0 }}
-          animate={{ scale: 1.1, opacity: 1 }}
-          exit={{ scale: 0.8, opacity: 0 }}
-        >
-          <MarbleCardPreview $shatter>
-            <span style={{ fontSize: '16px', fontWeight: 900, color: THEME.burgundy, fontFamily: THEME.font.serif }}>
-              {guessedCard?.value || 'TARGET'}
-            </span>
-            <AlertTriangle size={28} color="#dc2626" />
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#dc2626' }}>저격 적중!</span>
-          </MarbleCardPreview>
-        </CenterEffectModal>
-      )}
-
-      {isGuardFail && (
-        <CenterEffectModal
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.8, opacity: 0 }}
-        >
-          <MarbleCardPreview $deflect>
-            <Shield size={32} color="#c5a059" />
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>빗나감</span>
-          </MarbleCardPreview>
-        </CenterEffectModal>
-      )}
     </VisualizerOverlay>
   );
 }
+
 export default ActionVisualizer;

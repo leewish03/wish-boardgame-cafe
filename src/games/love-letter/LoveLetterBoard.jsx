@@ -55,6 +55,21 @@ export const CARD_DATA = {
   8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#c5a059', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
 };
 
+export const DEFAULT_CARD_META = {
+  value: 0,
+  name: '미확인 카드',
+  nameEn: 'Unknown',
+  count: 0,
+  color: '#c5a059',
+  icon: '🎴',
+  desc: '카드 정보가 없습니다.',
+};
+
+export const getSafeCardData = (value) => {
+  if (!value || typeof value !== 'number') return DEFAULT_CARD_META;
+  return CARD_DATA[value] || DEFAULT_CARD_META;
+};
+
 // =========================================================================
 // Keyframes & Visual Effects
 // =========================================================================
@@ -743,6 +758,12 @@ const HandCardsWrapper = styled.div`
   position: relative;
 `;
 
+const shatterAnim = keyframes`
+  0% { transform: scale(1) rotate(0deg); opacity: 1; filter: none; }
+  25% { transform: scale(1.15) rotate(4deg); filter: brightness(1.8) drop-shadow(0 0 20px #dc2626); }
+  100% { transform: scale(0.2) rotate(45deg) translateY(40px); opacity: 0; filter: blur(8px); }
+`;
+
 const CardMotion = styled(motion.div)`
   width: 124px;
   height: 156px;
@@ -764,8 +785,8 @@ const CardMotion = styled(motion.div)`
     $isSelected
       ? `0 0 24px rgba(197, 160, 89, 0.8), 0 8px 24px rgba(9, 13, 22, 0.2)`
       : `0 4px 14px rgba(9, 13, 22, 0.08)`};
-  cursor: ${({ $canPlay, $isRestricted, $isMyTurn }) =>
-    $canPlay && !$isRestricted && $isMyTurn ? 'pointer' : 'not-allowed'};
+  cursor: ${({ $canPlay, $isRestricted, $isMyTurn, $isEliminated }) =>
+    !$isEliminated && $canPlay && !$isRestricted && $isMyTurn ? 'pointer' : 'not-allowed'};
   position: relative;
   overflow: hidden;
   user-select: none;
@@ -773,15 +794,21 @@ const CardMotion = styled(motion.div)`
   transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-14px)' : 'translateY(0)')};
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease;
 
-  opacity: ${({ $isRestricted, $isMyTurn }) =>
-    $isRestricted ? 0.4 : $isMyTurn ? 1 : 0.45};
-  filter: ${({ $isRestricted, $isMyTurn }) =>
-    $isRestricted ? 'grayscale(80%)' : $isMyTurn ? 'none' : 'grayscale(40%)'};
+  opacity: ${({ $isEliminated, $isRestricted, $isMyTurn }) =>
+    $isEliminated ? 0.35 : $isRestricted ? 0.4 : $isMyTurn ? 1 : 0.45};
+  filter: ${({ $isEliminated, $isRestricted, $isMyTurn }) =>
+    $isEliminated ? 'grayscale(100%)' : $isRestricted ? 'grayscale(80%)' : $isMyTurn ? 'none' : 'grayscale(40%)'};
 
   ${({ $isForced }) =>
     $isForced &&
     css`
       animation: ${forcedPulse} 1.8s infinite;
+    `}
+
+  ${({ $isShattering }) =>
+    $isShattering &&
+    css`
+      animation: ${shatterAnim} 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     `}
 
   &::before {
@@ -795,83 +822,55 @@ const CardMotion = styled(motion.div)`
 `;
 
 // =========================================================================
-// Real-Time Action Showcase Components
+// 0.5s Casino Dealing 3D Flip Card Animation Component
 // =========================================================================
 
-const ShowcaseBackdrop = styled(motion.div)`
+const FlyingDealingCard = styled(motion.div)`
   position: fixed;
-  inset: 0;
-  background-color: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(8px);
-  z-index: 95;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-`;
-
-const ShowcaseCardBox = styled(motion.div)`
-  background: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 2px solid ${({ $color }) => $color || THEME.gold};
-  border-radius: ${THEME.radius.xl};
-  padding: 16px 20px;
-  box-shadow: 0 0 45px ${({ $color }) => `${$color}55` || 'rgba(212, 175, 55, 0.5)'}, 0 25px 60px rgba(15, 23, 42, 0.35);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 230px;
-  max-width: 85vw;
-  box-sizing: border-box;
-`;
-
-const ShowcaseHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 800;
-  color: ${THEME.foreground};
-  text-align: center;
-`;
-
-const ShowcaseCardVisual = styled.div`
-  width: 100px;
-  height: 132px;
+  width: 76px;
+  height: 108px;
   border-radius: ${THEME.radius.lg};
   background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 2px solid ${({ $color }) => $color || THEME.gold};
+  background-image: ${THEME.gradients.cardMarble};
+  border: 1.5px solid ${THEME.gold};
+  box-shadow: 0 12px 32px rgba(9, 13, 22, 0.4), 0 0 20px rgba(212, 175, 55, 0.5);
+  transform-style: preserve-3d;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
   padding: 6px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle at top left,
-      ${({ $color }) => `${$color}22`} 0%,
-      transparent 70%
-    );
-  }
+  z-index: 950;
+  pointer-events: none;
 `;
 
-const ShowcaseFooter = styled.div`
-  font-size: 11px;
-  font-weight: 700;
-  color: ${THEME.foreground};
-  text-align: center;
-  line-height: 1.3;
+const DealingCardBack = styled.div`
+  position: absolute;
+  inset: 0;
+  border-radius: ${THEME.radius.lg};
+  background: ${THEME.gradients.burgundySeal};
+  border: 1.5px solid ${THEME.gold};
+  backface-visibility: hidden;
+  transform: rotateY(180deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ${THEME.font.serif};
+  font-size: 24px;
+  font-weight: 900;
+  color: ${THEME.goldLight};
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.4);
+`;
+
+const DealingCardFront = styled.div`
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
 `;
 
 const CardHeaderRow = styled.div`
@@ -952,60 +951,20 @@ const ActionControlBar = styled.div`
   box-sizing: border-box;
 `;
 
-// =========================================================================
-// Dialog / Modal Subcomponents
-// =========================================================================
-
-const SmartGuessGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-`;
-
-const SmartGuessButton = styled.button`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  background-color: ${({ $selected }) =>
-    $selected ? 'rgba(212, 175, 55, 0.15)' : '#ffffff'};
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 1.5px solid
-    ${({ $selected, $isZero }) =>
-      $selected ? THEME.gold : $isZero ? '#e2e8f0' : THEME.border};
-  border-radius: ${THEME.radius.lg};
-  cursor: ${({ $isZero }) => ($isZero ? 'not-allowed' : 'pointer')};
-  opacity: ${({ $isZero }) => ($isZero ? 0.4 : 1)};
-  filter: ${({ $isZero }) => ($isZero ? 'grayscale(80%)' : 'none')};
-  transition: all 0.15s;
-  box-shadow: ${({ $selected }) =>
-    $selected ? '0 0 12px rgba(212, 175, 55, 0.4)' : '0 1px 3px rgba(15, 23, 42, 0.05)'};
-  color: ${THEME.foreground};
-  text-align: left;
-  box-sizing: border-box;
-  width: 100%;
-
-  &:hover:not(:disabled) {
-    border-color: ${THEME.gold};
-    transform: translateY(-1px);
-  }
-`;
-
 function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, size = 36, children }) {
   const [timeLeft, setTimeLeft] = useState(turnTimeLimit);
 
   useEffect(() => {
     if (!isTurn) return;
     const update = () => {
-      if (!turnStartTime) {
+      if (!turnStartTime || typeof turnStartTime !== 'number') {
         setTimeLeft(turnTimeLimit);
         return;
       }
       const elapsedSec = (Date.now() - turnStartTime) / 1000;
-      const remaining = Math.max(0, Math.ceil(turnTimeLimit - elapsedSec));
-      setTimeLeft(remaining);
+      const validLimit = Math.max(1, turnTimeLimit || 60);
+      const remaining = Math.max(0, Math.ceil(validLimit - elapsedSec));
+      setTimeLeft(isNaN(remaining) ? validLimit : remaining);
       if (remaining <= 5 && remaining > 0) {
         sfx.playClockTick();
         sfx.hapticTap();
@@ -1018,13 +977,15 @@ function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, size = 36,
 
   if (!isTurn) return children;
 
-  const progress = Math.min(1, Math.max(0, timeLeft / (turnTimeLimit || 60)));
+  const validLimit = Math.max(1, turnTimeLimit || 60);
+  const progress = Math.min(1, Math.max(0, (timeLeft ?? validLimit) / validLimit));
+  const safeProgress = isNaN(progress) ? 1 : progress;
   const radius = size / 2 + 3;
   const svgSize = size + 10;
   const center = svgSize / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - progress);
-  const isUrgent = timeLeft <= 5;
+  const strokeDashoffset = circumference * (1 - safeProgress);
+  const isUrgent = (timeLeft ?? 60) <= 5;
 
   return (
     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1108,10 +1069,8 @@ export default function LoveLetterBoard({
   // Table Direct Targeting Mode (true when targeting a player)
   const [isTargetingMode, setIsTargetingMode] = useState(false);
 
-  // Guard Smart Guess Modal
-  const [guardModalOpen, setGuardModalOpen] = useState(false);
+  // Guard Zero-Modal Target Player
   const [guardTargetPlayer, setGuardTargetPlayer] = useState(null);
-  const [selectedGuessValue, setSelectedGuessValue] = useState(2);
 
   // Priest Secret Reveal Modal
   const [priestResultModalOpen, setPriestResultModalOpen] = useState(false);
@@ -1124,37 +1083,88 @@ export default function LoveLetterBoard({
   // Forfeit Confirmation Modal
   const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
 
-  // Floating Action Toast state
+  // Floating Action Toast state & Action Visualizer state
   const [activeToast, setActiveToast] = useState(null);
+  const [lastAction, setLastAction] = useState(null);
 
-  // Real-Time Action Showcase state
-  const [actionShowcase, setActionShowcase] = useState(null);
+  // 0.5s Casino Dealing 3D Flip Card Motion State
+  const [drawMotion, setDrawMotion] = useState(null);
+  const prevDeckCountRef = React.useRef(roomState?.deckCount);
+
+  // Shatter Animation for Eliminated Player
+  const [isShattering, setIsShattering] = useState(false);
+  const prevEliminatedRef = React.useRef(false);
 
   const isMyTurn = roomState?.turnPlayerId === currentUser?.id;
   const myPlayer = roomState?.players?.find((p) => p.id === currentUser?.id);
   const opponents = roomState?.players?.filter((p) => p.id !== currentUser?.id) || [];
   const currentTurnPlayer = roomState?.players?.find((p) => p.id === roomState?.turnPlayerId);
 
-  // Listen for Real-Time Action Showcase & Action Result broadcast from server
+  // Listen for Action Result broadcast from server
   useEffect(() => {
     if (!socket) return;
-    let timer = null;
-    const handleActionShowcase = (data) => {
-      setActionShowcase(data);
+    const handleActionResult = (data) => {
+      setLastAction(data);
       sfx.playCardPlay();
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        setActionShowcase(null);
-      }, 1800);
     };
-    socket.on('game:action-showcase', handleActionShowcase);
-    socket.on('game:action-result', handleActionShowcase);
+    socket.on('game:action-result', handleActionResult);
+    socket.on('game:action-showcase', handleActionResult);
     return () => {
-      socket.off('game:action-showcase', handleActionShowcase);
-      socket.off('game:action-result', handleActionShowcase);
-      if (timer) clearTimeout(timer);
+      socket.off('game:action-result', handleActionResult);
+      socket.off('game:action-showcase', handleActionResult);
     };
   }, [socket]);
+
+  // 0.5s Casino Dealing 3D Flip Card Animation Trigger on Deck Count Decrease
+  useEffect(() => {
+    const currentDeck = roomState?.deckCount;
+    if (
+      prevDeckCountRef.current !== undefined &&
+      currentDeck !== undefined &&
+      currentDeck < prevDeckCountRef.current &&
+      roomState?.gameState === 'IN_PROGRESS'
+    ) {
+      try {
+        const deckEl = document.getElementById('deck-slot');
+        const targetEl = isMyTurn
+          ? document.getElementById('my-hand-wrapper')
+          : document.querySelector(`[data-player-id="${roomState?.turnPlayerId}"]`);
+
+        if (deckEl && targetEl) {
+          const deckRect = deckEl.getBoundingClientRect();
+          const targetRect = targetEl.getBoundingClientRect();
+          sfx.playCardPlay();
+          setDrawMotion({
+            startX: deckRect.left + deckRect.width / 2 - 38,
+            startY: deckRect.top + deckRect.height / 2 - 54,
+            targetX: targetRect.left + targetRect.width / 2 - 38,
+            targetY: targetRect.top + targetRect.height / 2 - 54,
+          });
+          setTimeout(() => {
+            setDrawMotion(null);
+          }, 550);
+        }
+      } catch {
+        setDrawMotion(null);
+      }
+    }
+    prevDeckCountRef.current = currentDeck;
+  }, [roomState?.deckCount, isMyTurn, roomState?.turnPlayerId, roomState?.gameState]);
+
+  // Guard 2: Reactive Elimination State Reconciler & Shatter Trigger
+  useEffect(() => {
+    if (myPlayer?.isEliminated) {
+      if (!prevEliminatedRef.current) {
+        setIsShattering(true);
+        setTimeout(() => setIsShattering(false), 900);
+      }
+      setSelectedCardIndex(null);
+      setIsTargetingMode(false);
+      setGuardTargetPlayer(null);
+      setPriestResultModalOpen(false);
+    }
+    prevEliminatedRef.current = !!myPlayer?.isEliminated;
+  }, [myPlayer?.isEliminated]);
 
   // Auto-dismissing Floating Toast on action log update
   useEffect(() => {
@@ -1167,11 +1177,11 @@ export default function LoveLetterBoard({
     }
   }, [roomState?.lastActionLog]);
 
-  // Selected card object
-  const selectedCard =
-    selectedCardIndex !== null && myPlayer?.hand?.[selectedCardIndex]
-      ? myPlayer.hand[selectedCardIndex]
-      : null;
+  // Selected card object with Guard 3 Null-Safety
+  const selectedCard = useMemo(() => {
+    if (selectedCardIndex === null || !Array.isArray(myPlayer?.hand)) return null;
+    return myPlayer.hand[selectedCardIndex] || null;
+  }, [selectedCardIndex, myPlayer?.hand]);
 
   // Sound triggers on turn and round end
   useEffect(() => {
@@ -1185,6 +1195,8 @@ export default function LoveLetterBoard({
       sfx.playVictoryFanfare();
       setIsTargetingMode(false);
       setSelectedCardIndex(null);
+      setGuardTargetPlayer(null);
+      setPriestResultModalOpen(false);
     }
   }, [roomState?.gameState]);
 
@@ -1204,6 +1216,7 @@ export default function LoveLetterBoard({
     if (!isMyTurn) {
       setSelectedCardIndex(null);
       setIsTargetingMode(false);
+      setGuardTargetPlayer(null);
     }
   }, [isMyTurn, myPlayer?.hand?.length]);
 
@@ -1223,17 +1236,21 @@ export default function LoveLetterBoard({
   };
 
   // =========================================================================
-  // Countess Constraint Evaluation
+  // Countess Constraint Evaluation (Defensive Guard)
   // =========================================================================
-  const hasCountess = useMemo(() => {
-    return myPlayer?.hand?.some((c) => c?.value === 7) || false;
+  const { hasCountess, hasPrinceOrKing, isCountessForced } = useMemo(() => {
+    const hand = myPlayer?.hand;
+    if (!Array.isArray(hand) || hand.length === 0) {
+      return { hasCountess: false, hasPrinceOrKing: false, isCountessForced: false };
+    }
+    const countess = hand.some((c) => c && c.value === 7);
+    const royal = hand.some((c) => c && (c.value === 5 || c.value === 6));
+    return {
+      hasCountess: countess,
+      hasPrinceOrKing: royal,
+      isCountessForced: countess && royal,
+    };
   }, [myPlayer?.hand]);
-
-  const hasPrinceOrKing = useMemo(() => {
-    return myPlayer?.hand?.some((c) => c?.value === 5 || c?.value === 6) || false;
-  }, [myPlayer?.hand]);
-
-  const isCountessForced = hasCountess && hasPrinceOrKing;
 
   // =========================================================================
   // Card Counter (Smart Helper for Guard Guessing)
@@ -1262,7 +1279,7 @@ export default function LoveLetterBoard({
   }, [roomState?.players, roomState?.setAsideOpenCards, myPlayer?.hand]);
 
   // =========================================================================
-  // Card Selection & Play Actions (2-Step Safety Touch)
+  // Card Selection & Play Actions (2-Step Safety Touch & Zero-Modal Guard)
   // =========================================================================
 
   // Step 1: Tap card to select/unselect (With 1-Tap Target Sheet Trigger)
@@ -1284,13 +1301,20 @@ export default function LoveLetterBoard({
       setGuardTargetPlayer(null);
     } else {
       setSelectedCardIndex(index);
-      setGuardTargetPlayer(null);
 
       // If targeted card (1, 2, 3, 5, 6), auto-open bottom target action bar
       if ([1, 2, 3, 5, 6].includes(card?.value)) {
         setIsTargetingMode(true);
+        const eligible = opponents.filter((p) => !p?.isEliminated && !p?.isProtected);
+        // If Guard (1) and exactly 1 eligible opponent, preselect target for immediate guess chips!
+        if (card?.value === 1 && eligible.length === 1) {
+          setGuardTargetPlayer(eligible[0]);
+        } else {
+          setGuardTargetPlayer(null);
+        }
       } else {
         setIsTargetingMode(false);
+        setGuardTargetPlayer(null);
       }
     }
   };
@@ -1299,7 +1323,6 @@ export default function LoveLetterBoard({
   const handleTriggerCardPlay = (card) => {
     if (!card || !isMyTurn || myPlayer?.isEliminated) return;
 
-    // Eligible opponents (alive & not protected)
     const eligibleOpponents = opponents.filter((p) => !p?.isEliminated && !p?.isProtected);
 
     // 1. Guard (1)
@@ -1308,6 +1331,9 @@ export default function LoveLetterBoard({
         executePlay(card?.id, null, null);
       } else {
         setIsTargetingMode(true);
+        if (eligibleOpponents.length === 1) {
+          setGuardTargetPlayer(eligibleOpponents[0]);
+        }
       }
     }
     // 2. Priest (2) / 3. Baron (3) / 6. King (6)
@@ -1328,26 +1354,16 @@ export default function LoveLetterBoard({
     }
   };
 
-  // Step 3: Direct Table Seat Click in Targeting Mode
+  // Step 3: Direct Table Seat Click in Targeting Mode (Zero-Modal)
   const handleSeatClick = (targetPlayer) => {
-    if (!selectedCard) return;
+    if (!selectedCard || !targetPlayer) return;
 
     sfx.hapticSnap();
 
-    // Guard (1) -> Set target and prepare guess
+    // Guard (1) -> Set target and reveal 2~8 guess chips in-place (Zero-Modal)
     if (selectedCard?.value === 1) {
       setGuardTargetPlayer(targetPlayer);
-      let defaultGuess = 2;
-      for (let n = 2; n <= 8; n++) {
-        const remaining = (CARD_DATA[n]?.count || 0) - (cardCounter[n] || 0);
-        if (remaining > 0) {
-          defaultGuess = n;
-          break;
-        }
-      }
-      setSelectedGuessValue(defaultGuess);
-      setGuardModalOpen(true);
-      setIsTargetingMode(false);
+      setIsTargetingMode(true);
     } else {
       // Priest (2), Baron (3), Prince (5), King (6)
       executePlay(selectedCard?.id, targetPlayer?.id, null);
@@ -1376,7 +1392,6 @@ export default function LoveLetterBoard({
     );
     setSelectedCardIndex(null);
     setIsTargetingMode(false);
-    setGuardModalOpen(false);
     setGuardTargetPlayer(null);
   };
 
@@ -1456,8 +1471,49 @@ export default function LoveLetterBoard({
       {/* 2. MAIN FELT TABLE AREA (100dvh - 38px - 26px) */}
       {/* ========================================================= */}
       <TableArea style={{ height: 'calc(100dvh - 64px)', maxHeight: 'calc(100dvh - 64px)' }}>
-        {/* Real-Time Action Result Visualizer & Animations */}
-        <ActionVisualizer lastAction={roomState?.lastActionDetail} />
+        {/* Real-Time Action Result Visualizer & Projectile Beam */}
+        <ActionVisualizer
+          lastAction={lastAction || roomState?.lastActionDetail}
+          onDismiss={() => setLastAction(null)}
+        />
+
+        {/* 0.5s Casino Dealing 3D Flip Card Motion Layer */}
+        {drawMotion && (
+          <FlyingDealingCard
+            initial={{
+              left: drawMotion.startX,
+              top: drawMotion.startY,
+              scale: 0.5,
+              rotateY: 180,
+              opacity: 0.8,
+            }}
+            animate={{
+              left: drawMotion.targetX,
+              top: drawMotion.targetY,
+              scale: 1,
+              rotateY: 0,
+              opacity: 1,
+            }}
+            transition={{
+              type: 'spring',
+              stiffness: 220,
+              damping: 20,
+              mass: 1.15,
+            }}
+          >
+            <DealingCardBack>W</DealingCardBack>
+            <DealingCardFront>
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                <span style={{ fontSize: '11px', fontWeight: 900, color: THEME.gold }}>★</span>
+                <span style={{ fontSize: '8px', fontWeight: 800, color: THEME.gold }}>DRAW</span>
+              </div>
+              <div style={{ fontSize: '26px' }}>🎴</div>
+              <div style={{ fontSize: '10px', fontWeight: 800, color: THEME.foreground, fontFamily: THEME.font.koreanSerif }}>
+                러브레터
+              </div>
+            </DealingCardFront>
+          </FlyingDealingCard>
+        )}
 
         {/* ========================================================= */}
         {/* AREA 1: Opponents Seats (25% Height) */}
@@ -1480,6 +1536,7 @@ export default function LoveLetterBoard({
             return (
               <OpponentSeat
                 key={p.id}
+                data-player-id={p.id}
                 $isTurn={isTurn}
                 $isEliminated={p.isEliminated}
                 $isTargetable={isTargetable}
@@ -1548,6 +1605,7 @@ export default function LoveLetterBoard({
         <CenterTableArea>
           {/* Centered Minimal Deck Slot */}
           <DeckSlot
+            id="deck-slot"
             onClick={() => setDrawerOpen(true)}
             title="남은 덱 카드 수 (탭하여 카드 가이드 열기)"
           >
@@ -1570,7 +1628,7 @@ export default function LoveLetterBoard({
         {/* ========================================================= */}
         <MyPlayArea $isMyTurn={isMyTurn}>
           {/* My Minimal Status Bar */}
-          <MyStatusBar>
+          <MyStatusBar data-player-id={currentUser?.id}>
             <MyStatusLeft>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <RadialTurnTimer
@@ -1604,7 +1662,7 @@ export default function LoveLetterBoard({
               )}
               {myPlayer?.isEliminated && (
                 <Badge $variant="rose" style={{ padding: '1px 6px', fontSize: '10px' }}>
-                  ☠️ 탈락
+                  ☠️ 탈락 (관전 중)
                 </Badge>
               )}
             </MyStatusLeft>
@@ -1619,7 +1677,7 @@ export default function LoveLetterBoard({
             </MyStatusRight>
           </MyStatusBar>
 
-          {/* 1-Tap Smart Target Action Bar (Thumb Zone) */}
+          {/* 1-Tap Smart Target Action Bar (Thumb Zone & Zero-Modal Guard) */}
           <AnimatePresence>
             {isTargetingMode && selectedCard && (
               <SmartTargetActionBar
@@ -1674,12 +1732,14 @@ export default function LoveLetterBoard({
                     })}
                 </TargetChipRow>
 
-                {/* Inline Guard Quick Guess Chips */}
+                {/* Inline Guard Quick Guess Chips (Zero-Modal 1-Tap) */}
                 {selectedCard?.value === 1 && guardTargetPlayer && (
                   <InlineGuessRow>
-                    <span style={{ fontSize: '10px', color: THEME.mutedForeground, marginRight: '4px' }}>추측:</span>
+                    <span style={{ fontSize: '10px', color: THEME.goldLight, marginRight: '2px', fontWeight: 800 }}>
+                      [{guardTargetPlayer?.nickname}] 추측:
+                    </span>
                     {[2, 3, 4, 5, 6, 7, 8].map((n) => {
-                      const meta = CARD_DATA[n];
+                      const meta = getSafeCardData(n);
                       const remaining = (meta?.count || 0) - (cardCounter[n] || 0);
                       const isZero = remaining <= 0;
                       return (
@@ -1691,9 +1751,9 @@ export default function LoveLetterBoard({
                             sfx.hapticSnap();
                             executePlay(selectedCard?.id, guardTargetPlayer?.id, n);
                           }}
-                          title={isZero ? '0장 남음 (소진됨)' : `${remaining}장 남음`}
+                          title={isZero ? '0장 남음 (소진됨)' : `${remaining}/${meta.count}장 남음`}
                         >
-                          {meta?.icon} {n}.{meta?.name}
+                          {meta?.icon} {n}.{meta?.name} ({remaining}장)
                         </InlineGuessChip>
                       );
                     })}
@@ -1703,12 +1763,12 @@ export default function LoveLetterBoard({
             )}
           </AnimatePresence>
 
-          {/* Hand Cards (2-Step Touch) */}
-          <HandCardsWrapper>
+          {/* Hand Cards (2-Step Touch & Grayscale Shatter Guard) */}
+          <HandCardsWrapper id="my-hand-wrapper">
             <AnimatePresence>
               {myPlayer?.hand?.map((card, idx) => {
                 if (!card) return null;
-                const cardMeta = CARD_DATA[card?.value] || {};
+                const cardMeta = getSafeCardData(card?.value);
                 const isSelected = selectedCardIndex === idx;
                 const isRestricted = isCountessForced && (card?.value === 5 || card?.value === 6);
                 const isForced = isCountessForced && card?.value === 7;
@@ -1722,6 +1782,8 @@ export default function LoveLetterBoard({
                     $isForced={isForced}
                     $isMyTurn={isMyTurn}
                     $canPlay={isMyTurn && !myPlayer?.isEliminated}
+                    $isEliminated={!!myPlayer?.isEliminated}
+                    $isShattering={isShattering}
                     initial={{ y: 30, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -50, opacity: 0, scale: 0.8 }}
@@ -1787,84 +1849,15 @@ export default function LoveLetterBoard({
                 style={{
                   fontSize: '11px',
                   color: THEME.rose,
-                  fontWeight: 600,
+                  fontWeight: 700,
                 }}
               >
-                ☠️ 이번 라운드 탈락 (다음 라운드 대기 중)
+                ☠️ 이번 라운드 탈락 (관전 모드 진행 중)
               </div>
             ) : null}
           </ActionControlBar>
         </MyPlayArea>
       </TableArea>
-
-      {/* ========================================================= */}
-      {/* 4. GUARD SMART CARD COUNTER GUESS MODAL */}
-      {/* ========================================================= */}
-      <Dialog open={guardModalOpen} onClose={() => setGuardModalOpen(false)}>
-        <DialogHeader>
-          <DialogTitle>🛡️ 경비병: 상대 카드 추측</DialogTitle>
-          <DialogDescription>
-            [{guardTargetPlayer?.nickname}] 님이 보유 중일 카드를 추측하세요.
-            (테이블에 소진된 카드는 자동 비활성화됩니다)
-          </DialogDescription>
-        </DialogHeader>
-
-        <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginTop: '6px' }}>
-          추측할 카드 선택 (2~8번)
-        </div>
-
-        <SmartGuessGrid>
-          {[2, 3, 4, 5, 6, 7, 8].map((num) => {
-            const meta = CARD_DATA[num];
-            const totalCount = meta.count;
-            const revealed = cardCounter[num] || 0;
-            const remaining = totalCount - revealed;
-            const isZero = remaining <= 0;
-
-            return (
-              <SmartGuessButton
-                key={num}
-                $selected={selectedGuessValue === num}
-                $isZero={isZero}
-                disabled={isZero}
-                onClick={() => setSelectedGuessValue(num)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
-                  <span style={{ fontSize: '16px' }}>{meta.icon}</span>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: meta.color }}>
-                    {num}. {meta.name}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: '10px',
-                    color: isZero ? THEME.rose : THEME.emerald,
-                    fontWeight: 700,
-                    marginTop: '2px',
-                  }}
-                >
-                  {isZero ? '0장 남음 (소진됨)' : `${remaining}/${totalCount}장 남음`}
-                </div>
-              </SmartGuessButton>
-            );
-          })}
-        </SmartGuessGrid>
-
-        <DialogFooter>
-          <Button $variant="outline" onClick={() => setGuardModalOpen(false)}>
-            취소
-          </Button>
-          <Button
-            $variant="gold"
-            onClick={() =>
-              executePlay(selectedCard?.id, guardTargetPlayer?.id, selectedGuessValue)
-            }
-            disabled={!guardTargetPlayer || (((CARD_DATA[selectedGuessValue]?.count || 0) - (cardCounter[selectedGuessValue] || 0)) <= 0)}
-          >
-            추측 제출
-          </Button>
-        </DialogFooter>
-      </Dialog>
 
       {/* ========================================================= */}
       {/* 5. PRIEST SECRET REVEAL MODAL */}
@@ -1884,7 +1877,7 @@ export default function LoveLetterBoard({
                 width: '130px',
                 height: '180px',
                 padding: '12px',
-                borderColor: CARD_DATA[priestData?.card?.value]?.color || THEME.gold,
+                borderColor: getSafeCardData(priestData?.card?.value)?.color || THEME.gold,
                 textAlign: 'center',
                 display: 'flex',
                 flexDirection: 'column',
@@ -1895,21 +1888,21 @@ export default function LoveLetterBoard({
                 style={{
                   fontSize: '1.4rem',
                   fontWeight: 900,
-                  color: CARD_DATA[priestData?.card?.value]?.color || THEME.gold,
+                  color: getSafeCardData(priestData?.card?.value)?.color || THEME.gold,
                   textAlign: 'left',
                 }}
               >
                 {priestData?.card?.value}
               </div>
               <div style={{ fontSize: '2.8rem', margin: '4px 0' }}>
-                {CARD_DATA[priestData?.card?.value]?.icon}
+                {getSafeCardData(priestData?.card?.value)?.icon}
               </div>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 800 }}>
                   {priestData?.card?.name}
                 </div>
                 <div style={{ fontSize: '10px', color: THEME.mutedForeground, marginTop: '2px' }}>
-                  {CARD_DATA[priestData?.card?.value]?.desc}
+                  {getSafeCardData(priestData?.card?.value)?.desc}
                 </div>
               </div>
             </Card>
@@ -1951,7 +1944,7 @@ export default function LoveLetterBoard({
           ) : (
             discardHistoryTarget.discardPile.map((card, idx) => {
               if (!card) return null;
-              const meta = CARD_DATA[card?.value] || {};
+              const meta = getSafeCardData(card?.value);
               return (
                 <div
                   key={`${card?.id || card?.value || idx}-${idx}`}
@@ -2056,7 +2049,7 @@ export default function LoveLetterBoard({
                         {p.hand && p.hand.length > 0 ? (
                           p.hand.map((c, i) => {
                             if (!c) return null;
-                            const meta = CARD_DATA[c?.value] || {};
+                            const meta = getSafeCardData(c?.value);
                             return (
                               <Badge key={i} $variant="gold" style={{ fontSize: '10px' }}>
                                 {meta.icon} {c?.value} {meta.name}
@@ -2328,74 +2321,6 @@ export default function LoveLetterBoard({
           </Button>
         </DialogFooter>
       </Dialog>
-
-      {/* ========================================================= */}
-      {/* 11. REAL-TIME CARD ACTION SHOWCASE MODAL */}
-      {/* ========================================================= */}
-      <AnimatePresence>
-        {actionShowcase && actionShowcase.card && (
-          <ShowcaseBackdrop
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ShowcaseCardBox
-              $color={CARD_DATA[actionShowcase.card?.value]?.color}
-              initial={{ scale: 0.7, y: 20, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.8, y: -20, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-            >
-              <ShowcaseHeader>
-                <span>
-                  {actionShowcase.actorNickname === currentUser?.nickname
-                    ? '👤 [나]'
-                    : `🤖 [${actionShowcase.actorNickname}]`}
-                </span>
-                <span style={{ color: THEME.gold }}>님이 카드 사용!</span>
-              </ShowcaseHeader>
-
-              <ShowcaseCardVisual $color={CARD_DATA[actionShowcase.card?.value]?.color}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 900, color: CARD_DATA[actionShowcase.card?.value]?.color }}>
-                    {actionShowcase.card?.value}
-                  </span>
-                  <span style={{ fontSize: '9px', fontWeight: 800, color: CARD_DATA[actionShowcase.card?.value]?.color }}>
-                    {CARD_DATA[actionShowcase.card?.value]?.nameEn}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: '32px' }}>
-                  {CARD_DATA[actionShowcase.card?.value]?.icon}
-                </div>
-
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>
-                  {actionShowcase.card?.name}
-                </div>
-              </ShowcaseCardVisual>
-
-              <ShowcaseFooter>
-                {actionShowcase.targetNickname && (
-                  <div>
-                    🎯 대상: <strong style={{ color: '#fff' }}>[{actionShowcase.targetNickname}]</strong>
-                  </div>
-                )}
-                {actionShowcase.guessCardName && (
-                  <div style={{ color: THEME.emerald, marginTop: '2px' }}>
-                    🔮 추측: [{actionShowcase.guessValue}. {actionShowcase.guessCardName}]
-                  </div>
-                )}
-                {!actionShowcase.targetNickname && !actionShowcase.guessCardName && (
-                  <div style={{ color: THEME.mutedForeground }}>
-                    {actionShowcase.card?.desc}
-                  </div>
-                )}
-              </ShowcaseFooter>
-            </ShowcaseCardBox>
-          </ShowcaseBackdrop>
-        )}
-      </AnimatePresence>
     </BoardContainer>
   );
 }

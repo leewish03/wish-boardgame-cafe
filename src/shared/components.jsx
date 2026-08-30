@@ -303,20 +303,28 @@ const DialogOverlayWrapper = styled.div`
 `;
 
 const DialogContentWrapper = styled.div`
-  position: relative;
-  width: 100%;
-  max-width: ${({ $maxWidth = '480px' }) => $maxWidth};
-  max-height: 90vh;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(100vw - 24px), ${({ $maxWidth = '440px' }) => $maxWidth});
+  max-width: ${({ $maxWidth = '440px' }) => $maxWidth};
+  max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
+  margin: 0;
+  padding: 20px;
+  box-sizing: border-box;
+
   background-color: #ffffff;
   background-image: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
   background-size: cover;
   border: 1.5px solid #dcdfe4;
   border-radius: ${THEME.radius.xl};
-  padding: 28px;
   box-shadow: 0 30px 70px rgba(9, 13, 22, 0.35), 0 0 25px rgba(197, 160, 89, 0.25);
   animation: ${zoomIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: ${THEME.foreground};
+  z-index: 2001;
 
   /* Double Hairline Brass Inlay */
   &::after {
@@ -326,6 +334,11 @@ const DialogContentWrapper = styled.div`
     border: 1px solid rgba(197, 160, 89, 0.5);
     border-radius: calc(${THEME.radius.xl} - 4px);
     pointer-events: none;
+  }
+
+  @media (max-width: 480px) {
+    padding: 20px 16px;
+    width: calc(100vw - 24px);
   }
 `;
 
