@@ -46,6 +46,8 @@ import {
   Award,
   HelpCircle,
   Crown,
+  Edit2,
+  User,
 } from 'lucide-react';
 
 // =========================================================================
@@ -297,7 +299,13 @@ export default function App() {
   const { socket, connected } = useSocket();
 
   // Screen State: 'entry' | 'lobby' | 'waitingRoom' | 'game'
-  const [screen, setScreen] = useState('entry');
+  const [screen, setScreen] = useState(() => {
+    const saved = loadSession();
+    if (saved?.nickname) {
+      return 'lobby'; // If nickname exists in session, enter lobby directly!
+    }
+    return 'entry';
+  });
 
   // User State
   const [nickname, setNickname] = useState(() => {
@@ -306,7 +314,9 @@ export default function App() {
   });
   const [avatarSeed, setAvatarSeed] = useState(() => {
     const saved = loadSession();
-    return saved?.avatarUrl ? saved.avatarUrl.split('seed=')[1] || `wish_${Math.random().toString(36).substr(2, 5)}` : `wish_${Math.random().toString(36).substr(2, 5)}`;
+    return saved?.avatarUrl
+      ? saved.avatarUrl.split('seed=')[1]?.split('&')[0] || `wish_${Math.random().toString(36).substr(2, 5)}`
+      : `wish_${Math.random().toString(36).substr(2, 5)}`;
   });
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = loadSession();
@@ -320,6 +330,11 @@ export default function App() {
     }
     return null;
   });
+
+  // Profile Edit Modal State
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [editNickname, setEditNickname] = useState('');
+  const [editAvatarSeed, setEditAvatarSeed] = useState('');
 
   // Active Tab in Lobby: 'games' | 'join'
   const [activeTab, setActiveTab] = useState('games');
@@ -364,7 +379,7 @@ export default function App() {
               id: session.userId,
               sessionToken: session.sessionToken,
               nickname: session.nickname || res.player?.nickname || '플레이어',
-              avatarUrl: session.avatarUrl || res.player?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${session.userId}`,
+              avatarUrl: session.avatarUrl || res.player?.avatarUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${session.userId}&backgroundColor=090d16,1e293b,3b0b17,047857`,
             };
             setCurrentUser(restoredUser);
             setRoomState(res.gameState);
@@ -440,6 +455,39 @@ export default function App() {
 
   const handleRefreshAvatar = () => {
     setAvatarSeed(`wish_${Math.random().toString(36).substr(2, 6)}`);
+    sfx.playCardDraw();
+  };
+
+  const handleOpenProfileModal = () => {
+    setEditNickname(currentUser?.nickname || nickname || '');
+    setEditAvatarSeed(avatarSeed);
+    setProfileModalOpen(true);
+  };
+
+  const handleRefreshEditAvatar = () => {
+    setEditAvatarSeed(`wish_${Math.random().toString(36).substr(2, 6)}`);
+    sfx.playCardDraw();
+  };
+
+  const handleSaveProfile = (e) => {
+    e?.preventDefault();
+    const trimmed = editNickname.trim();
+    if (!trimmed) return;
+
+    const newAvatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${editAvatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`;
+    const updatedUser = {
+      ...(currentUser || {}),
+      id: currentUser?.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      nickname: trimmed,
+      avatarUrl: newAvatarUrl,
+    };
+
+    setNickname(trimmed);
+    setAvatarSeed(editAvatarSeed);
+    setCurrentUser(updatedUser);
+    saveSession(updatedUser);
+    setProfileModalOpen(false);
+    setToastMessage('프로필이 성공적으로 변경되었습니다.');
     sfx.playCardDraw();
   };
 
@@ -595,10 +643,15 @@ export default function App() {
             </span>
           </BrandLogo>
 
-          {currentUser?.nickname && (
-            <UserProfileChip>
+          {currentUser?.nickname && screen !== 'entry' && (
+            <UserProfileChip
+              onClick={handleOpenProfileModal}
+              style={{ cursor: 'pointer' }}
+              title="프로필 / 닉네임 변경"
+            >
               <img src={currentUser.avatarUrl} alt={currentUser.nickname} />
               <span>{currentUser.nickname}</span>
+              <Edit2 size={12} color={THEME.mutedForeground} style={{ marginLeft: '2px' }} />
             </UserProfileChip>
           )}
         </AppHeader>
@@ -1045,6 +1098,72 @@ export default function App() {
             살롱 테이블 개설
           </Button>
         </DialogFooter>
+      </Dialog>
+
+      {/* ========================================================= */}
+      {/* DIALOG: Edit Profile Modal */}
+      {/* ========================================================= */}
+      <Dialog open={profileModalOpen} onClose={() => setProfileModalOpen(false)}>
+        <DialogHeader>
+          <DialogTitle>프로필 및 닉네임 설정</DialogTitle>
+          <DialogDescription>살롱에서 사용할 닉네임과 문양 씰을 변경하세요.</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '16px 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                position: 'relative',
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                border: `2px solid ${THEME.gold}`,
+                boxShadow: '0 4px 14px rgba(9, 13, 22, 0.15)',
+                overflow: 'hidden',
+                backgroundColor: '#090d16',
+              }}
+            >
+              <img
+                src={`https://api.dicebear.com/7.x/shapes/svg?seed=${editAvatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`}
+                alt="Avatar Edit Preview"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <Button
+              type="button"
+              $variant="ghost"
+              $size="sm"
+              onClick={handleRefreshEditAvatar}
+              style={{ fontSize: '12px', color: '#64748b' }}
+            >
+              <RotateCcw size={13} />
+              <span>문양 씰 변경</span>
+            </Button>
+          </div>
+
+          <div>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+              NICKNAME (닉네임)
+            </label>
+            <Input
+              type="text"
+              placeholder="새 닉네임 입력"
+              value={editNickname}
+              onChange={(e) => setEditNickname(e.target.value)}
+              maxLength={12}
+              autoFocus
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" $variant="outline" $size="sm" onClick={() => setProfileModalOpen(false)}>
+              취소
+            </Button>
+            <Button type="submit" $variant="default" $size="sm" disabled={!editNickname.trim()}>
+              저장하기
+            </Button>
+          </DialogFooter>
+        </form>
       </Dialog>
     </AppContainer>
   );
