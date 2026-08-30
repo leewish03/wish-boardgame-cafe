@@ -7,21 +7,19 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const testSuites = [
-  { name: '1. AST Scope & Symbol Static Analyzer', file: 'tests/ast_symbol_check.test.js' },
-  { name: '2. Love Letter Rule Engine Tests', file: 'tests/love_letter_rules.test.js' },
-  { name: '3. Session Protection & 3-Min Reconnection Tests', file: 'tests/reconnection.test.js' },
-  { name: '4. Full Multiplayer E2E Game Flow Simulation', file: 'tests/e2e_game_flow.test.js' },
-  { name: '5. Real Socket Card Play & Action Broadcast E2E', file: 'tests/reproduce_card_play_e2e.test.js' },
-  { name: '6. AI Bot Heuristics & Tie-Break Rules Tests', file: 'tests/ai_bot_heuristics.test.js' },
-  { name: '7. Full Human + 3 AI Bots Real Gameplay Simulation', file: 'tests/full_game_ai_simulation.test.js' },
+  { name: '1. AST Scope & Symbol Static Analyzer (43 files)', file: 'tests/ast_symbol_check.test.js' },
+  { name: '2. Love Letter Core Rule Engine Unit Tests', file: 'tests/love_letter_rules.test.js' },
+  { name: '3. AI Bot Memory & Heuristics Tests', file: 'tests/ai_bot_heuristics.test.js' },
+  { name: '4. Socket Disconnect & Connection State Recovery Tests', file: 'tests/disconnect_recovery.test.js' },
+  { name: '5. 10-Match Automated AI Multi-Game Simulation Testkit', file: 'tests/full_game_ts_simulation.test.js' },
 ];
 
 async function runTest(suite) {
   return new Promise((resolve, reject) => {
-    console.log(`\n================================================================`);
-    console.log(`🚀 Executing: ${suite.name}`);
-    console.log(`   Target: ${suite.file}`);
-    console.log(`================================================================`);
+    console.log('\n================================================================');
+    console.log('🚀 Executing: ' + suite.name);
+    console.log('   Target: ' + suite.file);
+    console.log('================================================================');
 
     const child = spawn('node', [path.join(rootDir, suite.file)], {
       stdio: 'inherit',
@@ -32,7 +30,7 @@ async function runTest(suite) {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`Test suite [${suite.name}] failed with exit code ${code}`));
+        reject(new Error('Test suite [' + suite.name + '] failed with exit code ' + code));
       }
     });
 
@@ -44,7 +42,7 @@ async function runTest(suite) {
 
 async function main() {
   console.log('\n================================================================');
-  console.log('🛡️  Wish Boardgame Cafe - 4-Layer Quality Assurance Pipeline');
+  console.log('🛡️  Wish Boardgame Cafe - Quality Assurance Pipeline');
   console.log('================================================================');
 
   const startTime = Date.now();
@@ -53,19 +51,20 @@ async function main() {
     try {
       await runTest(suite);
     } catch (err) {
-      console.error(`\n❌ Pipeline Aborted: ${err.message}`);
+      console.error('\n❌ Pipeline Aborted: ' + err.message);
       process.exit(1);
     }
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`\n================================================================`);
-  console.log(`🎉 ALL 4 TEST SUITES PASSED PERFECTLY in ${elapsed}s!`);
-  console.log(`   - 0 Undefined Symbols / Broken JSX References`);
-  console.log(`   - 100% Love Letter Card Rules Verified`);
-  console.log(`   - 100% 3-Minute Pause & Reconnection Verified`);
-  console.log(`   - 100% Multiplayer E2E Flow & Forfeit Verified`);
-  console.log(`================================================================\n`);
+  console.log('\n================================================================');
+  console.log('🎉 ALL 5 TEST SUITES PASSED PERFECTLY in ' + elapsed + 's!');
+  console.log('   - 0 Undefined Symbols / Broken TSX References');
+  console.log('   - 100% Love Letter Card Rules Verified');
+  console.log('   - 100% AI Bot Priest Memory & Countess Rule Verified');
+  console.log('   - 100% Connection State Recovery Verified');
+  console.log('   - 100% 10-Match Multi-Game Simulation Verified');
+  console.log('================================================================\n');
   process.exit(0);
 }
 

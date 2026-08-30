@@ -24,7 +24,7 @@ const JS_GLOBALS = new Set([
   'alert', 'confirm', 'prompt'
 ]);
 
-function getAllFiles(dir, exts = ['.js', '.jsx']) {
+function getAllFiles(dir, exts = ['.js', '.jsx', '.ts', '.tsx']) {
   let files = [];
   const items = fs.readdirSync(dir, { withFileTypes: true });
   for (const item of items) {
@@ -116,7 +116,8 @@ for (const filePath of targets) {
         if (nodePath.parentPath.isJSXAttribute()) return;
         // Ignore JSX Closing tag names
         if (nodePath.parentPath.isJSXClosingElement()) return;
-        if (nodePath.parentPath.isJSXOpeningElement()) return;
+        // Ignore TypeScript type annotations, interfaces, type aliases
+        if (nodePath.findParent(p => p.isTSType && (p.isTSType() || p.isTSTypeAnnotation() || p.isTSInterfaceDeclaration() || p.isTSTypeAliasDeclaration() || p.isTSPropertySignature() || p.isTSMethodSignature() || p.isTSTypeParameter() || p.isTSTypeReference()))) return;
 
         if (!nodePath.scope.hasBinding(name) && !JS_GLOBALS.has(name)) {
           const loc = nodePath.node.loc?.start;
