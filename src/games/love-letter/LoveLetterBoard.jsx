@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { THEME } from '../../shared/theme';
@@ -23,19 +23,18 @@ import {
   MessageSquare,
   Scroll,
   LogOut,
-  Crown,
-  Shield,
-  Eye,
-  Swords,
   Sparkles,
-  Award,
-  AlertTriangle,
   Play,
   RotateCcw,
+  Check,
+  Copy,
+  Crosshair,
+  Info,
+  X,
 } from 'lucide-react';
 
 // =========================================================================
-// Card Definitions
+// Card Definitions & Rules
 // =========================================================================
 
 export const CARD_DATA = {
@@ -50,89 +49,161 @@ export const CARD_DATA = {
 };
 
 // =========================================================================
-// Styled Components & Visual Effects
+// Keyframes & Visual Effects
 // =========================================================================
 
 const pulseWave = keyframes`
   0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.8); }
-  70% { transform: scale(1.08); box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+  70% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 `;
 
 const turnGlow = keyframes`
-  0% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
-  50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.9); }
-  100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+  0% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(245, 158, 11, 0.9); }
+  100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
 `;
+
+const targetPulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.8); border-color: ${THEME.goldLight}; }
+  70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); border-color: ${THEME.gold}; }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); border-color: ${THEME.goldLight}; }
+`;
+
+const forcedPulse = keyframes`
+  0% { transform: scale(1); box-shadow: 0 0 6px rgba(236, 72, 153, 0.5); }
+  50% { transform: scale(1.03); box-shadow: 0 0 18px rgba(236, 72, 153, 0.9); }
+  100% { transform: scale(1); box-shadow: 0 0 6px rgba(236, 72, 153, 0.5); }
+`;
+
+// =========================================================================
+// 100dvh No-Scroll Layout Components
+// =========================================================================
 
 const BoardContainer = styled.div`
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   background-color: ${THEME.background};
   color: ${THEME.foreground};
   position: relative;
   overflow: hidden;
   user-select: none;
+  box-sizing: border-box;
 `;
 
+// 1줄 고정 미니멀 네비바 (48px)
 const TopNavBar = styled.header`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background-color: rgba(9, 9, 11, 0.9);
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  padding: 0 12px;
+  background-color: rgba(9, 9, 11, 0.95);
   border-bottom: 1px solid ${THEME.border};
   backdrop-filter: blur(8px);
   z-index: 100;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 `;
 
 const NavLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  flex-shrink: 0;
 `;
 
-const GameTitle = styled.h1`
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 0;
+const GameTitle = styled.div`
+  font-size: 13px;
+  font-weight: 800;
   color: ${THEME.foreground};
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  white-space: nowrap;
+`;
+
+const NavCenter = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 `;
 
 const TurnBanner = styled.div`
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background-color: ${({ $isMyTurn }) =>
     $isMyTurn ? 'rgba(245, 158, 11, 0.15)' : THEME.secondary};
   border: 1px solid
     ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
-  padding: 6px 14px;
+  padding: 4px 10px;
   border-radius: ${THEME.radius.full};
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: ${({ $isMyTurn }) => ($isMyTurn ? THEME.goldLight : THEME.foreground)};
   animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 `;
 
 const NavControls = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
 `;
+
+const NavIconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: ${THEME.radius.md};
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: ${THEME.foreground};
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+
+  &:hover {
+    background-color: ${THEME.secondary};
+    border-color: ${THEME.border};
+  }
+
+  &.danger {
+    color: ${THEME.rose};
+    &:hover {
+      background-color: rgba(244, 63, 94, 0.15);
+      border-color: ${THEME.rose};
+    }
+  }
+`;
+
+// =========================================================================
+// Main Game Table Area (100dvh - 48px)
+// =========================================================================
 
 const TableArea = styled.main`
   flex: 1;
+  height: calc(100dvh - 48px);
+  max-height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 16px;
+  padding: 8px 10px;
   position: relative;
   background: radial-gradient(
     ellipse at center,
@@ -140,53 +211,92 @@ const TableArea = styled.main`
     ${THEME.feltGreenDeep} 70%,
     #01140f 100%
   );
-  border-radius: ${THEME.radius.xl};
-  margin: 12px;
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.8), 0 10px 30px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  box-sizing: border-box;
 `;
 
-const OpponentsGrid = styled.div`
+// =========================================================================
+// 1. Opponents Area (25% Height)
+// =========================================================================
+
+const OpponentsArea = styled.section`
+  height: 25%;
+  max-height: 25%;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 8px;
   width: 100%;
-  max-width: 1000px;
-  margin: 0 auto;
-  z-index: 10;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 20;
+
+  /* Hide scrollbar */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 `;
 
 const OpponentSeat = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: rgba(9, 9, 11, 0.85);
-  border: 1px solid
-    ${({ $isTurn }) => ($isTurn ? THEME.gold : THEME.border)};
-  border-radius: ${THEME.radius.xl};
-  padding: 10px 14px;
-  min-width: 130px;
+  justify-content: center;
+  background-color: rgba(9, 9, 11, 0.88);
+  border: 1.5px solid
+    ${({ $isTargetable, $isTurn }) =>
+      $isTargetable
+        ? THEME.gold
+        : $isTurn
+        ? THEME.gold
+        : THEME.border};
+  border-radius: ${THEME.radius.lg};
+  padding: 6px 10px;
+  min-width: 110px;
+  max-width: 150px;
+  height: 90%;
   position: relative;
   backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   transition: all 0.2s;
-  opacity: ${({ $isEliminated }) => ($isEliminated ? 0.45 : 1)};
-  filter: ${({ $isEliminated }) => ($isEliminated ? 'grayscale(80%)' : 'none')};
+  box-sizing: border-box;
+  cursor: ${({ $isTargetable }) => ($isTargetable ? 'pointer' : 'default')};
 
-  ${({ $isTurn }) =>
-    $isTurn &&
+  opacity: ${({ $isEliminated, $isDimmed }) =>
+    $isEliminated ? 0.4 : $isDimmed ? 0.5 : 1};
+  filter: ${({ $isEliminated }) => ($isEliminated ? 'grayscale(90%)' : 'none')};
+
+  ${({ $isTargetable }) =>
+    $isTargetable &&
     css`
-      box-shadow: 0 0 16px rgba(245, 158, 11, 0.5);
+      animation: ${targetPulse} 1.5s infinite;
+      background-color: rgba(245, 158, 11, 0.12);
+      &:hover {
+        transform: scale(1.04);
+        background-color: rgba(245, 158, 11, 0.22);
+      }
+    `}
+
+  ${({ $isTurn, $isTargetable }) =>
+    $isTurn &&
+    !$isTargetable &&
+    css`
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.5);
     `}
 `;
 
 const AvatarWrapper = styled.div`
   position: relative;
-  width: 50px;
-  height: 50px;
+  width: 36px;
+  height: 36px;
   border-radius: ${THEME.radius.full};
-  margin-bottom: 6px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
 `;
 
 const AvatarImg = styled.img`
@@ -206,22 +316,22 @@ const AvatarImg = styled.img`
 
 const SpeechBubble = styled.div`
   position: absolute;
-  bottom: 100%;
+  bottom: 105%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   background-color: rgba(9, 9, 11, 0.95);
   border: 1px solid ${THEME.emerald};
-  border-radius: ${THEME.radius.lg};
-  padding: 6px 12px;
-  font-size: 12px;
+  border-radius: ${THEME.radius.md};
+  padding: 4px 8px;
+  font-size: 11px;
   color: ${THEME.foreground};
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  z-index: 60;
 
   &::after {
     content: '';
@@ -229,96 +339,332 @@ const SpeechBubble = styled.div`
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    border-width: 5px;
+    border-width: 4px;
     border-style: solid;
     border-color: ${THEME.emerald} transparent transparent transparent;
   }
 `;
 
 const OpponentName = styled.div`
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: ${THEME.foreground};
-  margin-bottom: 4px;
-  max-width: 110px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.1;
+  text-align: center;
 `;
 
-const StatusPills = styled.div`
+const OpponentStatsRow = styled.div`
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 2px;
+  font-size: 10px;
 `;
 
-const CenterBoard = styled.div`
+const TargetBadge = styled.div`
+  position: absolute;
+  top: -8px;
+  background: linear-gradient(135deg, ${THEME.goldLight} 0%, ${THEME.gold} 100%);
+  color: #000;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: ${THEME.radius.full};
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  z-index: 25;
+`;
+
+// =========================================================================
+// Discard Pile Stack Components
+// =========================================================================
+
+const DiscardStackWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  margin-top: 3px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: ${THEME.radius.sm};
+  background-color: rgba(255, 255, 255, 0.05);
+  transition: background-color 0.15s;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+`;
+
+const DiscardOverlapRow = styled.div`
+  display: flex;
+  align-items: center;
+  height: 22px;
+`;
+
+const MiniDiscardChip = styled.div`
+  width: 18px;
+  height: 22px;
+  border-radius: 3px;
+  background-color: ${({ $color }) => $color || THEME.card};
+  border: 1px solid rgba(255, 255, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 32px;
-  margin: 20px 0;
-  z-index: 5;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  margin-left: ${({ $index }) => ($index === 0 ? '0' : '-6px')};
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  transform: ${({ $index }) => `rotate(${($index % 3 - 1) * 3}deg)`};
+  z-index: ${({ $index }) => $index + 1};
+  flex-shrink: 0;
 `;
 
-const DeckCard = styled.div`
-  width: 90px;
-  height: 130px;
+const DiscardMoreBadge = styled.span`
+  font-size: 9px;
+  color: ${THEME.mutedForeground};
+  margin-left: 4px;
+  font-weight: 700;
+`;
+
+function DiscardPileStack({ discardPile = [], onOpenHistory, playerName = '' }) {
+  if (!discardPile || discardPile.length === 0) {
+    return (
+      <DiscardStackWrapper onClick={() => onOpenHistory({ playerName, discardPile })}>
+        <span style={{ fontSize: '9px', color: THEME.mutedForeground }}>낸 패 없음</span>
+      </DiscardStackWrapper>
+    );
+  }
+
+  const visibleCards = discardPile.slice(-4);
+  const remainingCount = discardPile.length - visibleCards.length;
+
+  return (
+    <DiscardStackWrapper
+      onClick={() => onOpenHistory({ playerName, discardPile })}
+      title={`${playerName}님이 낸 카드 목록 보기 (총 ${discardPile.length}장)`}
+    >
+      <DiscardOverlapRow>
+        {visibleCards.map((card, idx) => {
+          const meta = CARD_DATA[card.value] || {};
+          return (
+            <MiniDiscardChip key={`${card.id || card.value}-${idx}`} $color={meta.color} $index={idx}>
+              {card.value}
+            </MiniDiscardChip>
+          );
+        })}
+      </DiscardOverlapRow>
+      {remainingCount > 0 && <DiscardMoreBadge>+{remainingCount}</DiscardMoreBadge>}
+    </DiscardStackWrapper>
+  );
+}
+
+// =========================================================================
+// 2. Center Table Area (25% Height)
+// =========================================================================
+
+const CenterTableArea = styled.section`
+  height: 25%;
+  max-height: 25%;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 4px 12px;
+  position: relative;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 10;
+`;
+
+const DeckSlot = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(9, 9, 11, 0.85);
+  border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.lg};
+  padding: 6px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+`;
+
+const MiniDeckCardVisual = styled.div`
+  width: 28px;
+  height: 38px;
+  border-radius: 4px;
   background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
-  border: 2px solid ${THEME.gold};
+  border: 1px solid ${THEME.gold};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 2px 2px 0 rgba(245, 158, 11, 0.5);
+`;
+
+const RemovedCardsSection = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: 2px;
+  background-color: rgba(9, 9, 11, 0.75);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  border-radius: ${THEME.radius.md};
+  padding: 4px 8px;
+`;
+
+const RemovedCardsRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+const RemovedCardChip = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: ${({ $color }) => `${$color}22`};
+  border: 1px solid ${({ $color }) => $color};
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: ${({ $color }) => $color};
+`;
+
+const RecentActionChip = styled.div`
+  display: flex;
+  align-items: center;
   gap: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  position: relative;
+  background-color: rgba(9, 9, 11, 0.9);
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.full};
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: ${THEME.foreground};
+  max-width: 260px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  span.log-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 `;
 
-const PlayedCardSlot = styled.div`
-  width: 90px;
-  height: 130px;
-  border-radius: ${THEME.radius.lg};
-  border: 1px dashed rgba(245, 158, 11, 0.4);
+const TargetingBanner = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  justify-content: center;
-  position: relative;
+  gap: 10px;
+  background-color: rgba(9, 9, 11, 0.96);
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.full};
+  padding: 6px 16px;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  z-index: 50;
+  animation: ${turnGlow} 1.5s infinite;
+  white-space: nowrap;
 `;
 
-const HandSection = styled.div`
+// =========================================================================
+// 3. My Play & Hand Area (50% Height - 48px)
+// =========================================================================
+
+const MyPlayArea = styled.section`
+  height: calc(50% - 48px);
+  max-height: calc(50% - 48px);
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   align-items: center;
+  padding: 4px 10px 8px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 30;
+  position: relative;
+`;
+
+const MyStatusBar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  z-index: 20;
+  max-width: 600px;
+  background-color: rgba(9, 9, 11, 0.85);
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.full};
+  padding: 4px 12px;
+  box-sizing: border-box;
+  font-size: 11px;
+`;
+
+const MyStatusLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`;
+
+const MyStatusRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
 `;
 
 const HandCardsWrapper = styled.div`
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  gap: 12px;
-  height: 170px;
+  gap: 14px;
+  flex: 1;
+  width: 100%;
+  max-width: 480px;
+  position: relative;
 `;
 
 const CardMotion = styled(motion.div)`
-  width: 115px;
-  height: 165px;
-  border-radius: ${THEME.radius.xl};
+  width: 120px;
+  height: 148px;
+  border-radius: ${THEME.radius.lg};
   background-color: ${THEME.card};
-  border: 2px solid ${({ $color }) => $color || THEME.gold};
-  padding: 10px;
+  border: 2px solid
+    ${({ $isSelected, $color, $isForced }) =>
+      $isSelected
+        ? THEME.gold
+        : $isForced
+        ? '#ec4899'
+        : $color || THEME.gold};
+  padding: 8px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-  cursor: ${({ $canPlay }) => ($canPlay ? 'pointer' : 'not-allowed')};
+  box-shadow: ${({ $isSelected }) =>
+    $isSelected
+      ? `0 0 20px rgba(245, 158, 11, 0.8), 0 8px 24px rgba(0, 0, 0, 0.8)`
+      : `0 6px 18px rgba(0, 0, 0, 0.6)`};
+  cursor: ${({ $canPlay, $isRestricted }) =>
+    $canPlay && !$isRestricted ? 'pointer' : 'not-allowed'};
   position: relative;
   overflow: hidden;
   user-select: none;
+  box-sizing: border-box;
+  transform: ${({ $isSelected }) => ($isSelected ? 'translateY(-12px)' : 'translateY(0)')};
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+
+  opacity: ${({ $isRestricted }) => ($isRestricted ? 0.45 : 1)};
+  filter: ${({ $isRestricted }) => ($isRestricted ? 'grayscale(80%)' : 'none')};
+
+  ${({ $isForced }) =>
+    $isForced &&
+    css`
+      animation: ${forcedPulse} 1.8s infinite;
+    `}
 
   &::before {
     content: '';
@@ -340,98 +686,111 @@ const CardHeaderRow = styled.div`
 `;
 
 const CardValueBadge = styled.span`
-  font-size: 1.2rem;
-  font-weight: 800;
+  font-size: 1.25rem;
+  font-weight: 900;
   color: ${({ $color }) => $color};
   line-height: 1;
 `;
 
 const CardEmblem = styled.div`
-  font-size: 2.2rem;
+  font-size: 2rem;
   text-align: center;
-  margin: 4px 0;
+  margin: 1px 0;
 `;
 
 const CardFooterInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 `;
 
 const CardNameText = styled.div`
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: ${THEME.foreground};
-  line-height: 1.2;
+  line-height: 1.1;
 `;
 
 const CardDescSnippet = styled.div`
   font-size: 9px;
   color: ${THEME.mutedForeground};
-  line-height: 1.2;
+  line-height: 1.15;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 `;
 
-const TargetGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+const RestrictionBadge = styled.div`
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  left: 4px;
+  background-color: rgba(239, 68, 68, 0.95);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 4px;
+  border-radius: 4px;
+  text-align: center;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 `;
 
-const TargetButton = styled.button`
+const ActionControlBar = styled.div`
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  background-color: ${({ $selected }) =>
-    $selected ? 'rgba(245, 158, 11, 0.2)' : THEME.secondary};
-  border: 1px solid
-    ${({ $selected }) => ($selected ? THEME.gold : THEME.border)};
-  border-radius: ${THEME.radius.lg};
-  padding: 10px;
-  color: ${THEME.foreground};
-  cursor: pointer;
-  transition: all 0.15s;
-
-  &:hover {
-    border-color: ${THEME.gold};
-    background-color: rgba(245, 158, 11, 0.1);
-  }
+  justify-content: center;
+  width: 100%;
+  max-width: 480px;
+  height: 42px;
+  min-height: 42px;
+  box-sizing: border-box;
 `;
 
-const GuessGrid = styled.div`
+// =========================================================================
+// Dialog / Modal Subcomponents
+// =========================================================================
+
+const SmartGuessGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 8px;
   margin-top: 12px;
 `;
 
-const GuessButton = styled.button`
+const SmartGuessButton = styled.button`
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
   background-color: ${({ $selected }) =>
     $selected ? 'rgba(245, 158, 11, 0.2)' : THEME.secondary};
-  border: 1px solid
-    ${({ $selected }) => ($selected ? THEME.gold : THEME.border)};
+  border: 1.5px solid
+    ${({ $selected, $isZero }) =>
+      $selected
+        ? THEME.gold
+        : $isZero
+        ? 'rgba(255, 255, 255, 0.08)'
+        : THEME.border};
   border-radius: ${THEME.radius.md};
-  padding: 8px 4px;
+  padding: 8px 10px;
   color: ${THEME.foreground};
-  cursor: pointer;
+  cursor: ${({ disabled }) => (disabled ? 'not-allowed' : 'pointer')};
   transition: all 0.15s;
+  opacity: ${({ disabled }) => (disabled ? 0.4 : 1)};
+  text-align: left;
+  box-sizing: border-box;
+  width: 100%;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: ${THEME.gold};
+    background-color: rgba(245, 158, 11, 0.12);
   }
 `;
 
 // =========================================================================
-// Love Letter Board Component
+// LoveLetterBoard Main Component
 // =========================================================================
 
 export default function LoveLetterBoard({
@@ -444,31 +803,42 @@ export default function LoveLetterBoard({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
 
-  // Card Play Modal States
-  const [selectedCard, setSelectedCard] = useState(null);
+  // Selected Hand Card Index for 2-Step Touch (0 or 1 or null)
+  const [selectedCardIndex, setSelectedCardIndex] = useState(null);
+
+  // Table Direct Targeting Mode (true when targeting a player)
+  const [isTargetingMode, setIsTargetingMode] = useState(false);
+
+  // Guard Smart Guess Modal
   const [guardModalOpen, setGuardModalOpen] = useState(false);
-  const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [guardTargetPlayer, setGuardTargetPlayer] = useState(null);
+  const [selectedGuessValue, setSelectedGuessValue] = useState(2);
+
+  // Priest Secret Reveal Modal
   const [priestResultModalOpen, setPriestResultModalOpen] = useState(false);
   const [priestData, setPriestData] = useState(null);
-  const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
 
-  const [selectedTargetId, setSelectedTargetId] = useState(null);
-  const [selectedGuessValue, setSelectedGuessValue] = useState(2);
+  // Discard History Modal
+  const [discardHistoryModalOpen, setDiscardHistoryModalOpen] = useState(false);
+  const [discardHistoryTarget, setDiscardHistoryTarget] = useState(null);
+
+  // Forfeit Confirmation Modal
+  const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
 
   const isMyTurn = roomState?.turnPlayerId === currentUser?.id;
   const myPlayer = roomState?.players?.find((p) => p.id === currentUser?.id);
   const opponents = roomState?.players?.filter((p) => p.id !== currentUser?.id) || [];
   const currentTurnPlayer = roomState?.players?.find((p) => p.id === roomState?.turnPlayerId);
 
-  // Toggle SFX
-  const toggleSFX = () => {
-    const next = !sfxEnabled;
-    sfx.setEnabled(next);
-    setSfxEnabled(next);
-  };
+  // Selected card object
+  const selectedCard =
+    selectedCardIndex !== null && myPlayer?.hand?.[selectedCardIndex]
+      ? myPlayer.hand[selectedCardIndex]
+      : null;
 
-  // Sound triggers on game events
+  // Sound triggers on turn and round end
   useEffect(() => {
     if (isMyTurn) {
       sfx.playTurnAlert();
@@ -478,6 +848,8 @@ export default function LoveLetterBoard({
   useEffect(() => {
     if (roomState?.gameState === 'ROUND_END' || roomState?.gameState === 'GAME_OVER') {
       sfx.playVictoryFanfare();
+      setIsTargetingMode(false);
+      setSelectedCardIndex(null);
     }
   }, [roomState?.gameState]);
 
@@ -492,18 +864,95 @@ export default function LoveLetterBoard({
     return () => socket.off('game:priest-result', handlePriest);
   }, [socket]);
 
-  // Handle Card Click
-  const handleCardClick = (card) => {
+  // Reset selection when turn changes or hand changes
+  useEffect(() => {
+    if (!isMyTurn) {
+      setSelectedCardIndex(null);
+      setIsTargetingMode(false);
+    }
+  }, [isMyTurn, myPlayer?.hand?.length]);
+
+  // Toggle SFX
+  const toggleSFX = () => {
+    const next = !sfxEnabled;
+    sfx.setEnabled(next);
+    setSfxEnabled(next);
+  };
+
+  // Copy Room Code
+  const handleCopyCode = () => {
+    if (!roomState?.code) return;
+    navigator.clipboard.writeText(roomState.code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  // =========================================================================
+  // Countess Constraint Evaluation
+  // =========================================================================
+  const hasCountess = useMemo(() => {
+    return myPlayer?.hand?.some((c) => c.value === 7) || false;
+  }, [myPlayer?.hand]);
+
+  const hasPrinceOrKing = useMemo(() => {
+    return myPlayer?.hand?.some((c) => c.value === 5 || c.value === 6) || false;
+  }, [myPlayer?.hand]);
+
+  const isCountessForced = hasCountess && hasPrinceOrKing;
+
+  // =========================================================================
+  // Card Counter (Smart Helper for Guard Guessing)
+  // =========================================================================
+  const cardCounter = useMemo(() => {
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
+
+    // 1. All players' discard piles
+    (roomState?.players || []).forEach((p) => {
+      (p.discardPile || []).forEach((c) => {
+        if (counts[c.value] !== undefined) counts[c.value]++;
+      });
+    });
+
+    // 2. Set aside open cards (2-player game)
+    (roomState?.setAsideOpenCards || []).forEach((c) => {
+      if (counts[c.value] !== undefined) counts[c.value]++;
+    });
+
+    // 3. My own hand
+    (myPlayer?.hand || []).forEach((c) => {
+      if (counts[c.value] !== undefined) counts[c.value]++;
+    });
+
+    return counts;
+  }, [roomState?.players, roomState?.setAsideOpenCards, myPlayer?.hand]);
+
+  // =========================================================================
+  // Card Selection & Play Actions (2-Step Safety Touch)
+  // =========================================================================
+
+  // Step 1: Tap card to select/unselect
+  const handleCardTap = (index, card) => {
     if (!isMyTurn || myPlayer?.isEliminated) return;
 
-    // Check Countess constraint: if holding Countess (7) and (Prince 5 or King 6)
-    const hasCountess = myPlayer.hand.some((c) => c.value === 7);
-    if (hasCountess && (card.value === 5 || card.value === 6)) {
-      alert('백작부인(7)을 손에 쥐고 있을 때 왕자(5)나 국왕(6)을 낼 수 없습니다!');
+    // Block Prince(5)/King(6) when Countess(7) is present
+    if (isCountessForced && (card.value === 5 || card.value === 6)) {
+      alert('백작부인(7)을 손에 쥐고 있을 때는 반드시 백작부인을 먼저 사용해야 합니다!');
       return;
     }
 
-    setSelectedCard(card);
+    if (selectedCardIndex === index) {
+      // Unselect
+      setSelectedCardIndex(null);
+      setIsTargetingMode(false);
+    } else {
+      setSelectedCardIndex(index);
+      setIsTargetingMode(false);
+    }
+  };
+
+  // Step 2: Trigger Play Button
+  const handleTriggerCardPlay = (card) => {
+    if (!card || !isMyTurn || myPlayer?.isEliminated) return;
 
     // Eligible opponents (alive & not protected)
     const eligibleOpponents = opponents.filter((p) => !p.isEliminated && !p.isProtected);
@@ -514,25 +963,21 @@ export default function LoveLetterBoard({
         // Everyone protected -> play without target
         executePlay(card.id, null, null);
       } else {
-        setSelectedTargetId(eligibleOpponents[0].id);
-        setSelectedGuessValue(2);
-        setGuardModalOpen(true);
+        setIsTargetingMode(true);
       }
     }
     // 2. Priest (2) / 3. Baron (3) / 6. King (6)
     else if (card.value === 2 || card.value === 3 || card.value === 6) {
       if (eligibleOpponents.length === 0) {
+        // Everyone protected -> play without target
         executePlay(card.id, null, null);
       } else {
-        setSelectedTargetId(eligibleOpponents[0].id);
-        setTargetModalOpen(true);
+        setIsTargetingMode(true);
       }
     }
-    // 5. Prince (5) - can target anyone alive (including self!)
+    // 5. Prince (5) - can target anyone alive (including self)
     else if (card.value === 5) {
-      const eligiblePrinceTargets = roomState.players.filter((p) => !p.isEliminated && (!p.isProtected || p.id === currentUser.id));
-      setSelectedTargetId(currentUser.id);
-      setTargetModalOpen(true);
+      setIsTargetingMode(true);
     }
     // 4. Handmaid (4) / 7. Countess (7) / 8. Princess (8)
     else {
@@ -540,6 +985,33 @@ export default function LoveLetterBoard({
     }
   };
 
+  // Step 3: Direct Table Seat Click in Targeting Mode
+  const handleSeatClick = (targetPlayer) => {
+    if (!isTargetingMode || !selectedCard) return;
+
+    // Guard (1) -> Open Smart Guess Modal
+    if (selectedCard.value === 1) {
+      setGuardTargetPlayer(targetPlayer);
+      // Pick the first available number that has remaining cards >= 1
+      let defaultGuess = 2;
+      for (let n = 2; n <= 8; n++) {
+        const remaining = (CARD_DATA[n]?.count || 0) - (cardCounter[n] || 0);
+        if (remaining > 0) {
+          defaultGuess = n;
+          break;
+        }
+      }
+      setSelectedGuessValue(defaultGuess);
+      setGuardModalOpen(true);
+      setIsTargetingMode(false);
+    } else {
+      // Priest (2), Baron (3), Prince (5), King (6)
+      executePlay(selectedCard.id, targetPlayer.id, null);
+      setIsTargetingMode(false);
+    }
+  };
+
+  // Execute Play Card Socket Event
   const executePlay = (cardId, targetUserId, guessValue) => {
     sfx.playCardPlay();
     socket.emit(
@@ -555,11 +1027,18 @@ export default function LoveLetterBoard({
         }
       }
     );
-    setSelectedCard(null);
+    setSelectedCardIndex(null);
+    setIsTargetingMode(false);
     setGuardModalOpen(false);
-    setTargetModalOpen(false);
   };
 
+  // Open Discard History Modal
+  const handleOpenDiscardHistory = ({ playerName, discardPile }) => {
+    setDiscardHistoryTarget({ playerName, discardPile });
+    setDiscardHistoryModalOpen(true);
+  };
+
+  // Next Round or Restart
   const handleNextRoundOrRestart = () => {
     socket.emit('game:start', {}, (res) => {
       if (!res?.success) alert(res?.error || '게임 시작 실패');
@@ -568,103 +1047,124 @@ export default function LoveLetterBoard({
 
   return (
     <BoardContainer>
-      {/* 1. Top Navigation Bar */}
+      {/* ========================================================= */}
+      {/* 1. TOP NAVIGATION BAR (48px Fixed Single-Row) */}
+      {/* ========================================================= */}
       <TopNavBar>
         <NavLeft>
           <GameTitle>
             <span>💌</span> 러브레터
           </GameTitle>
-          <Badge $variant="gold">Round {roomState?.roundNumber || 1}</Badge>
-          <Badge $variant="outline">{roomState?.code}</Badge>
+          <Badge $variant="gold" style={{ padding: '2px 6px', fontSize: '11px', height: '20px' }}>
+            R{roomState?.roundNumber || 1}
+          </Badge>
+          <Badge
+            $variant="outline"
+            style={{ padding: '2px 6px', fontSize: '11px', height: '20px', cursor: 'pointer' }}
+            onClick={handleCopyCode}
+            title="방 코드 복사"
+          >
+            {copiedCode ? <Check size={12} color={THEME.emerald} /> : <Copy size={12} />}
+            <span style={{ marginLeft: '4px', letterSpacing: '1px' }}>{roomState?.code}</span>
+          </Badge>
         </NavLeft>
 
-        <TurnBanner $isMyTurn={isMyTurn}>
-          {isMyTurn ? (
-            <>
-              <Sparkles size={16} />
-              <span>당신의 턴입니다! 카드를 선택하세요</span>
-            </>
-          ) : (
-            <>
-              <span>🎴</span>
-              <span>{currentTurnPlayer?.nickname || '상대방'}의 턴</span>
-            </>
-          )}
-        </TurnBanner>
+        <NavCenter>
+          <TurnBanner $isMyTurn={isMyTurn}>
+            {isMyTurn ? (
+              <>
+                <Sparkles size={14} />
+                <span>[내 턴] 카드를 선택하세요</span>
+              </>
+            ) : (
+              <>
+                <span>⏳</span>
+                <span>[{currentTurnPlayer?.nickname || '상대방'}] 님의 턴</span>
+              </>
+            )}
+          </TurnBanner>
+        </NavCenter>
 
         <NavControls>
-          <Button
-            $variant="ghost"
-            $size="icon"
+          <NavIconButton
             onClick={webrtc?.toggleMic}
             title={webrtc?.isMicOn ? '마이크 끄기' : '마이크 켜기'}
           >
-            {webrtc?.isMicOn ? <Mic size={18} color={THEME.emerald} /> : <MicOff size={18} />}
-          </Button>
+            {webrtc?.isMicOn ? <Mic size={16} color={THEME.emerald} /> : <MicOff size={16} />}
+          </NavIconButton>
 
-          <Button
-            $variant="ghost"
-            $size="icon"
+          <NavIconButton
             onClick={webrtc?.toggleSpeaker}
             title={webrtc?.isSpeakerOn ? '스피커 끄기' : '스피커 켜기'}
           >
-            {webrtc?.isSpeakerOn ? <Volume2 size={18} /> : <VolumeX size={18} color={THEME.rose} />}
-          </Button>
+            {webrtc?.isSpeakerOn ? <Volume2 size={16} /> : <VolumeX size={16} color={THEME.rose} />}
+          </NavIconButton>
 
-          <Button
-            $variant="ghost"
-            $size="icon"
+          <NavIconButton
             onClick={stt?.toggleSTT}
             title={stt?.isSTTEnabled ? '한국어 자막 끄기' : '한국어 자막 켜기'}
           >
-            <MessageSquare size={18} color={stt?.isSTTEnabled ? THEME.emerald : undefined} />
-          </Button>
+            <MessageSquare size={16} color={stt?.isSTTEnabled ? THEME.emerald : undefined} />
+          </NavIconButton>
 
-          <Button
-            $variant="ghost"
-            $size="icon"
+          <NavIconButton
             onClick={toggleSFX}
             title={sfxEnabled ? '효과음 끄기' : '효과음 켜기'}
           >
-            <span>{sfxEnabled ? '🎵' : '🔇'}</span>
-          </Button>
+            <span style={{ fontSize: '14px' }}>{sfxEnabled ? '🎵' : '🔇'}</span>
+          </NavIconButton>
 
-          <Button
-            $variant="outline"
-            $size="sm"
+          <NavIconButton
             onClick={() => setDrawerOpen(true)}
-            title="게임 기록 및 규칙"
+            title="게임 기록 및 카드 가이드"
           >
-            <Scroll size={15} />
-            <span>기록</span>
-          </Button>
+            <Scroll size={16} />
+          </NavIconButton>
 
-          <Button
-            $variant="destructive"
-            $size="sm"
+          <NavIconButton
+            className="danger"
             onClick={() => setForfeitModalOpen(true)}
             title="게임 포기 및 나가기"
           >
-            <LogOut size={15} />
-          </Button>
+            <LogOut size={16} />
+          </NavIconButton>
         </NavControls>
       </TopNavBar>
 
-      {/* 2. 3D Felt Game Table */}
+      {/* ========================================================= */}
+      {/* 2. MAIN FELT TABLE AREA (100dvh - 48px) */}
+      {/* ========================================================= */}
       <TableArea>
-        {/* Opponents Seats */}
-        <OpponentsGrid>
+        {/* ========================================================= */}
+        {/* AREA 1: Opponents Seats (25% Height) */}
+        {/* ========================================================= */}
+        <OpponentsArea>
           {opponents.map((p) => {
-            const isTurn = p.id === roomState.turnPlayerId;
+            const isTurn = p.id === roomState?.turnPlayerId;
             const isSpeaking = webrtc?.speakingUsers?.[p.id];
             const bubble = stt?.activeBubbles?.[p.id];
+
+            // Direct Table Targeting availability
+            const isTargetable =
+              isTargetingMode &&
+              !p.isEliminated &&
+              (selectedCard?.value === 5 || !p.isProtected);
+
+            const isDimmed = isTargetingMode && !isTargetable;
 
             return (
               <OpponentSeat
                 key={p.id}
                 $isTurn={isTurn}
                 $isEliminated={p.isEliminated}
+                $isTargetable={isTargetable}
+                $isDimmed={isDimmed}
+                onClick={() => {
+                  if (isTargetable) handleSeatClick(p);
+                }}
               >
+                {isTargetable && <TargetBadge>🎯 터치하여 지목</TargetBadge>}
+
                 <AvatarWrapper>
                   <AvatarImg
                     src={p.avatarUrl}
@@ -677,88 +1177,183 @@ export default function LoveLetterBoard({
 
                 <OpponentName>{p.nickname}</OpponentName>
 
-                <StatusPills>
-                  <Badge $variant="gold">⭐ {p.tokens || 0}</Badge>
-                  <Badge $variant="outline">🃏 {p.handCount || 0}</Badge>
-                  {p.isProtected && <Badge $variant="emerald">🌸 보호</Badge>}
-                  {p.isEliminated && <Badge $variant="rose">☠️ 탈락</Badge>}
-                </StatusPills>
+                <OpponentStatsRow>
+                  <Badge $variant="gold" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                    ⭐{p.tokens || 0}
+                  </Badge>
+                  <Badge $variant="outline" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                    🃏{p.handCount || 0}
+                  </Badge>
+                  {p.isProtected && (
+                    <Badge $variant="emerald" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                      🌸보호
+                    </Badge>
+                  )}
+                  {p.isEliminated && (
+                    <Badge $variant="rose" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                      ☠️탈락
+                    </Badge>
+                  )}
+                </OpponentStatsRow>
+
+                {/* Overlapped Discard Pile Stack */}
+                <DiscardPileStack
+                  discardPile={p.discardPile}
+                  onOpenHistory={handleOpenDiscardHistory}
+                  playerName={p.nickname}
+                />
               </OpponentSeat>
             );
           })}
-        </OpponentsGrid>
+        </OpponentsArea>
 
-        {/* Center Board: Deck & Discard Zone */}
-        <CenterBoard>
-          <DeckCard>
-            <span style={{ fontSize: '24px' }}>💌</span>
-            <span style={{ fontSize: '11px', color: THEME.gold, fontWeight: 700 }}>
-              남은 덱
-            </span>
-            <Badge $variant="gold">{roomState?.deckCount || 0}장</Badge>
-          </DeckCard>
-
-          <div style={{ textAlign: 'center', maxWidth: '300px' }}>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '6px' }}>
-              최근 액션
+        {/* ========================================================= */}
+        {/* AREA 2: Center Table (25% Height) */}
+        {/* ========================================================= */}
+        <CenterTableArea>
+          {/* Deck Slot */}
+          <DeckSlot>
+            <MiniDeckCardVisual>💌</MiniDeckCardVisual>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '10px', color: THEME.gold, fontWeight: 700 }}>
+                남은 덱
+              </span>
+              <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                {roomState?.deckCount || 0}장
+              </span>
             </div>
-            <div
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                color: THEME.foreground,
-                backgroundColor: 'rgba(9, 9, 11, 0.75)',
-                padding: '8px 14px',
-                borderRadius: THEME.radius.md,
-                border: `1px solid ${THEME.border}`,
-              }}
-            >
-              {roomState?.lastActionLog || '게임을 시작합니다.'}
-            </div>
-          </div>
-        </CenterBoard>
+          </DeckSlot>
 
-        {/* 3. Bottom Player Hand (3D Fan-out Arc) */}
-        <HandSection>
-          <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Badge $variant={myPlayer?.isEliminated ? 'rose' : 'emerald'}>
-              {myPlayer?.isEliminated ? '☠️ 탈락하였습니다' : '🃏 내 손패'}
-            </Badge>
-            <span style={{ fontSize: '12px', color: THEME.gold }}>
-              보유 토큰: {myPlayer?.tokens || 0}/{roomState?.targetTokens || 4}개
+          {/* 2-Player Game Open Set Aside Cards */}
+          {(roomState?.setAsideOpenCards || []).length > 0 && (
+            <RemovedCardsSection>
+              <span style={{ fontSize: '9px', color: THEME.gold, fontWeight: 700 }}>
+                2인전 오픈 제외:
+              </span>
+              <RemovedCardsRow>
+                {roomState.setAsideOpenCards.map((card, idx) => {
+                  const meta = CARD_DATA[card.value] || {};
+                  return (
+                    <RemovedCardChip key={idx} $color={meta.color}>
+                      <span>{meta.icon}</span>
+                      <span>{card.value}</span>
+                    </RemovedCardChip>
+                  );
+                })}
+              </RemovedCardsRow>
+            </RemovedCardsSection>
+          )}
+
+          {/* 1-Line Recent Action Chip */}
+          <RecentActionChip onClick={() => setDrawerOpen(true)}>
+            <span style={{ color: THEME.gold }}>💬</span>
+            <span className="log-text">
+              {roomState?.lastActionLog || '새 게임을 시작합니다.'}
             </span>
-            {myPlayer?.isProtected && <Badge $variant="emerald">🌸 보호막 활성</Badge>}
-          </div>
+          </RecentActionChip>
 
+          {/* Active Direct Targeting Banner Overlay */}
+          {isTargetingMode && (
+            <TargetingBanner>
+              <Crosshair size={16} color={THEME.goldLight} />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: THEME.goldLight }}>
+                🎯 테이블에서 지목할 상대를 직접 터치하세요!
+              </span>
+              <Button
+                $variant="outline"
+                $size="sm"
+                onClick={() => setIsTargetingMode(false)}
+                style={{ padding: '2px 8px', height: '24px', fontSize: '11px', marginLeft: '4px' }}
+              >
+                <X size={12} />
+                <span>취소</span>
+              </Button>
+            </TargetingBanner>
+          )}
+        </CenterTableArea>
+
+        {/* ========================================================= */}
+        {/* AREA 3: My Play & Hand Area (50% Height - 48px) */}
+        {/* ========================================================= */}
+        <MyPlayArea>
+          {/* My Status & Discard Pile Summary Bar */}
+          <MyStatusBar>
+            <MyStatusLeft>
+              <span style={{ fontWeight: 700 }}>👤 나 ({currentUser?.nickname})</span>
+              <Badge $variant="gold" style={{ padding: '1px 5px', fontSize: '10px' }}>
+                ⭐ {myPlayer?.tokens || 0}/{roomState?.targetTokens || 4}개
+              </Badge>
+              {myPlayer?.isProtected && (
+                <Badge $variant="emerald" style={{ padding: '1px 5px', fontSize: '10px' }}>
+                  🌸 보호막 활성
+                </Badge>
+              )}
+              {myPlayer?.isEliminated && (
+                <Badge $variant="rose" style={{ padding: '1px 5px', fontSize: '10px' }}>
+                  ☠️ 탈락
+                </Badge>
+              )}
+            </MyStatusLeft>
+
+            <MyStatusRight>
+              {/* If Prince is in targeting mode, provide self-target button */}
+              {isTargetingMode && selectedCard?.value === 5 && (
+                <Button
+                  $variant="gold"
+                  $size="sm"
+                  onClick={() => handleSeatClick(currentUser)}
+                  style={{ height: '22px', padding: '0 8px', fontSize: '10px' }}
+                >
+                  🎯 나 자신 지목
+                </Button>
+              )}
+
+              <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>내 버린패:</span>
+              <DiscardPileStack
+                discardPile={myPlayer?.discardPile}
+                onOpenHistory={handleOpenDiscardHistory}
+                playerName={currentUser?.nickname || '나'}
+              />
+            </MyStatusRight>
+          </MyStatusBar>
+
+          {/* Hand Cards (2-Step Touch) */}
           <HandCardsWrapper>
             <AnimatePresence>
               {myPlayer?.hand?.map((card, idx) => {
-                const totalCards = myPlayer.hand.length;
-                const rotation = totalCards === 2 ? (idx === 0 ? -7 : 7) : 0;
-                const xOffset = totalCards === 2 ? (idx === 0 ? -12 : 12) : 0;
                 const cardMeta = CARD_DATA[card.value] || {};
+                const isSelected = selectedCardIndex === idx;
+                const isRestricted = isCountessForced && (card.value === 5 || card.value === 6);
+                const isForced = isCountessForced && card.value === 7;
 
                 return (
                   <CardMotion
-                    key={card.id}
+                    key={card.id || `${card.value}-${idx}`}
                     $color={cardMeta.color}
+                    $isSelected={isSelected}
+                    $isRestricted={isRestricted}
+                    $isForced={isForced}
                     $canPlay={isMyTurn && !myPlayer.isEliminated}
-                    initial={{ y: 50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1, rotate: rotation, x: xOffset }}
-                    exit={{ y: -80, opacity: 0, scale: 0.8 }}
-                    whileHover={
-                      isMyTurn && !myPlayer.isEliminated
-                        ? { y: -24, scale: 1.08, rotate: 0, zIndex: 30 }
-                        : {}
-                    }
+                    initial={{ y: 30, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -50, opacity: 0, scale: 0.8 }}
                     transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                    onClick={() => handleCardClick(card)}
+                    onClick={() => handleCardTap(idx, card)}
                   >
+                    {isRestricted && (
+                      <RestrictionBadge>⚠️ 백작부인 필수</RestrictionBadge>
+                    )}
+                    {isForced && (
+                      <RestrictionBadge style={{ backgroundColor: '#ec4899' }}>
+                        ✨ 필수 사용
+                      </RestrictionBadge>
+                    )}
+
                     <CardHeaderRow>
                       <CardValueBadge $color={cardMeta.color}>
                         {card.value}
                       </CardValueBadge>
-                      <span style={{ fontSize: '11px', color: cardMeta.color, fontWeight: 700 }}>
+                      <span style={{ fontSize: '10px', color: cardMeta.color, fontWeight: 800 }}>
                         {cardMeta.nameEn}
                       </span>
                     </CardHeaderRow>
@@ -776,60 +1371,117 @@ export default function LoveLetterBoard({
               })}
             </AnimatePresence>
           </HandCardsWrapper>
-        </HandSection>
+
+          {/* 2-Step Action Control Bar */}
+          <ActionControlBar>
+            {isMyTurn && !myPlayer?.isEliminated ? (
+              selectedCard ? (
+                <Button
+                  $variant="gold"
+                  $size="default"
+                  $fullWidth
+                  onClick={() => handleTriggerCardPlay(selectedCard)}
+                  style={{
+                    height: '38px',
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  <Sparkles size={16} />
+                  <span>
+                    ✨ [{selectedCard.name} ({selectedCard.value})] 카드 사용하기
+                  </span>
+                </Button>
+              ) : (
+                <div
+                  style={{
+                    fontSize: '12px',
+                    color: THEME.goldLight,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Info size={14} />
+                  <span>사용할 손패 카드를 터치하여 선택하세요</span>
+                </div>
+              )
+            ) : (
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: THEME.mutedForeground,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>⏳</span>
+                <span>
+                  {myPlayer?.isEliminated
+                    ? '이번 라운드에서 탈락하였습니다. 다음 라운드를 기다려주세요.'
+                    : `[${currentTurnPlayer?.nickname || '상대방'}] 님의 플레이 대기 중...`}
+                </span>
+              </div>
+            )}
+          </ActionControlBar>
+        </MyPlayArea>
       </TableArea>
 
-      {/* 4. Guard Guess Dialog */}
+      {/* ========================================================= */}
+      {/* 4. GUARD SMART CARD COUNTER GUESS MODAL */}
+      {/* ========================================================= */}
       <Dialog open={guardModalOpen} onClose={() => setGuardModalOpen(false)}>
         <DialogHeader>
-          <DialogTitle>🛡️ 경비병: 상대 지목 및 카드 추측</DialogTitle>
+          <DialogTitle>🛡️ 경비병: 상대 카드 추측</DialogTitle>
           <DialogDescription>
-            지목할 상대방과 그 사람이 가지고 있을 것으로 예상되는 카드를 선택하세요.
+            [{guardTargetPlayer?.nickname}] 님이 보유 중일 카드를 추측하세요.
+            (테이블에 소진된 카드는 자동 비활성화됩니다)
           </DialogDescription>
         </DialogHeader>
 
-        <div style={{ fontSize: '13px', fontWeight: 600, color: THEME.gold, marginTop: '8px' }}>
-          1. 지목할 상대방 선택
+        <div style={{ fontSize: '12px', fontWeight: 700, color: THEME.gold, marginTop: '6px' }}>
+          추측할 카드 선택 (2~8번)
         </div>
-        <TargetGrid>
-          {opponents
-            .filter((p) => !p.isEliminated && !p.isProtected)
-            .map((p) => (
-              <TargetButton
-                key={p.id}
-                $selected={selectedTargetId === p.id}
-                onClick={() => setSelectedTargetId(p.id)}
-              >
-                <img
-                  src={p.avatarUrl}
-                  alt={p.nickname}
-                  style={{ width: '32px', height: '32px', borderRadius: '50%' }}
-                />
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>{p.nickname}</span>
-              </TargetButton>
-            ))}
-        </TargetGrid>
 
-        <div style={{ fontSize: '13px', fontWeight: 600, color: THEME.gold, marginTop: '16px' }}>
-          2. 추측할 카드 번호 선택 (2~8번)
-        </div>
-        <GuessGrid>
+        <SmartGuessGrid>
           {[2, 3, 4, 5, 6, 7, 8].map((num) => {
             const meta = CARD_DATA[num];
+            const totalCount = meta.count;
+            const revealed = cardCounter[num] || 0;
+            const remaining = totalCount - revealed;
+            const isZero = remaining <= 0;
+
             return (
-              <GuessButton
+              <SmartGuessButton
                 key={num}
                 $selected={selectedGuessValue === num}
+                $isZero={isZero}
+                disabled={isZero}
                 onClick={() => setSelectedGuessValue(num)}
               >
-                <span style={{ fontSize: '16px' }}>{meta.icon}</span>
-                <span style={{ fontSize: '12px', fontWeight: 700 }}>
-                  {num} {meta.name}
-                </span>
-              </GuessButton>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
+                  <span style={{ fontSize: '16px' }}>{meta.icon}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: meta.color }}>
+                    {num}. {meta.name}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: '10px',
+                    color: isZero ? THEME.rose : THEME.emerald,
+                    fontWeight: 700,
+                    marginTop: '2px',
+                  }}
+                >
+                  {isZero ? '0장 남음 (소진됨)' : `${remaining}/${totalCount}장 남음`}
+                </div>
+              </SmartGuessButton>
             );
           })}
-        </GuessGrid>
+        </SmartGuessGrid>
 
         <DialogFooter>
           <Button $variant="outline" onClick={() => setGuardModalOpen(false)}>
@@ -838,101 +1490,141 @@ export default function LoveLetterBoard({
           <Button
             $variant="gold"
             onClick={() =>
-              executePlay(selectedCard?.id, selectedTargetId, selectedGuessValue)
+              executePlay(selectedCard?.id, guardTargetPlayer?.id, selectedGuessValue)
             }
-            disabled={!selectedTargetId}
+            disabled={!guardTargetPlayer || (CARD_DATA[selectedGuessValue]?.count - (cardCounter[selectedGuessValue] || 0) <= 0)}
           >
             추측 제출
           </Button>
         </DialogFooter>
       </Dialog>
 
-      {/* 5. General Target Selection Dialog (Priest, Baron, Prince, King) */}
-      <Dialog open={targetModalOpen} onClose={() => setTargetModalOpen(false)}>
-        <DialogHeader>
-          <DialogTitle>
-            {selectedCard?.name} ({selectedCard?.value}): 대상 지목
-          </DialogTitle>
-          <DialogDescription>카드 효과를 적용할 플레이어를 선택하세요.</DialogDescription>
-        </DialogHeader>
-
-        <TargetGrid>
-          {(selectedCard?.value === 5
-            ? roomState.players.filter((p) => !p.isEliminated && (!p.isProtected || p.id === currentUser.id))
-            : opponents.filter((p) => !p.isEliminated && !p.isProtected)
-          ).map((p) => (
-            <TargetButton
-              key={p.id}
-              $selected={selectedTargetId === p.id}
-              onClick={() => setSelectedTargetId(p.id)}
-            >
-              <img
-                src={p.avatarUrl}
-                alt={p.nickname}
-                style={{ width: '36px', height: '36px', borderRadius: '50%' }}
-              />
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                {p.nickname} {p.id === currentUser.id && '(자신)'}
-              </span>
-            </TargetButton>
-          ))}
-        </TargetGrid>
-
-        <DialogFooter>
-          <Button $variant="outline" onClick={() => setTargetModalOpen(false)}>
-            취소
-          </Button>
-          <Button
-            $variant="gold"
-            onClick={() => executePlay(selectedCard?.id, selectedTargetId, null)}
-            disabled={!selectedTargetId}
-          >
-            선택 완료
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* 6. Priest Secret Reveal Popup */}
+      {/* ========================================================= */}
+      {/* 5. PRIEST SECRET REVEAL MODAL */}
+      {/* ========================================================= */}
       <Dialog open={priestResultModalOpen} onClose={() => setPriestResultModalOpen(false)}>
         <DialogHeader>
-          <DialogTitle>📜 사제: 손패 비밀 투시 결과</DialogTitle>
+          <DialogTitle>📜 사제: 손패 투시 결과</DialogTitle>
           <DialogDescription>
-            [{priestData?.targetNickname}] 님의 손패를 당신만 확인하였습니다.
+            [{priestData?.targetNickname}] 님의 비밀 손패를 확인했습니다.
           </DialogDescription>
         </DialogHeader>
 
         {priestData?.card && (
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
             <Card
               style={{
-                width: '140px',
-                height: '200px',
-                padding: '16px',
+                width: '130px',
+                height: '180px',
+                padding: '12px',
                 borderColor: CARD_DATA[priestData.card.value]?.color || THEME.gold,
                 textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
               }}
             >
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: THEME.gold }}>
+              <div
+                style={{
+                  fontSize: '1.4rem',
+                  fontWeight: 900,
+                  color: CARD_DATA[priestData.card.value]?.color || THEME.gold,
+                  textAlign: 'left',
+                }}
+              >
                 {priestData.card.value}
               </div>
-              <div style={{ fontSize: '3rem', margin: '12px 0' }}>
+              <div style={{ fontSize: '2.8rem', margin: '4px 0' }}>
                 {CARD_DATA[priestData.card.value]?.icon}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 700 }}>
-                {priestData.card.name}
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 800 }}>
+                  {priestData.card.name}
+                </div>
+                <div style={{ fontSize: '10px', color: THEME.mutedForeground, marginTop: '2px' }}>
+                  {CARD_DATA[priestData.card.value]?.desc}
+                </div>
               </div>
             </Card>
           </div>
         )}
 
         <DialogFooter>
-          <Button $variant="default" onClick={() => setPriestResultModalOpen(false)}>
-            확인
+          <Button $variant="gold" $fullWidth onClick={() => setPriestResultModalOpen(false)}>
+            확인 완료
           </Button>
         </DialogFooter>
       </Dialog>
 
-      {/* 7. Round End & Game Over Celebration Modals */}
+      {/* ========================================================= */}
+      {/* 6. DISCARD HISTORY POPOVER / MODAL */}
+      {/* ========================================================= */}
+      <Dialog open={discardHistoryModalOpen} onClose={() => setDiscardHistoryModalOpen(false)}>
+        <DialogHeader>
+          <DialogTitle>🎴 [{discardHistoryTarget?.playerName}] 님의 사용한 패</DialogTitle>
+          <DialogDescription>
+            지금까지 내려놓은 카드 내역 (총 {discardHistoryTarget?.discardPile?.length || 0}장)
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            maxHeight: '260px',
+            overflowY: 'auto',
+            margin: '10px 0',
+          }}
+        >
+          {(!discardHistoryTarget?.discardPile || discardHistoryTarget.discardPile.length === 0) ? (
+            <div style={{ textAlign: 'center', color: THEME.mutedForeground, fontSize: '12px', padding: '20px 0' }}>
+              아직 낸 카드가 없습니다.
+            </div>
+          ) : (
+            discardHistoryTarget.discardPile.map((card, idx) => {
+              const meta = CARD_DATA[card.value] || {};
+              return (
+                <div
+                  key={`${card.id || card.value}-${idx}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    backgroundColor: THEME.secondary,
+                    borderRadius: THEME.radius.md,
+                    borderLeft: `3px solid ${meta.color}`,
+                  }}
+                >
+                  <span style={{ fontSize: '11px', color: THEME.mutedForeground, width: '24px', fontWeight: 700 }}>
+                    #{idx + 1}
+                  </span>
+                  <span style={{ fontSize: '18px' }}>{meta.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: meta.color }}>
+                      {card.value}. {meta.name} ({meta.nameEn})
+                    </div>
+                    <div style={{ fontSize: '10px', color: THEME.mutedForeground, marginTop: '2px' }}>
+                      {meta.desc}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button $variant="outline" $fullWidth onClick={() => setDiscardHistoryModalOpen(false)}>
+            닫기
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ========================================================= */}
+      {/* 7. ROUND END & GAME OVER MODAL */}
+      {/* ========================================================= */}
       <Dialog
         open={roomState?.gameState === 'ROUND_END' || roomState?.gameState === 'GAME_OVER'}
         onClose={() => {}}
@@ -948,18 +1640,61 @@ export default function LoveLetterBoard({
           </DialogDescription>
         </DialogHeader>
 
-        <div style={{ textAlign: 'center', margin: '16px 0' }}>
-          <div style={{ fontSize: '3.5rem', marginBottom: '8px' }}>
+        <div style={{ textAlign: 'center', margin: '12px 0' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '6px' }}>
             {roomState?.gameState === 'GAME_OVER' ? '👑' : '⭐'}
           </div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: THEME.gold }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: THEME.gold }}>
             {roomState?.gameState === 'GAME_OVER'
               ? roomState?.gameWinner?.nickname
               : roomState?.roundWinner?.nickname}
           </div>
-          <div style={{ fontSize: '13px', color: THEME.mutedForeground, marginTop: '4px' }}>
-            {roomState?.roundWinner?.reason}
+          <div style={{ fontSize: '12px', color: THEME.mutedForeground, marginTop: '4px' }}>
+            {roomState?.roundWinner?.reason || '라운드가 종료되었습니다.'}
           </div>
+
+          {/* Reveal All Players' Final Hands */}
+          {roomState?.players && (
+            <div style={{ marginTop: '14px', textAlign: 'left' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: THEME.gold, marginBottom: '6px' }}>
+                전원 손패 공개:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {roomState.players.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 10px',
+                      backgroundColor: THEME.secondary,
+                      borderRadius: THEME.radius.md,
+                      fontSize: '11px',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{p.nickname}</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {p.hand && p.hand.length > 0 ? (
+                        p.hand.map((c, i) => {
+                          const meta = CARD_DATA[c.value] || {};
+                          return (
+                            <Badge key={i} $variant="gold" style={{ fontSize: '10px' }}>
+                              {meta.icon} {c.value} {meta.name}
+                            </Badge>
+                          );
+                        })
+                      ) : (
+                        <span style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
+                          {p.isEliminated ? '☠️ 탈락' : '없음'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -971,14 +1706,24 @@ export default function LoveLetterBoard({
               </span>
             </Button>
           ) : (
-            <div style={{ fontSize: '13px', color: THEME.mutedForeground, textAlign: 'center', width: '100%' }}>
+            <div
+              style={{
+                fontSize: '12px',
+                color: THEME.mutedForeground,
+                textAlign: 'center',
+                width: '100%',
+                padding: '8px 0',
+              }}
+            >
               방장이 다음 라운드를 시작할 때까지 대기 중입니다...
             </div>
           )}
         </DialogFooter>
       </Dialog>
 
-      {/* 8. Transparent Side Drawer (Logs & Reference) */}
+      {/* ========================================================= */}
+      {/* 8. SIDE DRAWER (Action Logs & Card Guide) */}
+      {/* ========================================================= */}
       <SideDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -994,7 +1739,7 @@ export default function LoveLetterBoard({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '6px',
-                maxHeight: '200px',
+                maxHeight: '180px',
                 overflowY: 'auto',
                 fontSize: '12px',
               }}
@@ -1019,21 +1764,21 @@ export default function LoveLetterBoard({
             <div style={{ fontSize: '13px', fontWeight: 700, color: THEME.gold, marginBottom: '8px' }}>
               러브레터 1~8번 카드 가이드
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
               {Object.values(CARD_DATA).map((c) => (
                 <div
                   key={c.value}
                   style={{
-                    padding: '8px',
+                    padding: '6px 10px',
                     backgroundColor: THEME.secondary,
                     borderRadius: THEME.radius.md,
                     borderLeft: `3px solid ${c.color}`,
                   }}
                 >
-                  <div style={{ fontWeight: 700, color: c.color, marginBottom: '2px' }}>
-                    {c.icon} {c.value}. {c.name} ({c.nameEn}) - {c.count}장
+                  <div style={{ fontWeight: 800, color: c.color, marginBottom: '2px' }}>
+                    {c.icon} {c.value}. {c.name} ({c.nameEn}) - 총 {c.count}장
                   </div>
-                  <div style={{ color: THEME.mutedForeground, fontSize: '11px' }}>
+                  <div style={{ color: THEME.mutedForeground, fontSize: '10px' }}>
                     {c.desc}
                   </div>
                 </div>
@@ -1043,7 +1788,9 @@ export default function LoveLetterBoard({
         </div>
       </SideDrawer>
 
-      {/* 9. 3-Minute Pause Overlay */}
+      {/* ========================================================= */}
+      {/* 9. 3-MINUTE PAUSE OVERLAY */}
+      {/* ========================================================= */}
       <PauseOverlay
         open={!!roomState?.isPaused}
         pausedPlayerNickname={
@@ -1053,7 +1800,9 @@ export default function LoveLetterBoard({
         onForfeit={() => setForfeitModalOpen(true)}
       />
 
-      {/* 10. Forfeit Confirmation Dialog */}
+      {/* ========================================================= */}
+      {/* 10. FORFEIT CONFIRMATION MODAL */}
+      {/* ========================================================= */}
       <Dialog open={forfeitModalOpen} onClose={() => setForfeitModalOpen(false)}>
         <DialogHeader>
           <DialogTitle>🚪 게임 포기 및 퇴장</DialogTitle>

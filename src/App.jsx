@@ -56,6 +56,16 @@ const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  ${({ $isGame }) =>
+    $isGame
+      ? css`
+          height: 100dvh;
+          max-height: 100dvh;
+          overflow: hidden;
+        `
+      : css`
+          min-height: 100vh;
+        `}
   width: 100%;
   background-color: ${THEME.background};
   color: ${THEME.foreground};
@@ -121,6 +131,14 @@ const MainContent = styled.main`
   max-width: ${({ $isGame }) => ($isGame ? '100%' : '1080px')};
   width: 100%;
   margin: 0 auto;
+  ${({ $isGame }) =>
+    $isGame &&
+    css`
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+      padding: 0;
+    `}
 `;
 
 // Game Card Grid Layout
@@ -485,7 +503,7 @@ export default function App() {
   const allReady = roomState?.players?.every((p) => p.id === roomState.hostId || p.isReady);
 
   return (
-    <AppContainer>
+    <AppContainer $isGame={screen === 'game'}>
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
