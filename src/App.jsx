@@ -45,6 +45,7 @@ import {
   Clock,
   Award,
   HelpCircle,
+  Crown,
 } from 'lucide-react';
 
 // =========================================================================
