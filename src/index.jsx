@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { AppRouter } from './app/AppRouter';
+import App from './App';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -75,7 +75,7 @@ class ErrorBoundary extends React.Component {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <AppRouter />
+      <App />
     </ErrorBoundary>
   </React.StrictMode>
 );
