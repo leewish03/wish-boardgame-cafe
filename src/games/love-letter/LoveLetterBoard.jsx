@@ -992,7 +992,7 @@ const SmartGuessButton = styled.button`
   }
 `;
 
-function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, children }) {
+function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, size = 36, children }) {
   const [timeLeft, setTimeLeft] = useState(turnTimeLimit);
 
   useEffect(() => {
@@ -1018,7 +1018,9 @@ function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, children }
   if (!isTurn) return children;
 
   const progress = Math.min(1, Math.max(0, timeLeft / (turnTimeLimit || 60)));
-  const radius = 24;
+  const radius = size / 2 + 3;
+  const svgSize = size + 10;
+  const center = svgSize / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference * (1 - progress);
   const isUrgent = timeLeft <= 5;
@@ -1028,26 +1030,26 @@ function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, children }
       <svg
         style={{
           position: 'absolute',
-          top: -4,
-          left: -4,
-          width: 56,
-          height: 56,
+          top: -5,
+          left: -5,
+          width: svgSize,
+          height: svgSize,
           transform: 'rotate(-90deg)',
           pointerEvents: 'none',
           zIndex: 5,
         }}
       >
         <circle
-          cx="28"
-          cy="28"
+          cx={center}
+          cy={center}
           r={radius}
           fill="transparent"
           stroke={isUrgent ? 'rgba(239, 68, 68, 0.25)' : 'rgba(197, 160, 89, 0.25)'}
           strokeWidth="3"
         />
         <circle
-          cx="28"
-          cy="28"
+          cx={center}
+          cy={center}
           r={radius}
           fill="transparent"
           stroke={isUrgent ? '#ef4444' : '#c5a059'}
@@ -1065,7 +1067,7 @@ function RadialTurnTimer({ isTurn, turnStartTime, turnTimeLimit = 60, children }
             bottom: -6,
             backgroundColor: '#ef4444',
             color: '#ffffff',
-            fontSize: '8.5px',
+            fontSize: '8px',
             fontWeight: 900,
             padding: '1px 4px',
             borderRadius: '8px',
@@ -1359,6 +1361,8 @@ export default function LoveLetterBoard({
     socket.emit(
       'game:play-card',
       {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
         cardId,
         targetUserId,
         guessValue,
@@ -1383,9 +1387,16 @@ export default function LoveLetterBoard({
 
   // Next Round or Restart
   const handleNextRoundOrRestart = () => {
-    socket.emit('game:start', {}, (res) => {
-      if (!res?.success) alert(res?.error || '게임 시작 실패');
-    });
+    socket.emit(
+      'game:start',
+      {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+      },
+      (res) => {
+        if (!res?.success) alert(res?.error || '게임 시작 실패');
+      }
+    );
   };
 
   return (
@@ -1483,6 +1494,7 @@ export default function LoveLetterBoard({
                     isTurn={isTurn}
                     turnStartTime={roomState?.turnStartTime}
                     turnTimeLimit={roomState?.turnTimeLimit || 60}
+                    size={38}
                   >
                     <AvatarImg
                       src={p.avatarUrl}
@@ -1549,28 +1561,6 @@ export default function LoveLetterBoard({
               </span>
             </div>
           </DeckSlot>
-
-          {/* Active Direct Targeting Banner Overlay */}
-          {isTargetingMode && (
-            <TargetingBanner>
-              <Crosshair size={14} color={THEME.burgundy} />
-              <span style={{ fontFamily: THEME.font.serif, fontSize: '11px', fontWeight: 800, color: THEME.foreground, letterSpacing: '0.04em' }}>
-                TARGET: 아래 타겟 칩이나 상대 좌석을 터치하세요
-              </span>
-              <Button
-                $variant="outline"
-                $size="sm"
-                onClick={() => {
-                  setIsTargetingMode(false);
-                  setGuardTargetPlayer(null);
-                }}
-                style={{ padding: '2px 6px', height: '22px', fontSize: '10px', marginLeft: '4px' }}
-              >
-                <X size={11} />
-                <span>취소</span>
-              </Button>
-            </TargetingBanner>
-          )}
         </CenterTableArea>
 
         {/* ========================================================= */}
@@ -1580,16 +1570,31 @@ export default function LoveLetterBoard({
           {/* My Minimal Status Bar */}
           <MyStatusBar>
             <MyStatusLeft>
-              <RadialTurnTimer
-                isTurn={isMyTurn}
-                turnStartTime={roomState?.turnStartTime}
-                turnTimeLimit={roomState?.turnTimeLimit || 60}
-              >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RadialTurnTimer
+                  isTurn={isMyTurn}
+                  turnStartTime={roomState?.turnStartTime}
+                  turnTimeLimit={roomState?.turnTimeLimit || 60}
+                  size={32}
+                >
+                  <img
+                    src={currentUser?.avatarUrl}
+                    alt={currentUser?.nickname}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      border: `1.5px solid ${isMyTurn ? THEME.gold : '#cbd5e1'}`,
+                      boxShadow: isMyTurn ? '0 0 10px rgba(212, 175, 55, 0.4)' : 'none',
+                      display: 'block',
+                    }}
+                  />
+                </RadialTurnTimer>
                 <AffectionTokenBadge
                   count={myPlayer?.tokens || 0}
                   target={roomState?.targetTokens || 4}
                 />
-              </RadialTurnTimer>
+              </div>
               {myPlayer?.isProtected && (
                 <Badge $variant="emerald" style={{ padding: '1px 6px', fontSize: '10px' }}>
                   🌸 보호막 활성

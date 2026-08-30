@@ -1,4 +1,4 @@
-import { rooms, socketToUser, broadcastRoomState } from '../shared/roomManager.js';
+import { rooms, socketToUser, broadcastRoomState, resolveRoomAndUser } from '../shared/roomManager.js';
 import {
   decideBotAction,
   recordPriestMemory,
@@ -725,10 +725,7 @@ export function registerLoveLetter(io) {
   io.on('connection', (socket) => {
     // 1. Host starts game or next round
     socket.on('game:start', (payload, callback) => {
-      const mapping = socketToUser[socket.id];
-      if (!mapping) return;
-      const { roomCode, userId } = mapping;
-      const room = rooms[roomCode];
+      const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
 
       if (!room || room.hostId !== userId) {
         if (typeof callback === 'function') {
@@ -775,29 +772,14 @@ export function registerLoveLetter(io) {
     // 2. Play Card
     socket.on('game:play-card', (payload, callback) => {
       try {
-        let mapping = socketToUser[socket.id];
-        const { roomCode, userId } = payload || {};
-        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-        const uId = mapping?.userId || userId;
-        const room = rooms[code];
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
 
         if (!room) {
           if (typeof callback === 'function') callback({ success: false, error: '방이 존재하지 않습니다.' });
           return;
         }
 
-        // Auto-heal socket mapping if missing or changed
-        if (!mapping && uId) {
-          const player = room.players.find((p) => p.id === uId);
-          if (player) {
-            player.socketId = socket.id;
-            socketToUser[socket.id] = { roomCode: code, userId: uId };
-            socket.join(code);
-          }
-        }
-
-        const effectiveUserId = socketToUser[socket.id]?.userId || uId;
-        const result = executePlayCard(io, room, effectiveUserId, payload);
+        const result = executePlayCard(io, room, userId, payload);
         if (typeof callback === 'function') {
           callback(result);
         }

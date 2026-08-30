@@ -630,51 +630,80 @@ export default function App() {
   const handleToggleReady = () => {
     if (!socket) return;
     sfx.playCardDraw();
-    socket.emit('room:ready', {});
+    socket.emit('room:ready', {
+      roomCode: roomState?.code,
+      userId: currentUser?.id,
+    });
   };
 
   // Add AI Bot to Room
   const handleAddBot = () => {
     if (!socket) return;
     sfx.playCardDraw();
-    socket.emit('room:add-bot', {}, (res) => {
-      if (!res?.success) {
-        setToastMessage(res?.error || 'AI 봇 추가 실패');
-      } else {
-        setToastMessage(`🤖 AI 봇 [${res.bot.nickname}] 이(가) 살롱에 입장했습니다!`);
+    socket.emit(
+      'room:add-bot',
+      {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+      },
+      (res) => {
+        if (!res?.success) {
+          setToastMessage(res?.error || 'AI 봇 추가 실패');
+        } else {
+          setToastMessage(`🤖 AI 봇 [${res.bot.nickname}] 이(가) 살롱에 입장했습니다!`);
+        }
       }
-    });
+    );
   };
 
   // Remove AI Bot from Room
   const handleRemoveBot = (botId) => {
     if (!socket) return;
     sfx.playCardDraw();
-    socket.emit('room:remove-bot', { botId }, (res) => {
-      if (!res?.success) {
-        setToastMessage(res?.error || 'AI 봇 제거 실패');
-      } else {
-        setToastMessage('AI 봇이 살롱에서 퇴장했습니다.');
+    socket.emit(
+      'room:remove-bot',
+      {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+        botId,
+      },
+      (res) => {
+        if (!res?.success) {
+          setToastMessage(res?.error || 'AI 봇 제거 실패');
+        } else {
+          setToastMessage('AI 봇이 살롱에서 퇴장했습니다.');
+        }
       }
-    });
+    );
   };
 
   // Host Starts Game
   const handleStartGame = () => {
     if (!socket) return;
     sfx.playCardPlay();
-    socket.emit('game:start', {}, (res) => {
-      if (!res?.success) {
-        setToastMessage(res?.error || '게임을 시작할 수 없습니다.');
+    socket.emit(
+      'game:start',
+      {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+      },
+      (res) => {
+        if (!res?.success) {
+          setToastMessage(res?.error || '게임을 시작할 수 없습니다.');
+        }
       }
-    });
+    );
   };
 
   // Send Waiting Room Chat
   const handleSendChat = (e) => {
     e?.preventDefault();
     if (!chatInput.trim() || !socket) return;
-    socket.emit('chat:message', { text: chatInput.trim() });
+    socket.emit('chat:message', {
+      roomCode: roomState?.code,
+      userId: currentUser?.id,
+      text: chatInput.trim(),
+    });
     setChatInput('');
   };
 
@@ -690,7 +719,10 @@ export default function App() {
   // Leave Room
   const handleLeaveRoom = () => {
     if (socket) {
-      socket.emit('room:forfeit', {}, () => {});
+      socket.emit('room:forfeit', {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+      }, () => {});
     }
     clearSession();
     setRoomState(null);

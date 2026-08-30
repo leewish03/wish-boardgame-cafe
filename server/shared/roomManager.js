@@ -25,6 +25,46 @@ export function generateSessionToken(userId) {
   return `token_${userId}_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
 }
 
+export function resolveRoomAndUser(socket, payload = {}) {
+  let mapping = socketToUser[socket.id];
+  const { roomCode, userId } = payload || {};
+  let code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
+  let uId = mapping?.userId || userId;
+  let room = rooms[code];
+
+  // Fallback: search across all active rooms if socket/user is registered
+  if (!room) {
+    const found = Object.values(rooms).find((r) =>
+      r.players.some((p) => p.socketId === socket.id || (uId && p.id === uId))
+    );
+    if (found) {
+      room = found;
+      code = found.code;
+      const pl = found.players.find((p) => p.socketId === socket.id || (uId && p.id === uId));
+      if (pl) uId = pl.id;
+    }
+  }
+
+  // Auto-heal socket mapping and room join
+  if (room && uId) {
+    const player = room.players.find((p) => p.id === uId);
+    if (player) {
+      if (player.socketId !== socket.id) {
+        if (player.socketId && socketToUser[player.socketId]) {
+          delete socketToUser[player.socketId];
+        }
+        player.socketId = socket.id;
+      }
+      player.isDisconnected = false;
+      player.disconnectedAt = null;
+      socketToUser[socket.id] = { roomCode: code, userId: uId };
+      socket.join(code);
+    }
+  }
+
+  return { room, roomCode: code, userId: uId };
+}
+
 export function getPublicRoomState(room, requestUserId = null) {
   if (!room) return null;
 
@@ -421,13 +461,7 @@ export function initRoomManager(io) {
     // 4. Ready Toggle
     socket.on('room:ready', (payload, callback) => {
       try {
-        const mapping = socketToUser[socket.id];
-        if (!mapping) {
-          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
-          return;
-        }
-        const { roomCode, userId } = mapping;
-        const room = rooms[roomCode];
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room || room.gameState !== 'LOBBY') {
           if (typeof callback === 'function') callback({ success: false, error: '로비 상태가 아님' });
           return;
@@ -450,13 +484,7 @@ export function initRoomManager(io) {
     // 4.1 Add AI Bot to Room
     socket.on('room:add-bot', (payload, callback) => {
       try {
-        const mapping = socketToUser[socket.id];
-        if (!mapping) {
-          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
-          return;
-        }
-        const { roomCode, userId } = mapping;
-        const room = rooms[roomCode];
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room || room.gameState !== 'LOBBY') {
           if (typeof callback === 'function') callback({ success: false, error: '로비 상태에서만 봇을 추가할 수 있습니다.' });
           return;
@@ -483,13 +511,7 @@ export function initRoomManager(io) {
     // 4.2 Remove AI Bot from Room
     socket.on('room:remove-bot', (payload, callback) => {
       try {
-        const mapping = socketToUser[socket.id];
-        if (!mapping) {
-          if (typeof callback === 'function') callback({ success: false, error: '유저 매핑 없음' });
-          return;
-        }
-        const { roomCode, userId } = mapping;
-        const room = rooms[roomCode];
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room || room.gameState !== 'LOBBY') {
           if (typeof callback === 'function') callback({ success: false, error: '로비 상태에서만 봇을 제거할 수 있습니다.' });
           return;
@@ -529,10 +551,7 @@ export function initRoomManager(io) {
     // 5. Chat Message
     socket.on('chat:message', (payload) => {
       try {
-        const mapping = socketToUser[socket.id];
-        if (!mapping) return;
-        const { roomCode, userId } = mapping;
-        const room = rooms[roomCode];
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room) return;
 
         const sender = room.players.find((p) => p.id === userId);

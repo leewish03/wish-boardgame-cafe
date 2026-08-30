@@ -13,6 +13,7 @@ const testSuites = [
   { name: '4. Full Multiplayer E2E Game Flow Simulation', file: 'tests/e2e_game_flow.test.js' },
   { name: '5. Real Socket Card Play & Action Broadcast E2E', file: 'tests/reproduce_card_play_e2e.test.js' },
   { name: '6. AI Bot Heuristics & Tie-Break Rules Tests', file: 'tests/ai_bot_heuristics.test.js' },
+  { name: '7. Full Human + 3 AI Bots Real Gameplay Simulation', file: 'tests/full_game_ai_simulation.test.js' },
 ];
 
 async function runTest(suite) {
