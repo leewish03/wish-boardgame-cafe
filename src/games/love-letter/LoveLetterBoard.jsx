@@ -129,34 +129,6 @@ const GameTitle = styled.div`
   white-space: nowrap;
 `;
 
-const NavCenter = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-`;
-
-const TurnBanner = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background-color: ${({ $isMyTurn }) =>
-    $isMyTurn ? 'rgba(245, 158, 11, 0.15)' : THEME.secondary};
-  border: 1px solid
-    ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
-  padding: 4px 10px;
-  border-radius: ${THEME.radius.full};
-  font-size: 12px;
-  font-weight: 600;
-  color: ${({ $isMyTurn }) => ($isMyTurn ? THEME.goldLight : THEME.foreground)};
-  animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-`;
-
 const NavControls = styled.div`
   display: flex;
   align-items: center;
@@ -470,88 +442,130 @@ const CenterTableArea = styled.section`
   height: 25%;
   max-height: 25%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-around;
-  padding: 4px 12px;
+  justify-content: center;
+  padding: 2px 8px;
+  gap: 6px;
   position: relative;
   box-sizing: border-box;
   flex-shrink: 0;
   z-index: 10;
+  width: 100%;
+`;
+
+const CenterTurnBanner = styled.div`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: ${({ $isMyTurn }) =>
+    $isMyTurn ? 'rgba(245, 158, 11, 0.18)' : 'rgba(9, 9, 11, 0.85)'};
+  border: 1.5px solid
+    ${({ $isMyTurn }) => ($isMyTurn ? THEME.gold : THEME.border)};
+  padding: 4px 14px;
+  border-radius: ${THEME.radius.full};
+  font-size: 12px;
+  font-weight: 700;
+  color: ${({ $isMyTurn }) => ($isMyTurn ? THEME.goldLight : THEME.foreground)};
+  animation: ${({ $isMyTurn }) => ($isMyTurn ? turnGlow : 'none')} 2s infinite;
+  box-shadow: ${({ $isMyTurn }) =>
+    $isMyTurn ? '0 0 16px rgba(245, 158, 11, 0.45)' : 'none'};
+  white-space: nowrap;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(8px);
+`;
+
+const CenterInfoRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 380px;
+  box-sizing: border-box;
 `;
 
 const DeckSlot = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background-color: rgba(9, 9, 11, 0.85);
-  border: 1.5px solid ${THEME.gold};
-  border-radius: ${THEME.radius.lg};
-  padding: 6px 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  border: 1px solid ${THEME.gold};
+  border-radius: ${THEME.radius.md};
+  padding: 3px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 `;
 
 const MiniDeckCardVisual = styled.div`
-  width: 28px;
-  height: 38px;
-  border-radius: 4px;
+  width: 22px;
+  height: 30px;
+  border-radius: 3px;
   background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
   border: 1px solid ${THEME.gold};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  box-shadow: 2px 2px 0 rgba(245, 158, 11, 0.5);
+  font-size: 11px;
+  box-shadow: 1px 1px 0 rgba(245, 158, 11, 0.5);
 `;
 
 const RemovedCardsSection = styled.div`
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   background-color: rgba(9, 9, 11, 0.75);
   border: 1px dashed rgba(245, 158, 11, 0.35);
   border-radius: ${THEME.radius.md};
-  padding: 4px 8px;
+  padding: 3px 6px;
+  flex-shrink: 0;
 `;
 
 const RemovedCardsRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 `;
 
 const RemovedCardChip = styled.div`
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   background-color: ${({ $color }) => `${$color}22`};
   border: 1px solid ${({ $color }) => $color};
-  border-radius: 3px;
-  padding: 1px 4px;
-  font-size: 10px;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 9px;
   font-weight: 700;
   color: ${({ $color }) => $color};
 `;
 
 const RecentActionChip = styled.div`
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background-color: rgba(9, 9, 11, 0.9);
   border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.full};
-  padding: 4px 12px;
+  border-radius: ${THEME.radius.md};
+  padding: 4px 8px;
   font-size: 11px;
   font-weight: 600;
   color: ${THEME.foreground};
-  max-width: 260px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 
   span.log-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: inline-block;
+    width: 100%;
   }
 `;
 
@@ -562,11 +576,11 @@ const TargetingBanner = styled.div`
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background-color: rgba(9, 9, 11, 0.96);
   border: 1.5px solid ${THEME.gold};
   border-radius: ${THEME.radius.full};
-  padding: 6px 16px;
+  padding: 5px 14px;
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
   z-index: 50;
   animation: ${turnGlow} 1.5s infinite;
@@ -1048,77 +1062,61 @@ export default function LoveLetterBoard({
   return (
     <BoardContainer>
       {/* ========================================================= */}
-      {/* 1. TOP NAVIGATION BAR (48px Fixed Single-Row) */}
+      {/* 1. TOP NAVIGATION BAR (44px Fixed Single-Row) */}
       {/* ========================================================= */}
       <TopNavBar>
         <NavLeft>
           <GameTitle>
             <span>💌</span> 러브레터
           </GameTitle>
-          <Badge $variant="gold" style={{ padding: '2px 6px', fontSize: '11px', height: '20px' }}>
+          <Badge $variant="gold" style={{ padding: '1px 5px', fontSize: '10px', height: '18px' }}>
             R{roomState?.roundNumber || 1}
           </Badge>
           <Badge
             $variant="outline"
-            style={{ padding: '2px 6px', fontSize: '11px', height: '20px', cursor: 'pointer' }}
+            style={{ padding: '1px 5px', fontSize: '10px', height: '18px', cursor: 'pointer' }}
             onClick={handleCopyCode}
             title="방 코드 복사"
           >
-            {copiedCode ? <Check size={12} color={THEME.emerald} /> : <Copy size={12} />}
-            <span style={{ marginLeft: '4px', letterSpacing: '1px' }}>{roomState?.code}</span>
+            {copiedCode ? <Check size={11} color={THEME.emerald} /> : <Copy size={11} />}
+            <span style={{ marginLeft: '3px', letterSpacing: '0.5px' }}>{roomState?.code}</span>
           </Badge>
         </NavLeft>
-
-        <NavCenter>
-          <TurnBanner $isMyTurn={isMyTurn}>
-            {isMyTurn ? (
-              <>
-                <Sparkles size={14} />
-                <span>[내 턴] 카드를 선택하세요</span>
-              </>
-            ) : (
-              <>
-                <span>⏳</span>
-                <span>[{currentTurnPlayer?.nickname || '상대방'}] 님의 턴</span>
-              </>
-            )}
-          </TurnBanner>
-        </NavCenter>
 
         <NavControls>
           <NavIconButton
             onClick={webrtc?.toggleMic}
             title={webrtc?.isMicOn ? '마이크 끄기' : '마이크 켜기'}
           >
-            {webrtc?.isMicOn ? <Mic size={16} color={THEME.emerald} /> : <MicOff size={16} />}
+            {webrtc?.isMicOn ? <Mic size={15} color={THEME.emerald} /> : <MicOff size={15} />}
           </NavIconButton>
 
           <NavIconButton
             onClick={webrtc?.toggleSpeaker}
             title={webrtc?.isSpeakerOn ? '스피커 끄기' : '스피커 켜기'}
           >
-            {webrtc?.isSpeakerOn ? <Volume2 size={16} /> : <VolumeX size={16} color={THEME.rose} />}
+            {webrtc?.isSpeakerOn ? <Volume2 size={15} /> : <VolumeX size={15} color={THEME.rose} />}
           </NavIconButton>
 
           <NavIconButton
             onClick={stt?.toggleSTT}
             title={stt?.isSTTEnabled ? '한국어 자막 끄기' : '한국어 자막 켜기'}
           >
-            <MessageSquare size={16} color={stt?.isSTTEnabled ? THEME.emerald : undefined} />
+            <MessageSquare size={15} color={stt?.isSTTEnabled ? THEME.emerald : undefined} />
           </NavIconButton>
 
           <NavIconButton
             onClick={toggleSFX}
             title={sfxEnabled ? '효과음 끄기' : '효과음 켜기'}
           >
-            <span style={{ fontSize: '14px' }}>{sfxEnabled ? '🎵' : '🔇'}</span>
+            <span style={{ fontSize: '13px' }}>{sfxEnabled ? '🎵' : '🔇'}</span>
           </NavIconButton>
 
           <NavIconButton
             onClick={() => setDrawerOpen(true)}
             title="게임 기록 및 카드 가이드"
           >
-            <Scroll size={16} />
+            <Scroll size={15} />
           </NavIconButton>
 
           <NavIconButton
@@ -1126,13 +1124,13 @@ export default function LoveLetterBoard({
             onClick={() => setForfeitModalOpen(true)}
             title="게임 포기 및 나가기"
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
           </NavIconButton>
         </NavControls>
       </TopNavBar>
 
       {/* ========================================================= */}
-      {/* 2. MAIN FELT TABLE AREA (100dvh - 48px) */}
+      {/* 2. MAIN FELT TABLE AREA (100dvh - 44px) */}
       {/* ========================================================= */}
       <TableArea>
         {/* ========================================================= */}
@@ -1211,61 +1209,79 @@ export default function LoveLetterBoard({
         {/* AREA 2: Center Table (25% Height) */}
         {/* ========================================================= */}
         <CenterTableArea>
-          {/* Deck Slot */}
-          <DeckSlot>
-            <MiniDeckCardVisual>💌</MiniDeckCardVisual>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '10px', color: THEME.gold, fontWeight: 700 }}>
-                남은 덱
-              </span>
-              <span style={{ fontSize: '13px', fontWeight: 800 }}>
-                {roomState?.deckCount || 0}장
-              </span>
-            </div>
-          </DeckSlot>
+          {/* Row 1: Big Clear Turn Banner */}
+          <CenterTurnBanner $isMyTurn={isMyTurn}>
+            {isMyTurn ? (
+              <>
+                <Sparkles size={14} color={THEME.goldLight} />
+                <span>👑 [내 턴] 카드를 터치하여 선택하세요</span>
+              </>
+            ) : (
+              <>
+                <span>⏳</span>
+                <span>[{currentTurnPlayer?.nickname || '상대방'}] 님의 턴</span>
+              </>
+            )}
+          </CenterTurnBanner>
 
-          {/* 2-Player Game Open Set Aside Cards */}
-          {(roomState?.setAsideOpenCards || []).length > 0 && (
-            <RemovedCardsSection>
-              <span style={{ fontSize: '9px', color: THEME.gold, fontWeight: 700 }}>
-                2인전 오픈 제외:
-              </span>
-              <RemovedCardsRow>
-                {roomState.setAsideOpenCards.map((card, idx) => {
-                  const meta = CARD_DATA[card.value] || {};
-                  return (
-                    <RemovedCardChip key={idx} $color={meta.color}>
-                      <span>{meta.icon}</span>
-                      <span>{card.value}</span>
-                    </RemovedCardChip>
-                  );
-                })}
-              </RemovedCardsRow>
-            </RemovedCardsSection>
-          )}
+          {/* Row 2: Deck Slot + Action Log Balanced Row */}
+          <CenterInfoRow>
+            {/* Deck & 2-Player Removed Cards */}
+            <DeckSlot>
+              <MiniDeckCardVisual>💌</MiniDeckCardVisual>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                <span style={{ fontSize: '9px', color: THEME.gold, fontWeight: 700 }}>
+                  남은 덱
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 800 }}>
+                  {roomState?.deckCount || 0}장
+                </span>
+              </div>
+            </DeckSlot>
 
-          {/* 1-Line Recent Action Chip */}
-          <RecentActionChip onClick={() => setDrawerOpen(true)}>
-            <span style={{ color: THEME.gold }}>💬</span>
-            <span className="log-text">
-              {roomState?.lastActionLog || '새 게임을 시작합니다.'}
-            </span>
-          </RecentActionChip>
+            {/* 2-Player Game Open Set Aside Cards */}
+            {(roomState?.setAsideOpenCards || []).length > 0 && (
+              <RemovedCardsSection>
+                <span style={{ fontSize: '8px', color: THEME.gold, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  2인 제외:
+                </span>
+                <RemovedCardsRow>
+                  {roomState.setAsideOpenCards.map((card, idx) => {
+                    const meta = CARD_DATA[card.value] || {};
+                    return (
+                      <RemovedCardChip key={idx} $color={meta.color}>
+                        <span>{meta.icon}</span>
+                        <span>{card.value}</span>
+                      </RemovedCardChip>
+                    );
+                  })}
+                </RemovedCardsRow>
+              </RemovedCardsSection>
+            )}
+
+            {/* 1-Line Recent Action Chip */}
+            <RecentActionChip onClick={() => setDrawerOpen(true)} title="게임 로그 보기">
+              <span style={{ color: THEME.gold, flexShrink: 0 }}>💬</span>
+              <span className="log-text">
+                {roomState?.lastActionLog || '새 게임을 시작합니다.'}
+              </span>
+            </RecentActionChip>
+          </CenterInfoRow>
 
           {/* Active Direct Targeting Banner Overlay */}
           {isTargetingMode && (
             <TargetingBanner>
-              <Crosshair size={16} color={THEME.goldLight} />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: THEME.goldLight }}>
-                🎯 테이블에서 지목할 상대를 직접 터치하세요!
+              <Crosshair size={15} color={THEME.goldLight} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: THEME.goldLight }}>
+                🎯 지목할 상대를 직접 터치하세요!
               </span>
               <Button
                 $variant="outline"
                 $size="sm"
                 onClick={() => setIsTargetingMode(false)}
-                style={{ padding: '2px 8px', height: '24px', fontSize: '11px', marginLeft: '4px' }}
+                style={{ padding: '2px 6px', height: '22px', fontSize: '10px', marginLeft: '4px' }}
               >
-                <X size={12} />
+                <X size={11} />
                 <span>취소</span>
               </Button>
             </TargetingBanner>
