@@ -5,6 +5,8 @@ import { DeckSlot } from './DeckSlot';
 import { GameCard } from './GameCard';
 import { GameEventSummary, CardInstance } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
+import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
+import { PresentationPhase } from '../machines/presentationMachine';
 
 interface ActionStageProps {
   deckCount: number;
@@ -16,6 +18,8 @@ interface ActionStageProps {
   onCancelAction?: () => void;
   onSelectSelfTarget?: () => void;
   onOpenCardHelper?: () => void;
+  presentationAction?: GameEventEnvelope | null;
+  presentationPhase?: PresentationPhase;
 }
 
 export const ActionStage: React.FC<ActionStageProps> = ({
@@ -28,11 +32,16 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   onCancelAction,
   onSelectSelfTarget,
   onOpenCardHelper,
+  presentationAction = null,
+  presentationPhase = 'IDLE',
 }) => {
   const isDragging = interactionState === 'DRAGGING' || interactionState === 'VALID_DROP';
   const isTargeting = interactionState === 'TARGETING';
   const isGuessing = interactionState === 'GUESSING';
   const isSubmitting = interactionState === 'SUBMITTING';
+  const isPresenting = !!presentationAction && presentationPhase !== 'IDLE';
+  const isSettling = presentationPhase === 'DISCARDING' || presentationPhase === 'SETTLING';
+  const settledPresentation = isSettling ? (presentationAction?.event as any)?.card : null;
 
   return (
     <StageContainer>
@@ -110,7 +119,19 @@ export const ActionStage: React.FC<ActionStageProps> = ({
                 {isOverDropZone ? '카드를 놓아 사용' : '여기로 끌어오세요'}
               </DropText>
             </DragPromptWrapper>
-          ) : lastAction && lastAction.card ? (
+          ) : settledPresentation ? (
+            <ActionCardWrapper
+              key={`presented_${presentationAction?.eventId}`}
+              as={motion.div}
+              initial={{ scale: 0.82, opacity: 0 }}
+              animate={{ scale: 0.76, rotate: 7, opacity: 0.88 }}
+              exit={{ scale: 0.76, opacity: 0 }}
+              transition={{ duration: 0.22 }}
+            >
+              <GameCard value={settledPresentation.value} name={settledPresentation.name} compact />
+              <ActionSummaryBadge>버림패</ActionSummaryBadge>
+            </ActionCardWrapper>
+          ) : !isPresenting && lastAction && lastAction.card ? (
             /* 3. Last Action Presentation */
             <ActionCardWrapper
               key={lastAction.actionId || `last_${lastAction.card.id}`}

@@ -37,6 +37,9 @@ function loadTs(filePath) {
 const root = path.resolve(__dirname, '../../');
 const core = loadTs(path.join(root, 'packages/love-letter-core/src/index.ts'));
 const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts'));
+// Leave time for the client-side causal sequence (card → target → result → discard)
+// before an automated opponent creates the next authoritative action.
+const BOT_PRESENTATION_GAP_MS = 3_500;
 export { SOCKET_EVENTS };
 
 export class LoveLetterService {
@@ -299,7 +302,7 @@ export class LoveLetterService {
             console.error('Bot action error:', e.message);
           }
         }
-      }, 1400);
+      }, BOT_PRESENTATION_GAP_MS);
       botTimer.unref?.();
       this.botTimers.set(roomCode, botTimer);
     }

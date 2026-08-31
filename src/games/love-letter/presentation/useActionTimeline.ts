@@ -5,6 +5,7 @@ import { PresentationPhase } from '../machines/presentationMachine';
 export function useActionTimeline() {
   const [currentAction, setCurrentAction] = useState<GameEventEnvelope | null>(null);
   const [phase, setPhase] = useState<PresentationPhase>('IDLE');
+  const [isActionPlaying, setIsActionPlaying] = useState(false);
   const queueRef = useRef<GameEventEnvelope[]>([]);
   const isPlayingRef = useRef(false);
   const processedEventIdsRef = useRef<Set<string>>(new Set());
@@ -18,11 +19,11 @@ export function useActionTimeline() {
   const getPhaseTimings = (cardValue?: number) => {
     switch (cardValue) {
       case 1: // Guard
-        return { card: 350, target: 350, effect: 450, result: 600, discard: 300, settle: 250 };
+        return { card: 480, target: 460, effect: 520, result: 900, discard: 420, settle: 260 };
       case 2: // Priest
         return { card: 350, target: 350, effect: 600, result: 500, discard: 250, settle: 150 };
       case 3: // Baron
-        return { card: 350, target: 350, effect: 650, result: 700, discard: 300, settle: 250 };
+        return { card: 480, target: 460, effect: 650, result: 900, discard: 420, settle: 260 };
       case 4: // Handmaid
         return { card: 350, target: 150, effect: 550, result: 400, discard: 200, settle: 150 };
       case 5: // Prince
@@ -42,6 +43,7 @@ export function useActionTimeline() {
     if (isPlayingRef.current || queueRef.current.length === 0) return;
 
     isPlayingRef.current = true;
+    setIsActionPlaying(true);
     const next = queueRef.current.shift()!;
     setCurrentAction(next);
 
@@ -85,6 +87,7 @@ export function useActionTimeline() {
     accumulatedTime += timings.settle;
     const t6 = setTimeout(() => {
       isPlayingRef.current = false;
+      setIsActionPlaying(false);
       setCurrentAction(null);
       setPhase('IDLE');
       processNext();
@@ -108,6 +111,7 @@ export function useActionTimeline() {
   const resetTimeline = useCallback(() => {
     clearAllTimers();
     isPlayingRef.current = false;
+    setIsActionPlaying(false);
     queueRef.current = [];
     setCurrentAction(null);
     setPhase('IDLE');
@@ -124,7 +128,7 @@ export function useActionTimeline() {
     phase,
     enqueueAction,
     resetTimeline,
-    isActionPlaying: isPlayingRef.current || !!currentAction || queueRef.current.length > 0,
+    isActionPlaying,
   };
 }
 

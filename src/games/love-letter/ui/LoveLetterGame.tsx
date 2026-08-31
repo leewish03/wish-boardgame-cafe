@@ -80,7 +80,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
 
   // Presentation timeline
-  const { currentAction, phase, enqueueAction } = useActionTimeline();
+  const { currentAction, phase, enqueueAction, isActionPlaying } = useActionTimeline();
 
   // Socket adapter hook
   const gameSocket = useGameSocket({
@@ -135,14 +135,17 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   // Sync priest peek from socket hook
   useEffect(() => {
-    if (gameSocket.priestSecret) {
+    // The reveal is already private in the socket payload. Delay only its
+    // presentation so it does not cover the card → target → discard sequence.
+    if (gameSocket.priestSecret && !isActionPlaying) {
       setPriestSecret(gameSocket.priestSecret);
     }
-  }, [gameSocket.priestSecret]);
+  }, [gameSocket.priestSecret, isActionPlaying]);
 
   const me = gameState.players.find(p => p.id === activeUserId);
   const opponents = gameState.players.filter(p => p.id !== activeUserId);
   const isMyTurn = gameState.currentTurnPlayerId === activeUserId && !me?.isEliminated;
+  const canInteract = isMyTurn && !isActionPlaying;
 
   // Sound effects on state transitions
   useEffect(() => {
@@ -191,7 +194,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   }, [myHand, selectedCardId]);
 
   const targetablePlayerIds = useMemo(() => {
-    if (!isMyTurn || !selectedCard) return [];
+    if (!canInteract || !selectedCard) return [];
     const meta = CARD_DEFINITIONS[selectedCard.value as CardValue];
     if (!meta || !meta.needsTarget) return [];
 
@@ -204,7 +207,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     return opponents
       .filter(p => !p.isEliminated && !p.isProtected)
       .map(p => p.id);
-  }, [isMyTurn, selectedCard, opponents, gameState.players, activeUserId]);
+  }, [canInteract, selectedCard, opponents, gameState.players, activeUserId]);
 
   const allDiscards = useMemo(() => {
     return gameState.players.flatMap(p => p.discardPile || []);
@@ -229,7 +232,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   // Card Selection & Auto Execution
   const handleSelectCard = (card: CardInstance) => {
-    if (!isMyTurn || me?.isEliminated) return;
+    if (!canInteract || me?.isEliminated) return;
 
     // Countess Rule Guard
     const hasCountess = myHand.some(c => c.value === 7);
@@ -272,7 +275,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   };
 
   const handleSelectTarget = (targetId: PlayerId) => {
-    if (!selectedCardId || !selectedCard) return;
+    if (!canInteract || !selectedCardId || !selectedCard) return;
 
     setSelectedTargetId(targetId);
 
@@ -385,6 +388,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       <ActionStage
         deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
         lastAction={gameSocket.lastAction || gameState.lastAction}
+        presentationAction={currentAction}
+        presentationPhase={phase}
         interactionState={interactionState}
         isOverDropZone={isOverDropZone}
         activeCard={selectedCard}
@@ -396,7 +401,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       {/* 5. MY HAND (Section 3 Tier 5) */}
       <PlayerHand
         hand={myHand}
-        isMyTurn={isMyTurn}
+        isMyTurn={canInteract}
         selectedCardId={selectedCardId}
         interactionState={interactionState}
         onSelectCard={handleSelectCard}
