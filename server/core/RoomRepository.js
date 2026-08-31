@@ -1,3 +1,5 @@
+import { SupabaseRoomRepository } from './SupabaseRoomRepository.js';
+
 export class MemoryRoomRepository {
   constructor() {
     this._rooms = new Map();
@@ -31,4 +33,14 @@ export class MemoryRoomRepository {
   }
 }
 
-export const roomRepository = new MemoryRoomRepository();
+const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+
+export const roomRepository = connectionString
+  ? new SupabaseRoomRepository(connectionString)
+  : new MemoryRoomRepository();
+
+export async function initializeRoomRepository() {
+  if (typeof roomRepository.initialize === 'function') {
+    await roomRepository.initialize();
+  }
+}

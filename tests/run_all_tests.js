@@ -13,6 +13,7 @@ const testSuites = [
   { name: '4. AI Bot Memory & Heuristics Tests', file: 'tests/ai_bot_heuristics.test.js' },
   { name: '5. Section 48: 200-Game Property/Simulation Invariants Tests', file: 'tests/simulation.test.js' },
   { name: '6. Section 49: Socket Integration Tests (Real Sockets)', file: 'tests/socket_integration.test.js' },
+  { name: '6.1 Typed Protocol Controller Integration', file: 'tests/protocol_socket_integration.test.js' },
   { name: '7. Section 50: Secret Leakage Security Tests (0-Leak Verification)', file: 'tests/secret_leakage.test.js' },
   { name: '8. Section 51: Reconnect Network Integration Tests', file: 'tests/reconnect_integration.test.js' },
   { name: '9. Disconnect Recovery & State Resync Tests', file: 'tests/disconnect_recovery.test.js' },

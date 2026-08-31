@@ -71,6 +71,15 @@ export function createInitialGameState(
 }
 
 export function getPublicGameState(state: GameState): PublicGameState {
+  // A Priest reveal is private information for the acting player.  The public
+  // snapshot is broadcast to every socket, so it must not carry this field.
+  const publicLastAction = state.lastAction?.resultType === 'PRIEST_REVEAL'
+    ? (() => {
+        const { revealedCard: _revealedCard, ...safeAction } = state.lastAction;
+        return safeAction;
+      })()
+    : state.lastAction;
+
   return {
     matchState: state.matchState,
     playPhase: state.playPhase,
@@ -85,7 +94,7 @@ export function getPublicGameState(state: GameState): PublicGameState {
     currentTurnPlayerId: state.currentTurnPlayerId,
     turnStartedAt: state.turnStartedAt,
     turnExpiresAt: state.turnExpiresAt,
-    lastAction: state.lastAction,
+    lastAction: publicLastAction,
     stateVersion: state.stateVersion,
     matchWinnerId: state.matchWinnerId,
     roundWinnerIds: state.roundWinnerIds,

@@ -38,6 +38,9 @@ export const rooms = new Proxy({}, {
     if (typeof prop === 'string') {
       const code = prop.toUpperCase().trim();
       roomRepository._rooms.delete(code);
+      void roomRepository.deleteRoom(code).catch((error) => {
+        console.error('Failed to delete persisted room:', error);
+      });
       return true;
     }
     return Reflect.deleteProperty(target, prop);
@@ -64,6 +67,15 @@ export const rooms = new Proxy({}, {
 });
 
 export const socketToUser = {}; // key: socketId -> { roomCode, userId }
+
+// The lobby remains deliberately game-agnostic.  The active Love Letter
+// runtime injects these hooks so reconnect/disconnect handling never calls
+// the retired mutable rule engine for a core-backed room.
+let coreGameLifecycle = null;
+
+export function configureCoreGameLifecycle(handlers) {
+  coreGameLifecycle = handlers;
+}
 
 export function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -122,6 +134,43 @@ export function resolveRoomAndUser(socket, payload = {}) {
 export function getPublicRoomState(room, requestUserId = null) {
   if (!room) return null;
 
+  if (room.gameStateObject) {
+    const game = room.gameStateObject;
+    return {
+      code: room.code,
+      gameType: room.gameType || 'LOVE_LETTER',
+      hostId: room.hostId,
+      gameState: game.matchState,
+      playPhase: game.playPhase,
+      stateVersion: game.stateVersion,
+      serverTime: Date.now(),
+      targetTokens: game.config.targetTokens,
+      maxPlayers: game.config.maxPlayers,
+      turnTimeLimit: game.config.turnTimeoutSeconds,
+      deckCount: game.deck.length,
+      turnPlayerId: game.currentTurnPlayerId,
+      turnExpiresAt: game.turnExpiresAt,
+      roundNumber: game.roundNumber,
+      chatMessages: (room.chatMessages || []).slice(-30),
+      isPaused: !!room.isPaused,
+      pausedPlayerId: room.pausedPlayerId || null,
+      pauseExpiresAt: room.pauseExpiresAt || null,
+      players: game.players.map((player) => {
+        const sessionPlayer = room.players.find((candidate) => candidate.id === player.id);
+        const isSelf = player.id === requestUserId;
+        return {
+          ...player,
+          playerId: player.id,
+          avatarUrl: player.avatarUrl || player.avatar,
+          isDisconnected: !!sessionPlayer?.isDisconnected,
+          disconnectedAt: sessionPlayer?.disconnectedAt || null,
+          handCount: player.cardCount,
+          hand: isSelf ? game.secrets[player.id]?.hand || [] : [],
+        };
+      }),
+    };
+  }
+
   return {
     code: room.code,
     gameType: room.gameType || 'LOVE_LETTER',
@@ -176,6 +225,10 @@ export function getPublicRoomState(room, requestUserId = null) {
 export function broadcastRoomState(io, roomCode) {
   const room = rooms[roomCode];
   if (!room) return;
+
+  void roomRepository.saveRoom(room).catch((error) => {
+    console.error('Failed to persist room state:', error);
+  });
 
   room.players.forEach((p) => {
     if (p.socketId) {
@@ -396,7 +449,7 @@ export function initRoomManager(io) {
     });
 
     // 3. Reconnect Room
-    socket.on('room:reconnect', (payload, callback) => {
+    socket.on('room:reconnect', async (payload, callback) => {
       try {
         const { roomCode, userId, playerId, sessionToken } = payload || {};
         const code = (roomCode || '').toUpperCase().trim();
@@ -444,7 +497,11 @@ export function initRoomManager(io) {
             room.pauseTimeout = null;
           }
           room.stateVersion = (room.stateVersion || 0) + 1;
-          resumeGameTimer(io, room, pausedId);
+          if (room.gameStateObject && coreGameLifecycle?.resume) {
+            await coreGameLifecycle.resume(code);
+          } else {
+            resumeGameTimer(io, room, pausedId);
+          }
         }
 
         // Notify WebRTC peer reconnect
@@ -657,7 +714,7 @@ export function initRoomManager(io) {
     });
 
     // 6. Explicit Forfeit / Leave Room
-    const handleForfeit = (payload, callback) => {
+    const handleForfeit = async (payload, callback) => {
       try {
         let mapping = socketToUser[socket.id];
         const { roomCode, userId, playerId } = payload || {};
@@ -682,7 +739,9 @@ export function initRoomManager(io) {
           room.pauseExpiresAt = null;
         }
 
-        if (room.gameState === 'PLAYING') {
+        if (room.gameStateObject && coreGameLifecycle?.forfeit) {
+          await coreGameLifecycle.forfeit(code, uId);
+        } else if (room.gameState === 'PLAYING') {
           handleForfeitedPlayer(io, room, uId, true);
         } else {
           room.players = room.players.filter((p) => p.id !== uId);
@@ -714,7 +773,7 @@ export function initRoomManager(io) {
     socket.on('room:leave', handleForfeit);
 
     // 7. Socket Disconnect Handler
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       const mapping = socketToUser[socket.id];
       if (!mapping) return;
       const { roomCode, userId } = mapping;
@@ -763,6 +822,10 @@ export function initRoomManager(io) {
       // If in PLAYING or ROUND_END state: DO NOT REMOVE PLAYER!
       // Pause game and start 3-minute (180s) grace timer
       if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
+        if (room.gameStateObject && coreGameLifecycle?.pause) {
+          await coreGameLifecycle.pause(roomCode, userId);
+          return;
+        }
         if (!room.isPaused) {
           room.isPaused = true;
           room.pausedPlayerId = userId;

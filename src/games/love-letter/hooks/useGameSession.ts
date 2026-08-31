@@ -10,6 +10,8 @@ export interface GameSession {
   avatarUrl?: string;
 }
 
+type StoredGameSession = Partial<GameSession>;
+
 export interface UseGameSessionOptions {
   socket: Socket | null;
   roomCode?: string;
@@ -24,7 +26,7 @@ export function useGameSession({
   onSessionRestored,
 }: UseGameSessionOptions) {
   const [session, setSession] = useState<GameSession | null>(() => {
-    const loaded = loadSession();
+    const loaded = loadSession() as StoredGameSession | null;
     if (loaded && loaded.roomCode && loaded.userId) {
       return loaded as GameSession;
     }
@@ -60,24 +62,25 @@ export function useGameSession({
   // Handle Automatic Session Reconnect
   const reconnect = useCallback(
     (targetSession?: GameSession) => {
-      const s = targetSession || session || loadSession();
+      const s = targetSession || session || (loadSession() as StoredGameSession | null);
       if (!socket || !s || !s.roomCode || !s.userId) return;
+      const activeSession = s as GameSession;
 
       socket.emit(
         'room:reconnect',
         {
-          roomCode: s.roomCode,
-          userId: s.userId,
-          sessionToken: s.sessionToken,
+          roomCode: activeSession.roomCode,
+          userId: activeSession.userId,
+          sessionToken: activeSession.sessionToken,
         },
         (res: any) => {
           if (res?.success) {
             const restored: GameSession = {
-              roomCode: s.roomCode,
-              userId: s.userId,
-              sessionToken: s.sessionToken,
-              nickname: s.nickname || res.player?.nickname || '플레이어',
-              avatarUrl: s.avatarUrl || res.player?.avatarUrl,
+              roomCode: activeSession.roomCode,
+              userId: activeSession.userId,
+              sessionToken: activeSession.sessionToken,
+              nickname: activeSession.nickname || res.player?.nickname || '플레이어',
+              avatarUrl: activeSession.avatarUrl || res.player?.avatarUrl,
             };
             setSession(restored);
             saveSession(restored);

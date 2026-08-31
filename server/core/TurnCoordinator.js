@@ -12,6 +12,7 @@ export class TurnCoordinator {
       this.turnTimers.delete(roomCode);
       if (onTimeout) onTimeout();
     }, delay);
+    timer.unref?.();
     this.turnTimers.set(roomCode, timer);
   }
 

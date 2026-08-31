@@ -1,19 +1,19 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-import { initRoomManager } from './server/shared/roomManager.js';
+import { configureCoreGameLifecycle, initRoomManager } from './server/shared/roomManager.js';
 import { initWebRTCSignaling } from './server/shared/webrtcSignaling.js';
 import { initSTTBroadcast } from './server/shared/sttBroadcast.js';
-import { registerLoveLetter } from './server/games/love-letter.js';
+import { registerLoveLetterController } from './server/games/loveLetterController.js';
+import { broadcastRoomState } from './server/shared/roomManager.js';
 import { createLoveLetterService } from './server/core/LoveLetterService.js';
-
-dotenv.config();
+import { initializeRoomRepository } from './server/core/RoomRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,17 +71,29 @@ if (fs.existsSync(distPath)) {
 // Socket.io Game Modules & Shared Handlers Initialization
 // -------------------------------------------------------------
 
-initRoomManager(io);
-initWebRTCSignaling(io);
-initSTTBroadcast(io);
-registerLoveLetter(io);
+export const loveLetterService = createLoveLetterService(io, { broadcastRoomState });
 
-// Initialize Pure TypeScript Love Letter Service
-export const loveLetterService = createLoveLetterService(io);
+async function startServer() {
+  await initializeRoomRepository();
+  initRoomManager(io);
+  configureCoreGameLifecycle({
+    pause: (roomCode, playerId) => loveLetterService.pauseRoom(roomCode, playerId),
+    resume: (roomCode) => loveLetterService.resumeRoom(roomCode),
+    forfeit: (roomCode, playerId) => loveLetterService.handleCommand(roomCode, { type: 'FORFEIT', playerId }),
+  });
+  initWebRTCSignaling(io);
+  initSTTBroadcast(io);
+  registerLoveLetterController(io, loveLetterService);
 
-server.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`🎲 Wish Boardgame Cafe Server running on port ${PORT}`);
-  console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`====================================================`);
+  server.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(`🎲 Wish Boardgame Cafe Server running on port ${PORT}`);
+    console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`====================================================`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error('Failed to initialize the room repository:', error);
+  process.exit(1);
 });

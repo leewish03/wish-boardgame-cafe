@@ -11,6 +11,8 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -19,19 +21,19 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
     "paths": {
       "@love-letter-core/*": [
-        "packages/love-letter-core/src/*"
+        "./packages/love-letter-core/src/*"
       ],
       "@protocol/*": [
-        "packages/protocol/src/*"
+        "./packages/protocol/src/*"
       ]
     }
   },
   "include": [
-    "src",
-    "packages",
-    "server"
+    "src/games/love-letter/**/*.ts",
+    "src/games/love-letter/**/*.tsx",
+    "packages/love-letter-core/src/**/*.ts",
+    "packages/protocol/src/**/*.ts"
   ]
 }

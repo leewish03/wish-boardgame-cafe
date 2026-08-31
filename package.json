@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "postinstall": "npm run build",
     "preview": "vite preview",
     "start": "node server.js",
@@ -20,6 +21,7 @@
     "framer-motion": "^13.1.1",
     "google-auth-library": "^9.14.1",
     "lucide-react": "^0.436.0",
+    "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "socket.io": "^4.7.5",

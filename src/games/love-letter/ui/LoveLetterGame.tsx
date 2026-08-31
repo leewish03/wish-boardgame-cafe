@@ -153,13 +153,13 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   useEffect(() => {
     if (gameState.matchState === 'ROUND_END') {
-      sfx.playRoundWin();
+      sfx.playSnipeSuccess();
       setSelectedCardId(null);
       setSelectedTargetId(null);
       setIsGuessOpen(false);
       setInteractionState('IDLE');
     } else if (gameState.matchState === 'GAME_OVER') {
-      sfx.playMatchWin();
+      sfx.playSnipeSuccess();
       setSelectedCardId(null);
       setSelectedTargetId(null);
       setIsGuessOpen(false);
@@ -176,6 +176,15 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       setInteractionState('IDLE');
     }
   }, [isMyTurn]);
+
+  useEffect(() => {
+    if (interactionState !== 'SUBMITTING') return;
+    if (gameState.lastAction?.actorId !== activeUserId) return;
+    setSelectedCardId(null);
+    setSelectedTargetId(null);
+    setIsGuessOpen(false);
+    setInteractionState('IDLE');
+  }, [interactionState, gameState.stateVersion, gameState.lastAction?.actorId, activeUserId]);
 
   const selectedCard = useMemo(() => {
     return myHand.find(c => c.id === selectedCardId) || null;
@@ -214,12 +223,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       } else {
         gameSocket.playCard(cardId, targetId, guessValue);
       }
-      setTimeout(() => {
-        setSelectedCardId(null);
-        setSelectedTargetId(null);
-        setIsGuessOpen(false);
-        setInteractionState('IDLE');
-      }, 400);
     },
     [propOnPlayCard, gameSocket]
   );
@@ -232,7 +235,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     const hasCountess = myHand.some(c => c.value === 7);
     const hasPrinceOrKing = myHand.some(c => c.value === 5 || c.value === 6);
     if (hasCountess && hasPrinceOrKing && card.value !== 7) {
-      sfx.playCardDeal();
+      sfx.playCardDraw();
       return;
     }
 
@@ -245,7 +248,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     }
 
     setSelectedCardId(card.id);
-    sfx.playCardDeal();
+    sfx.playCardDraw();
 
     const meta = CARD_DEFINITIONS[card.value as CardValue];
 
@@ -380,7 +383,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
-        deckCount={gameState.deck.length}
+        deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
         lastAction={gameSocket.lastAction || gameState.lastAction}
         interactionState={interactionState}
         isOverDropZone={isOverDropZone}

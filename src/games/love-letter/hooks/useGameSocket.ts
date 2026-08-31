@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
-import { GameEventEnvelope, GameSnapshot } from '../../../../packages/protocol/src/envelopes';
+import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
+import { GameSnapshot } from '../../../../packages/protocol/src/types';
 import { SOCKET_EVENTS } from '../../../../packages/protocol/src/socketEvents';
 import { sfx } from '../../../shared/sfx';
 
@@ -56,7 +57,21 @@ export function adaptRoomStateToGameState(roomState: any, myUserId: string): { g
     return { gameState: defaultState, myHand: [] };
   }
 
-  // If it's already a pure GameState snapshot
+  // Protocol snapshots contain PublicGameState plus the receiver's own hand.
+  // Keep that privacy boundary intact in the client state.
+  if (roomState.deckCount !== undefined && roomState.matchState && roomState.players && roomState.config) {
+    return {
+      gameState: {
+        ...roomState,
+        deck: [],
+        secrets: {},
+        setAsideCard: null,
+      } as GameState,
+      myHand: roomState.mySecretHand || [],
+    };
+  }
+
+  // If it's already a legacy full GameState snapshot
   if (roomState.matchState && roomState.players && roomState.config) {
     const myPlayer = roomState.players.find((p: any) => p.id === myUserId);
     const myHand = (roomState.secrets && roomState.secrets[myUserId]?.hand) || myPlayer?.hand || [];
@@ -81,7 +96,7 @@ export function adaptRoomStateToGameState(roomState: any, myUserId: string): { g
     isBot: !!p.isBot,
     isEliminated: !!p.isEliminated || (p.isAlive === false),
     isProtected: !!p.isProtected,
-    cardCount: Array.isArray(p.hand) ? p.hand.length : (p.handCount || (p.isEliminated ? 0 : 1)),
+    cardCount: p.handCount ?? p.cardCount ?? (Array.isArray(p.hand) ? p.hand.length : (p.isEliminated ? 0 : 1)),
     discardPile: (p.discardPile || p.discards || []).map((c: any, idx: number) => ({
       id: c.id || `disc_${p.id}_${idx}`,
       value: (c.value || c.cardNumber || 1) as CardValue,
@@ -105,7 +120,7 @@ export function adaptRoomStateToGameState(roomState: any, myUserId: string): { g
   const deck: CardInstance[] = Array.from({ length: deckLength }).map((_, i) => ({
     id: `deck_${i}`,
     value: 1,
-    name: '덱 카드',
+    name: '경비병',
   }));
 
   const lastAction = roomState.lastActionDetail || (roomState.lastActionLog ? {
@@ -156,6 +171,7 @@ export function useGameSocket({
   const [rawRoomState, setRawRoomState] = useState<any>(initialRoomState || null);
   const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
   const [lastAction, setLastAction] = useState<any | null>(null);
+  const latestStateVersionRef = useRef(0);
 
   const myUserId = currentUser?.id || '';
 
@@ -180,17 +196,28 @@ export function useGameSocket({
     };
 
     const handleGameSnapshot = (snapshot: GameSnapshot) => {
-      if (snapshot && snapshot.game) {
-        setRawRoomState({
-          ...snapshot.game,
-          mySecretHand: snapshot.mySecretHand,
-        });
-      }
+      if (!snapshot?.publicState || snapshot.stateVersion < latestStateVersionRef.current) return;
+      latestStateVersionRef.current = snapshot.stateVersion;
+      setLastAction(snapshot.publicState.lastAction || null);
+      setRawRoomState({
+        ...snapshot.publicState,
+        mySecretHand: snapshot.privateState?.hand || [],
+      });
     };
 
     const handleGameEvent = (envelope: GameEventEnvelope) => {
       if (envelope && envelope.event) {
-        if (onGameEvent) onGameEvent(envelope);
+        const event: any = envelope.event;
+        if ((event.type === 'PRIEST_USED' || event.type === 'PRIEST_REVEALED') && event.revealedCard) {
+          const target = rawRoomState?.players?.find((player: any) => player.id === event.targetId);
+          setPriestSecret({ targetName: target?.nickname || '상대방', card: event.revealedCard });
+        }
+        if (event.type === 'CARD_PLAYED' && onGameEvent) {
+          onGameEvent({
+            ...envelope,
+            event: envelope.presentation ? { ...event, ...envelope.presentation } : event,
+          } as GameEventEnvelope);
+        }
       }
     };
 
@@ -238,7 +265,7 @@ export function useGameSocket({
             name: data.card.name || '알 수 없음',
           },
         });
-        sfx.playCardDeal();
+        sfx.playCardDraw();
       }
     };
 
@@ -247,9 +274,6 @@ export function useGameSocket({
     socket.on('room:state', handleRoomState);
     socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
     socket.on(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
-    socket.on('game:action-result', handleActionResult);
-    socket.on('game:action-showcase', handleActionResult);
-    socket.on('game:priest-result', handlePriestResult);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -257,9 +281,6 @@ export function useGameSocket({
       socket.off('room:state', handleRoomState);
       socket.off(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
       socket.off(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
-      socket.off('game:action-result', handleActionResult);
-      socket.off('game:action-showcase', handleActionResult);
-      socket.off('game:priest-result', handlePriestResult);
     };
   }, [socket, onGameEvent]);
 
@@ -278,32 +299,18 @@ export function useGameSocket({
       sfx.hapticSnap();
       sfx.playCardPlay();
 
-      // Emit both pure command and legacy payload for maximum backward/forward compatibility
       socket.emit(
-        'game:play-card',
+        SOCKET_EVENTS.GAME_COMMAND,
         {
           roomCode: code,
-          userId: myUserId,
-          cardId,
-          targetUserId: targetId || null,
-          guessValue: guessValue || null,
+          commandId: `cmd_${Date.now()}`,
+          timestamp: Date.now(),
+          command: { type: 'PLAY_CARD', cardId, targetId, guessValue },
         },
         (res: any) => {
           if (res && !res.success && res.error) {
             console.error('Play card error:', res.error);
           }
-        }
-      );
-
-      socket.emit(
-        SOCKET_EVENTS.GAME_COMMAND,
-        {
-          type: 'PLAY_CARD',
-          roomCode: code,
-          playerId: myUserId,
-          cardId,
-          targetPlayerId: targetId,
-          guessedValue: guessValue,
         }
       );
     },
@@ -330,11 +337,12 @@ export function useGameSocket({
   const forfeit = useCallback(() => {
     if (!socket) return;
     const code = roomCode || rawRoomState?.code;
-    socket.emit('room:leave', {
+    socket.emit(SOCKET_EVENTS.GAME_COMMAND, {
       roomCode: code,
-      userId: myUserId,
+      commandId: `cmd_${Date.now()}`,
+      timestamp: Date.now(),
+      command: { type: 'FORFEIT' },
     });
-    if (onLeaveRoom) onLeaveRoom();
   }, [socket, roomCode, rawRoomState?.code, myUserId, onLeaveRoom]);
 
   const leaveRoom = useCallback(() => {

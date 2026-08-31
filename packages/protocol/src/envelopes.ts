@@ -1,4 +1,4 @@
-import { GameEvent, GameCommand } from '../../love-letter-core/src/index';
+import { GameEvent, GameCommand, GameEventSummary, PlayerId } from '../../love-letter-core/src/index';
 
 export interface GameEventEnvelope {
   eventId: string;
@@ -6,6 +6,8 @@ export interface GameEventEnvelope {
   stateVersion: number;
   timestamp: number;
   event: GameEvent;
+  presentation?: GameEventSummary | null;
+  recipientPlayerId?: PlayerId;
 }
 
 export interface GameCommandEnvelope {
