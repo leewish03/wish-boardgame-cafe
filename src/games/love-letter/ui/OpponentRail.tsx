@@ -48,12 +48,20 @@ const RailContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 4px 8px;
+  box-sizing: border-box;
   overflow-x: auto;
   scrollbar-width: none;
+  flex-shrink: 0;
+
   &::-webkit-scrollbar {
     display: none;
+  }
+
+  @media (max-width: 360px) {
+    gap: 4px;
+    padding: 3px 4px;
   }
 `;

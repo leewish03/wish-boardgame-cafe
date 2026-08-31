@@ -1,0 +1,417 @@
+import React, { useState } from 'react';
+import styled from 'styled-components';
+import { motion, AnimatePresence } from 'framer-motion';
+import { THEME } from '../../../shared/theme';
+import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
+import { CardValue } from '../../../../packages/love-letter-core/src/types';
+import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { sfx } from '../../../shared/sfx';
+import { Copy, Check, BookOpen, Volume2, VolumeX, LogOut, X } from 'lucide-react';
+
+interface GameMenuDrawerProps {
+  isOpen: boolean;
+  roomCode?: string;
+  targetTokens?: number;
+  onClose: () => void;
+  onLeaveRoom: () => void;
+}
+
+export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
+  isOpen,
+  roomCode,
+  targetTokens = 4,
+  onClose,
+  onLeaveRoom,
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [sfxOn, setSfxOn] = useState(sfx.enabled);
+  const [activeTab, setActiveTab] = useState<'rules' | 'settings'>('rules');
+
+  const handleCopyCode = () => {
+    if (!roomCode) return;
+    navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleToggleSfx = () => {
+    const next = !sfxOn;
+    sfx.setEnabled(next);
+    setSfxOn(next);
+  };
+
+  const cardsList = [1, 2, 3, 4, 5, 6, 7, 8] as CardValue[];
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <Overlay
+          as={motion.div}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <DrawerContainer
+            as={motion.div}
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <DrawerHeader>
+              <HeaderTitle>
+                <span>💌</span> 러브레터 살롱 메뉴
+              </HeaderTitle>
+              <CloseBtn onClick={onClose}>
+                <X size={16} />
+              </CloseBtn>
+            </DrawerHeader>
+
+            {/* Room Info Pill */}
+            {roomCode && (
+              <RoomCodeCard>
+                <CodeInfo>
+                  <CodeLabel>SALON TABLE CODE</CodeLabel>
+                  <CodeValue>{roomCode}</CodeValue>
+                </CodeInfo>
+                <CopyButton onClick={handleCopyCode} title="코드 복사">
+                  {copied ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
+                  <span>{copied ? '복사됨' : '복사'}</span>
+                </CopyButton>
+              </RoomCodeCard>
+            )}
+
+            {/* Tabs */}
+            <TabsRow>
+              <TabBtn
+                $active={activeTab === 'rules'}
+                onClick={() => setActiveTab('rules')}
+              >
+                <BookOpen size={13} />
+                <span>카드 규칙 가이드</span>
+              </TabBtn>
+              <TabBtn
+                $active={activeTab === 'settings'}
+                onClick={() => setActiveTab('settings')}
+              >
+                <Volume2 size={13} />
+                <span>게임 설정</span>
+              </TabBtn>
+            </TabsRow>
+
+            <DrawerBody>
+              {activeTab === 'rules' ? (
+                <CardsGuideList>
+                  {cardsList.map(val => {
+                    const card = CARD_DEFINITIONS[val];
+                    return (
+                      <CardGuideItem key={val}>
+                        <CardGuideHeader>
+                          <ValBadge>{val}</ValBadge>
+                          <EmblemBox>{getHeraldicIcon(val, 18)}</EmblemBox>
+                          <CardName>{card.name} ({card.nameEn})</CardName>
+                          <CardCountTag>총 {card.count}장</CardCountTag>
+                        </CardGuideHeader>
+                        <CardDesc>{card.detailedGuide || card.description}</CardDesc>
+                      </CardGuideItem>
+                    );
+                  })}
+                </CardsGuideList>
+              ) : (
+                <SettingsList>
+                  <SettingRow>
+                    <span>효과음 (SFX)</span>
+                    <ToggleBtn $active={sfxOn} onClick={handleToggleSfx}>
+                      {sfxOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                      <span>{sfxOn ? '켜짐' : '꺼짐'}</span>
+                    </ToggleBtn>
+                  </SettingRow>
+
+                  <SettingRow>
+                    <span>목표 호감도 토큰</span>
+                    <ValueTag>{targetTokens}개 승리</ValueTag>
+                  </SettingRow>
+                </SettingsList>
+              )}
+            </DrawerBody>
+
+            <DrawerFooter>
+              <LeaveBtn onClick={onLeaveRoom}>
+                <LogOut size={15} />
+                <span>게임 나가기 / 기권</span>
+              </LeaveBtn>
+            </DrawerFooter>
+          </DrawerContainer>
+        </Overlay>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const Overlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 13, 22, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 2100;
+  display: flex;
+  justify-content: flex-end;
+`;
+
+const DrawerContainer = styled.div`
+  width: 100%;
+  max-width: 380px;
+  height: 100%;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border-left: 2px solid ${THEME.gold};
+  box-shadow: -8px 0 32px rgba(9, 13, 22, 0.25);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+`;
+
+const DrawerHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1.5px solid ${THEME.border};
+  background: #ffffff;
+`;
+
+const HeaderTitle = styled.h3`
+  margin: 0;
+  font-family: ${THEME.font.serif};
+  font-size: 14px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`;
+
+const CloseBtn = styled.button`
+  background: #f1f5f9;
+  border: 1px solid ${THEME.border};
+  color: ${THEME.mutedForeground};
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  &:hover {
+    background: #e2e8f0;
+    color: ${THEME.foreground};
+  }
+`;
+
+const RoomCodeCard = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 18px 0;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid ${THEME.gold};
+  border-radius: ${THEME.radius.lg};
+`;
+
+const CodeInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const CodeLabel = styled.span`
+  font-size: 9px;
+  font-weight: 800;
+  font-family: ${THEME.font.serif};
+  color: ${THEME.goldAntique};
+`;
+
+const CodeValue = styled.span`
+  font-size: 15px;
+  font-weight: 900;
+  color: ${THEME.primary};
+  letter-spacing: 0.08em;
+`;
+
+const CopyButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: ${THEME.foreground};
+  cursor: pointer;
+
+  &:hover {
+    background: ${THEME.secondary};
+    border-color: ${THEME.gold};
+  }
+`;
+
+const TabsRow = styled.div`
+  display: flex;
+  padding: 10px 18px 0;
+  gap: 8px;
+`;
+
+const TabBtn = styled.button<{ $active: boolean }>`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 0;
+  background: ${props => (props.$active ? '#ffffff' : 'transparent')};
+  border: 1px solid ${props => (props.$active ? THEME.gold : 'transparent')};
+  border-bottom: ${props => (props.$active ? '2px solid ' + THEME.burgundy : '1px solid transparent')};
+  border-radius: ${THEME.radius.md} ${THEME.radius.md} 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: ${props => (props.$active ? THEME.burgundy : THEME.mutedForeground)};
+  cursor: pointer;
+`;
+
+const DrawerBody = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 18px;
+`;
+
+const CardsGuideList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const CardGuideItem = styled.div`
+  background: #ffffff;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+  padding: 8px 10px;
+  box-shadow: 0 1px 3px rgba(9, 13, 22, 0.03);
+`;
+
+const CardGuideHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+`;
+
+const ValBadge = styled.span`
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: ${THEME.primary};
+  color: ${THEME.goldLight};
+  font-family: ${THEME.font.serif};
+  font-weight: 800;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const EmblemBox = styled.span`
+  display: flex;
+  align-items: center;
+`;
+
+const CardName = styled.span`
+  font-size: 11px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+`;
+
+const CardCountTag = styled.span`
+  font-size: 9px;
+  color: ${THEME.mutedForeground};
+  margin-left: auto;
+`;
+
+const CardDesc = styled.p`
+  margin: 0;
+  font-size: 10px;
+  color: ${THEME.mutedForeground};
+  line-height: 1.35;
+`;
+
+const SettingsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const SettingRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+  font-size: 12px;
+  font-weight: 700;
+  color: ${THEME.foreground};
+`;
+
+const ToggleBtn = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: ${props => (props.$active ? 'rgba(197, 160, 89, 0.15)' : '#f1f5f9')};
+  border: 1px solid ${props => (props.$active ? THEME.gold : THEME.border)};
+  border-radius: ${THEME.radius.md};
+  font-size: 11px;
+  font-weight: 800;
+  color: ${props => (props.$active ? THEME.primary : THEME.mutedForeground)};
+  cursor: pointer;
+`;
+
+const ValueTag = styled.span`
+  font-size: 11.5px;
+  font-weight: 800;
+  color: ${THEME.burgundy};
+`;
+
+const DrawerFooter = styled.div`
+  padding: 14px 18px;
+  border-top: 1px solid ${THEME.border};
+  background: #ffffff;
+`;
+
+const LeaveBtn = styled.button`
+  width: 100%;
+  height: 40px;
+  background: ${THEME.destructive};
+  color: #ffffff;
+  border: none;
+  border-radius: ${THEME.radius.md};
+  font-family: ${THEME.font.serif};
+  font-weight: 800;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(159, 18, 57, 0.25);
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #881337;
+  }
+`;

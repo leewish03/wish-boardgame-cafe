@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
+import { THEME } from '../../../shared/theme';
 
 interface DeckSlotProps {
   count: number;
@@ -17,7 +18,7 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCard }) => {
             <BackCardLayer $offset={2} />
             <TopDeckCard as={motion.div} whileHover={{ y: -2 }}>
               <DeckPattern>💌</DeckPattern>
-              <DeckCountBadge>{count}장</DeckCountBadge>
+              <DeckCountBadge>{count}장 남음</DeckCountBadge>
             </TopDeckCard>
           </>
         ) : (
@@ -33,12 +34,13 @@ const DeckWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 `;
 
 const DeckStack = styled.div`
   position: relative;
-  width: 58px;
-  height: 84px;
+  width: 54px;
+  height: 80px;
 `;
 
 const BackCardLayer = styled.div<{ $offset: number }>`
@@ -47,45 +49,51 @@ const BackCardLayer = styled.div<{ $offset: number }>`
   left: ${props => props.$offset}px;
   width: 100%;
   height: 100%;
-  background: #831843;
-  border: 1px solid #d4af37;
-  border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  background: ${THEME.burgundyDeep};
+  border: 1px solid ${THEME.goldAntique};
+  border-radius: ${THEME.radius.md};
+  box-shadow: 0 2px 6px rgba(9, 13, 22, 0.2);
 `;
 
 const TopDeckCard = styled.div`
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 40%, #9d174d 0%, #500724 100%);
-  border: 1.5px solid #d4af37;
-  border-radius: 6px;
+  background: ${THEME.gradients.burgundySeal};
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.md};
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px rgba(9, 13, 22, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
   cursor: default;
 `;
 
 const DeckPattern = styled.div`
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 `;
 
 const DeckCountBadge = styled.span`
-  font-size: 10px;
-  font-weight: 700;
-  color: #fef08a;
-  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: ${THEME.font.serif};
+  color: ${THEME.goldLight};
+  margin-top: 3px;
+  letter-spacing: 0.04em;
 `;
 
 const EmptyDeckSlot = styled.div`
   width: 100%;
   height: 100%;
-  border: 1.5px dashed rgba(212, 175, 55, 0.4);
-  border-radius: 6px;
+  border: 1.5px dashed ${THEME.border};
+  border-radius: ${THEME.radius.md};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  color: #a1a1aa;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: ${THEME.mutedForeground};
+  background: rgba(241, 245, 249, 0.6);
 `;

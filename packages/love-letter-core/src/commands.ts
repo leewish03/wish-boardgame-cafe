@@ -10,5 +10,6 @@ export type GameCommand =
       targetId?: PlayerId;
       guessValue?: CardValue;
     }
+  | { type: 'FORFEIT'; playerId: PlayerId }
   | { type: 'TIMEOUT_FORFEIT'; playerId: PlayerId }
   | { type: 'PLAYER_LEAVE'; playerId: PlayerId };

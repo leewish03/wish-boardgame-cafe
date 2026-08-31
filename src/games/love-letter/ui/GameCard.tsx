@@ -1,11 +1,11 @@
 import React from 'react';
 import styled, { css } from 'styled-components';
-import { motion } from 'framer-motion';
+import { motion, PanInfo } from 'framer-motion';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 
-interface GameCardProps {
+export interface GameCardProps {
   value: CardValue;
   name: string;
   id?: string;
@@ -15,7 +15,8 @@ interface GameCardProps {
   disabledReason?: string;
   onClick?: () => void;
   onDragStart?: () => void;
-  onDragEnd?: (e: any, info: any) => void;
+  onDrag?: (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => void;
+  onDragEnd?: (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => void;
   enableDrag?: boolean;
   compact?: boolean;
 }
@@ -23,11 +24,13 @@ interface GameCardProps {
 export const GameCard: React.FC<GameCardProps> = ({
   value,
   name,
+  id,
   isSelected = false,
   isDisabled = false,
   disabledReason,
   onClick,
   onDragStart,
+  onDrag,
   onDragEnd,
   enableDrag = false,
   compact = false,
@@ -46,21 +49,23 @@ export const GameCard: React.FC<GameCardProps> = ({
       $isDisabled={isDisabled}
       $compact={compact}
       onClick={!isDisabled ? onClick : undefined}
-      drag={enableDrag && !isDisabled ? 'y' : false}
-      dragConstraints={{ top: -160, bottom: 0 }}
-      dragElastic={0.2}
+      drag={enableDrag && !isDisabled ? true : false}
       dragSnapToOrigin
+      dragElastic={0.25}
       onDragStart={onDragStart}
+      onDrag={onDrag}
       onDragEnd={onDragEnd}
       whileDrag={{
-        scale: 1.03,
+        scale: 1.04,
         y: -8,
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4), 0 0 24px rgba(212, 175, 55, 0.65)',
+        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(212, 175, 55, 0.7)',
         zIndex: 100,
       }}
-      whileHover={!isDisabled ? { y: -6, scale: 1.02 } : undefined}
+      whileHover={!isDisabled ? { y: -5, scale: 1.02 } : undefined}
       whileTap={!isDisabled ? { scale: 0.98 } : undefined}
       layout
+      data-card-id={id}
+      data-card-value={value}
     >
       <CardBorder>
         <CardHeader>
@@ -72,7 +77,7 @@ export const GameCard: React.FC<GameCardProps> = ({
         </CardHeader>
 
         <EmblemArea>
-          {getHeraldicIcon(value, compact ? 22 : 36)}
+          {getHeraldicIcon(value, compact ? 22 : 34)}
         </EmblemArea>
 
         {!compact && (
@@ -82,7 +87,10 @@ export const GameCard: React.FC<GameCardProps> = ({
         )}
 
         {isDisabled && disabledReason && (
-          <DisabledBadge>{disabledReason}</DisabledBadge>
+          <DisabledBadge>
+            <LockIcon>🔒</LockIcon>
+            <LockText>{disabledReason}</LockText>
+          </DisabledBadge>
         )}
       </CardBorder>
     </CardContainer>
@@ -91,8 +99,10 @@ export const GameCard: React.FC<GameCardProps> = ({
 
 const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $compact: boolean }>`
   position: relative;
-  width: ${props => props.$compact ? '64px' : '124px'};
-  height: ${props => props.$compact ? '96px' : '184px'};
+  width: ${props => props.$compact ? '64px' : '118px'};
+  height: ${props => props.$compact ? '96px' : '172px'};
+  min-width: ${props => props.$compact ? '60px' : '104px'};
+  min-height: ${props => props.$compact ? '88px' : '156px'};
   background: #fdfbf7;
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(212, 175, 55, 0.4);
@@ -100,7 +110,7 @@ const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $
   user-select: none;
   touch-action: none;
   flex-shrink: 0;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 
   ${props => props.$isSelected && css`
     box-shadow: 0 0 0 2px #d4af37, 0 12px 28px rgba(212, 175, 55, 0.35);
@@ -112,9 +122,9 @@ const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $
     filter: grayscale(80%);
   `}
 
-  @media (max-width: 480px) {
-    width: ${props => props.$compact ? '56px' : '110px'};
-    height: ${props => props.$compact ? '82px' : '162px'};
+  @media (max-width: 380px) {
+    width: ${props => props.$compact ? '54px' : '108px'};
+    height: ${props => props.$compact ? '80px' : '158px'};
   }
 `;
 
@@ -132,7 +142,7 @@ const CardBorder = styled.div`
 const CardHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 `;
 
 const ValueBadge = styled.div`
@@ -177,7 +187,7 @@ const EmblemArea = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 0;
+  padding: 2px 0;
 `;
 
 const DescriptionArea = styled.div`
@@ -189,7 +199,7 @@ const DescriptionArea = styled.div`
 
 const DescText = styled.p`
   margin: 0;
-  font-size: 9px;
+  font-size: 8.5px;
   line-height: 1.25;
   color: #3f3f46;
   text-align: center;
@@ -202,14 +212,27 @@ const DescText = styled.p`
 const DisabledBadge = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fca5a5;
-  font-size: 10px;
-  font-weight: bold;
+  background: rgba(18, 18, 20, 0.82);
+  backdrop-filter: blur(2px);
+  border-radius: 6px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
+  gap: 4px;
   padding: 6px;
-  border-radius: 6px;
+  z-index: 10;
+`;
+
+const LockIcon = styled.span`
+  font-size: 14px;
+`;
+
+const LockText = styled.span`
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #fca5a5;
+  text-align: center;
+  line-height: 1.3;
+  letter-spacing: -0.2px;
 `;

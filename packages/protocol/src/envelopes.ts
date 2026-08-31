@@ -1,4 +1,4 @@
-import { GameEvent, GameState, PlayerId } from '../../love-letter-core/src/index';
+import { GameEvent, GameCommand } from '../../love-letter-core/src/index';
 
 export interface GameEventEnvelope {
   eventId: string;
@@ -8,20 +8,10 @@ export interface GameEventEnvelope {
   event: GameEvent;
 }
 
-export interface GameSnapshot {
+export interface GameCommandEnvelope {
+  commandId: string;
   roomId: string;
-  stateVersion: number;
-  serverTime: number;
-  game: GameState;
-  mySecretHand: any[];
-}
-
-export interface RoomSnapshot {
-  code: string;
-  hostId: string;
-  gameState: string;
-  players: any[];
-  isPaused: boolean;
-  pausedPlayerId?: string;
-  targetTokens: number;
+  playerId: string;
+  timestamp: number;
+  command: GameCommand;
 }

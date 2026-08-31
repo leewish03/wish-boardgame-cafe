@@ -32,6 +32,7 @@ import {
   clearSession,
 } from './shared/useSessionGuard';
 import LoveLetterBoard from './games/love-letter/LoveLetterBoard';
+import LoveLetterGame from './games/love-letter/ui/LoveLetterGame';
 import {
   Coffee,
   Users,
@@ -1161,10 +1162,10 @@ export default function App() {
         )}
 
         {/* ========================================================= */}
-        {/* SCREEN 4: In-Game Board (Love Letter) */}
+        {/* SCREEN 4: In-Game Board (Love Letter v2 Game Shell) */}
         {/* ========================================================= */}
         {screen === 'game' && roomState && (
-          <LoveLetterBoard
+          <LoveLetterGame
             roomState={roomState}
             currentUser={currentUser}
             socket={socket}

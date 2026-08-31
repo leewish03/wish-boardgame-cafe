@@ -1,43 +1,105 @@
 import { createMachine } from 'xstate';
+import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
+
+export interface PresentationContext {
+  envelope: GameEventEnvelope | null;
+  actorId?: string;
+  targetId?: string;
+  cardValue?: number;
+  cardName?: string;
+  guessValue?: number;
+  resultType?: string;
+}
+
+export type PresentationPhase =
+  | 'IDLE'
+  | 'CARD_PLAYING'
+  | 'TARGET_REVEAL'
+  | 'EFFECT'
+  | 'RESULT'
+  | 'DISCARDING'
+  | 'SETTLING';
 
 export const presentationMachine = createMachine({
   id: 'presentation',
   initial: 'IDLE',
+  types: {} as {
+    context: PresentationContext;
+    events:
+      | { type: 'START'; envelope: GameEventEnvelope }
+      | { type: 'ADVANCE' }
+      | { type: 'FINISH' }
+      | { type: 'RESET' };
+  },
+  context: {
+    envelope: null,
+  },
   states: {
     IDLE: {
       on: {
-        ENQUEUE_EVENT: 'CARD_PLAYING',
+        START: 'CARD_PLAYING',
       },
     },
     CARD_PLAYING: {
+      on: {
+        ADVANCE: 'TARGET_REVEAL',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
         350: 'TARGET_REVEAL',
       },
     },
     TARGET_REVEAL: {
+      on: {
+        ADVANCE: 'EFFECT',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
-        300: 'EFFECT_IMPACT',
+        350: 'EFFECT',
       },
     },
-    EFFECT_IMPACT: {
+    EFFECT: {
+      on: {
+        ADVANCE: 'RESULT',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
-        350: 'RESULT_SUMMARY',
+        600: 'RESULT',
       },
     },
-    RESULT_SUMMARY: {
+    RESULT: {
+      on: {
+        ADVANCE: 'DISCARDING',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
-        400: 'DISCARDING',
+        500: 'DISCARDING',
       },
     },
     DISCARDING: {
+      on: {
+        ADVANCE: 'SETTLING',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
-        250: 'SETTLING',
+        350: 'SETTLING',
       },
     },
     SETTLING: {
+      on: {
+        ADVANCE: 'IDLE',
+        FINISH: 'IDLE',
+        RESET: 'IDLE',
+      },
       after: {
-        200: 'IDLE',
+        250: 'IDLE',
       },
     },
   },
 });
+

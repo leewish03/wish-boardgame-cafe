@@ -1,8 +1,24 @@
-import { GameState, MatchConfig, PlayerPublic, PlayerSecret, PlayerId } from './types';
-import { createDeck } from './cards';
+import {
+  GameState,
+  MatchConfig,
+  PlayerPublic,
+  PlayerSecret,
+  PlayerId,
+  PublicGameState,
+  PrivatePlayerState,
+} from './types';
 
 export function createInitialGameState(
-  initialPlayers: { id: PlayerId; nickname: string; avatar: string; isHost?: boolean; isBot?: boolean }[],
+  initialPlayers: {
+    id: PlayerId;
+    nickname: string;
+    avatar?: string;
+    isHost?: boolean;
+    isBot?: boolean;
+    tokens?: number;
+    personality?: string;
+    memory?: Record<string, any>;
+  }[],
   configOverrides?: Partial<MatchConfig>
 ): GameState {
   const config: MatchConfig = {
@@ -13,18 +29,20 @@ export function createInitialGameState(
     ...configOverrides,
   };
 
-  const players: PlayerPublic[] = initialPlayers.map(p => ({
+  const players: PlayerPublic[] = initialPlayers.map((p, idx) => ({
     id: p.id,
     nickname: p.nickname,
     avatar: p.avatar || '👑',
-    tokens: 0,
+    tokens: p.tokens || 0,
     isReady: true,
-    isHost: !!p.isHost,
+    isHost: p.isHost !== undefined ? p.isHost : idx === 0,
     isBot: !!p.isBot,
     isEliminated: false,
     isProtected: false,
     cardCount: 0,
     discardPile: [],
+    personality: p.personality,
+    memory: p.memory,
   }));
 
   const secrets: Record<PlayerId, PlayerSecret> = {};
@@ -41,6 +59,7 @@ export function createInitialGameState(
     secrets,
     deck: [],
     setAsideCard: null,
+    setAsideOpenCards: [],
     currentTurnPlayerId: null,
     turnStartedAt: 0,
     turnExpiresAt: 0,
@@ -49,4 +68,34 @@ export function createInitialGameState(
     matchWinnerId: null,
     roundWinnerIds: [],
   };
+}
+
+export function getPublicGameState(state: GameState): PublicGameState {
+  return {
+    matchState: state.matchState,
+    playPhase: state.playPhase,
+    roundNumber: state.roundNumber,
+    config: state.config,
+    players: state.players.map(p => ({
+      ...p,
+      hand: undefined,
+    })),
+    deckCount: state.deck.length,
+    setAsideCardCount: state.setAsideCard ? 1 : 0,
+    currentTurnPlayerId: state.currentTurnPlayerId,
+    turnStartedAt: state.turnStartedAt,
+    turnExpiresAt: state.turnExpiresAt,
+    lastAction: state.lastAction,
+    stateVersion: state.stateVersion,
+    matchWinnerId: state.matchWinnerId,
+    roundWinnerIds: state.roundWinnerIds,
+    roundWinnerReason: state.roundWinnerReason,
+  };
+}
+
+export function getPrivatePlayerState(
+  state: GameState,
+  playerId: PlayerId
+): PrivatePlayerState {
+  return state.secrets[playerId] || { id: playerId, hand: [] };
 }

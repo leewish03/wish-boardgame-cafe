@@ -1,6 +1,4 @@
-import { CardValue, CardMeta, CardInstance } from './types';
-
-export const CARD_DEFINITIONS: Record<CardValue, CardMeta> = {
+export const CARD_DEFINITIONS = {
   1: {
     value: 1,
     name: '경비병',
@@ -109,11 +107,9 @@ export const CARD_DEFINITIONS: Record<CardValue, CardMeta> = {
 
 export const CARD_DEFS = CARD_DEFINITIONS;
 
-let globalCardIdCounter = 1;
-
-export function createDeck(playerCount: number = 4): CardInstance[] {
-  const deck: CardInstance[] = [];
-  const baseCounts: Record<CardValue, number> = {
+export function createDeck(playerCount = 4) {
+  const deck = [];
+  const baseCounts = {
     1: 5,
     2: 2,
     3: 2,
@@ -132,13 +128,13 @@ export function createDeck(playerCount: number = 4): CardInstance[] {
     baseCounts[5] += 1;
   }
 
+  let idCounter = 1;
   for (let v = 1; v <= 8; v++) {
-    const val = v as CardValue;
-    const meta = CARD_DEFINITIONS[val];
-    const cnt = baseCounts[val];
+    const meta = CARD_DEFINITIONS[v];
+    const cnt = baseCounts[v];
     for (let c = 0; c < cnt; c++) {
       deck.push({
-        id: `card_${val}_${globalCardIdCounter++}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        id: `card_${v}_${idCounter++}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         value: meta.value,
         name: meta.name,
         nameEn: meta.nameEn,

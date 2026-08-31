@@ -1,50 +1,27 @@
-import { rooms, socketToUser, broadcastRoomState, resolveRoomAndUser } from '../shared/roomManager.js';
+import {
+  rooms,
+  socketToUser,
+  broadcastRoomState,
+  resolveRoomAndUser,
+} from '../shared/roomManager.js';
 import {
   decideBotAction,
   recordPriestMemory,
   invalidatePlayerMemory,
 } from './love-letter-ai.js';
+import {
+  CARD_DEFINITIONS,
+  createDeck,
+  validatePlayCard,
+  determineRoundWinners,
+  isRoundOver,
+  getActivePlayers,
+} from '../../packages/love-letter-core/src/index.js';
 
-export const CARD_DEFS = {
-  1: { value: 1, name: '경비병', nameEn: 'Guard', count: 5, color: '#3182CE', icon: '🛡️', desc: '상대 1명을 지목하여 2~8번 카드를 추측합니다. 일치 시 상대 탈락!' },
-  2: { value: 2, name: '사제', nameEn: 'Priest', count: 2, color: '#4FD1C5', icon: '📜', desc: '상대 1명을 지목하여 그 사람의 손패를 비밀리에 확인합니다.' },
-  3: { value: 3, name: '남작', nameEn: 'Baron', count: 2, color: '#9F7AEA', icon: '⚔️', desc: '상대 1명과 비밀리에 손패 숫자를 비교하여 더 낮은 쪽이 탈락합니다.' },
-  4: { value: 4, name: '하녀', nameEn: 'Handmaid', count: 2, color: '#68D391', icon: '🌸', desc: '다음 내 턴 시작 전까지 다른 플레이어의 모든 카드 효과로부터 면역 보호됩니다.' },
-  5: { value: 5, name: '왕자', nameEn: 'Prince', count: 2, color: '#ECC94B', icon: '👑', desc: '자신 포함 1명을 지목하여 손패를 버리고 새로 1장 드로우하게 합니다. (공주 버려지면 탈락)' },
-  6: { value: 6, name: '국왕', nameEn: 'King', count: 1, color: '#ED8936', icon: '🤴', desc: '상대 1명을 지목하여 자신의 손패와 상대의 손패를 맞교환합니다.' },
-  7: { value: 7, name: '백작부인', nameEn: 'Countess', count: 1, color: '#F687B3', icon: '🌹', desc: '손에 왕자(5)나 국왕(6)이 함께 있을 경우, 반드시 백작부인을 먼저 내려놓아야 합니다.' },
-  8: { value: 8, name: '공주', nameEn: 'Princess', count: 1, color: '#E53E3E', icon: '👸', desc: '이 카드를 내거나 어떤 이유로든 버려지면 즉시 게임에서 탈락합니다.' },
-};
+export const CARD_DEFS = CARD_DEFINITIONS;
 
 export function generateDeck(playerCount = 4) {
-  const deck = [];
-  const baseCounts = { 1: 5, 2: 2, 3: 2, 4: 2, 5: 2, 6: 1, 7: 1, 8: 1 };
-
-  if (playerCount >= 5) {
-    baseCounts[1] += 2;
-    baseCounts[2] += 1;
-    baseCounts[3] += 1;
-    baseCounts[4] += 1;
-    baseCounts[5] += 1;
-  }
-
-  Object.entries(baseCounts).forEach(([val, cnt]) => {
-    const num = parseInt(val, 10);
-    for (let i = 0; i < cnt; i++) {
-      deck.push({
-        ...CARD_DEFS[num],
-        id: `card_${num}_${i}_${Math.random().toString(36).substr(2, 5)}`,
-      });
-    }
-  });
-
-  // Fisher-Yates Shuffle
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-
-  return deck;
+  return createDeck(playerCount);
 }
 
 export function startRound(io, room) {
@@ -70,6 +47,8 @@ export function startRound(io, room) {
   room.autoAdvanceExpiresAt = null;
 
   room.gameState = 'PLAYING';
+  room.playPhase = 'ROUND_START';
+  room.stateVersion = (room.stateVersion || 0) + 1;
   room.roundWinner = null;
 
   // Reset players for new round
@@ -82,18 +61,19 @@ export function startRound(io, room) {
 
   const deck = generateDeck(room.players.length);
 
-  // 1 secret card set aside
-  room.setAsideSecretCard = deck.pop();
+  // 1 secret card set aside (Unified 2~6 players)
+  room.setAsideSecretCard = deck.pop() || null;
   room.setAsideOpenCards = [];
 
   // Deal 1 card each
   room.players.forEach((p) => {
-    p.hand.push(deck.pop());
+    const dealt = deck.pop();
+    if (dealt) p.hand.push(dealt);
   });
 
   room.deck = deck;
 
-  // Decide first player (inherit from roundWinnerId if available)
+  // Decide first player (inherit from roundWinnerId if available and alive)
   if (
     room.roundWinnerId &&
     room.players.some((p) => p.id === room.roundWinnerId && !p.isEliminated)
@@ -127,18 +107,24 @@ export function startTurn(io, room) {
   turnPlayer.isProtected = false;
 
   // Draw 1 card if deck has cards
-  if (room.deck.length > 0) {
+  if (room.deck && room.deck.length > 0) {
     const drawn = room.deck.pop();
     turnPlayer.hand.push(drawn);
   }
 
+  room.playPhase = 'TURN_INPUT';
+  room.stateVersion = (room.stateVersion || 0) + 1;
   room.turnStartTime = Date.now();
-  logAction(room, `[${turnPlayer.nickname}] 님의 턴입니다. (남은 덱: ${room.deck.length}장)`);
+  if (room.turnTimeLimit && room.turnTimeLimit > 0) {
+    room.turnExpiresAt = room.turnStartTime + room.turnTimeLimit * 1000;
+  }
+
+  logAction(room, `[${turnPlayer.nickname}] 님의 턴입니다. (남은 덱: ${room.deck ? room.deck.length : 0}장)`);
   broadcastRoomState(io, room.code);
 
   // If Turn Player is AI Bot, trigger intelligent thinking delay
   if (turnPlayer.isBot) {
-    const thinkDelay = 900 + Math.floor(Math.random() * 600);
+    const thinkDelay = 800 + Math.floor(Math.random() * 500);
     setTimeout(() => {
       if (
         room.gameState === 'PLAYING' &&
@@ -208,7 +194,7 @@ export function passTurnToNextPlayer(io, room) {
       if (tieWinners.length === 1) {
         endRound(io, room, tieWinners[0], `덱 소진 동점 판정! 버린 카드 점수 총합 승리!`);
       } else {
-        // Co-winners tie!
+        // Co-winners tie
         endRound(io, room, tieWinners, `덱 소진 동점 판정! 최고점 공동 승리!`);
       }
     }
@@ -245,6 +231,8 @@ export function endRound(io, room, winner, reason) {
   }
 
   room.gameState = 'ROUND_END';
+  room.playPhase = 'ROUND_END';
+  room.stateVersion = (room.stateVersion || 0) + 1;
 
   const winnersList = Array.isArray(winner) ? winner : (winner ? [winner] : []);
 
@@ -273,6 +261,7 @@ export function endRound(io, room, winner, reason) {
     const champion = winnersList.find((w) => w.tokens >= room.targetTokens);
     if (champion) {
       room.gameState = 'GAME_OVER';
+      room.playPhase = 'GAME_OVER';
       room.gameWinner = {
         id: champion.id,
         nickname: champion.nickname,
@@ -283,7 +272,7 @@ export function endRound(io, room, winner, reason) {
     }
   }
 
-  // 7-second Auto Advance Timer (Prevents host AFK deadlock)
+  // 7-second Auto Advance Timer
   if (room.gameState === 'ROUND_END') {
     room.autoAdvanceExpiresAt = Date.now() + 7000;
     room.roundAutoAdvanceTimer = setTimeout(() => {
@@ -354,6 +343,9 @@ export function executePlayCard(io, room, userId, payload) {
     };
   }
 
+  room.playPhase = 'ACTION_RESOLVING';
+  room.stateVersion = (room.stateVersion || 0) + 1;
+
   // Remove played card from hand and push to discardPile
   player.hand.splice(cardIndex, 1);
   player.discardPile.push(card);
@@ -371,6 +363,7 @@ export function executePlayCard(io, room, userId, payload) {
   let eliminatedPlayerId = null;
   let eliminatedPlayerNickname = null;
   let revealedCard = null;
+  let privatePriestCard = null; // Private card revealed only to caster
 
   // 1. Guard (1)
   if (card.value === 1) {
@@ -411,16 +404,19 @@ export function executePlayCard(io, room, userId, payload) {
       const targetCard = target.hand?.[0];
       resultType = 'PRIEST_PEEK';
       resultDescription = `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 비밀리에 확인했습니다.`;
-      if (targetCard && player.socketId) {
-        io.to(player.socketId).emit('game:priest-result', {
-          targetUserId: target.id,
-          targetNickname: target.nickname,
-          card: targetCard,
-        });
-      }
-      // If player is Bot, record memory
-      if (player.isBot && targetCard) {
-        recordPriestMemory(player, target.id, targetCard.value);
+      if (targetCard) {
+        privatePriestCard = targetCard;
+        if (player.socketId && io) {
+          io.to(player.socketId).emit('game:priest-result', {
+            targetUserId: target.id,
+            targetNickname: target.nickname,
+            card: targetCard,
+          });
+        }
+        // If player is Bot, record memory privately
+        if (player.isBot) {
+          recordPriestMemory(player, target.id, targetCard.value);
+        }
       }
       logAction(room, resultDescription);
     }
@@ -505,6 +501,9 @@ export function executePlayCard(io, room, userId, payload) {
 
           // Draw new card
           let newCard = (room.deck && room.deck.length > 0) ? room.deck.pop() : room.setAsideSecretCard;
+          if (newCard === room.setAsideSecretCard) {
+            room.setAsideSecretCard = null;
+          }
           if (newCard) {
             if (!princeTarget.hand) princeTarget.hand = [];
             princeTarget.hand.push(newCard);
@@ -591,22 +590,25 @@ export function executePlayCard(io, room, userId, payload) {
     resultDescription,
     eliminatedPlayerId,
     eliminatedPlayerNickname,
-    revealedCard,
+    revealedCard, // Note: For Priest, revealedCard is not in actionDetail (only in privatePriestCard to caller)
     timestamp: Date.now(),
   };
 
   room.lastActionDetail = actionDetail;
+  room.playPhase = 'TURN_TRANSITION';
 
   // Broadcast Structured Action Result & Showcase
-  io.to(room.code).emit('game:action-result', actionDetail);
-  io.to(room.code).emit('game:action-showcase', {
-    ...actionDetail,
-    card: actionDetail.playedCard,
-    guessValue: actionDetail.guessedCard?.value || null,
-    guessCardName: actionDetail.guessedCard?.name || null,
-  });
+  if (io) {
+    io.to(room.code).emit('game:action-result', actionDetail);
+    io.to(room.code).emit('game:action-showcase', {
+      ...actionDetail,
+      card: actionDetail.playedCard,
+      guessValue: actionDetail.guessedCard?.value || null,
+      guessCardName: actionDetail.guessedCard?.name || null,
+    });
 
-  broadcastRoomState(io, room.code);
+    broadcastRoomState(io, room.code);
+  }
 
   // Check round transition
   passTurnToNextPlayer(io, room);
@@ -630,10 +632,10 @@ export function pauseGameTimer(room) {
   logAction(room, '⏸️ 플레이어 연결 끊김으로 게임이 일시정지되었습니다.');
 }
 
-export function resumeGameTimer(io, room) {
+export function resumeGameTimer(io, room, resumedByUserId = null) {
   if (!room || room.gameState !== 'PLAYING') return;
 
-  const previousPausedPlayerId = room.pausedPlayerId;
+  const previousPausedPlayerId = resumedByUserId || room.pausedPlayerId;
   room.isPaused = false;
   room.pausedPlayerId = null;
   room.pauseExpiresAt = null;
@@ -654,13 +656,15 @@ export function resumeGameTimer(io, room) {
     }, remaining + 1000);
   }
 
-  io.to(room.code).emit('room:resumed', {
-    resumedByUserId: previousPausedPlayerId || null,
-    resumedAt: Date.now(),
-    turnPlayerId: room.turnPlayerId,
-  });
+  if (io) {
+    io.to(room.code).emit('room:resumed', {
+      resumedByUserId: previousPausedPlayerId || null,
+      resumedAt: Date.now(),
+      turnPlayerId: room.turnPlayerId,
+    });
 
-  broadcastRoomState(io, room.code);
+    broadcastRoomState(io, room.code);
+  }
 }
 
 export function handleForfeitedPlayer(io, room, userId, removePlayer = false) {
@@ -701,7 +705,7 @@ export function handleForfeitedPlayer(io, room, userId, removePlayer = false) {
     // If not their turn and game is ongoing, resume game timer if needed
     if (room.gameState === 'PLAYING') {
       resumeGameTimer(io, room);
-    } else {
+    } else if (io) {
       broadcastRoomState(io, room.code);
     }
   }
@@ -723,8 +727,8 @@ export function logAction(room, text) {
 
 export function registerLoveLetter(io) {
   io.on('connection', (socket) => {
-    // 1. Host starts game or next round
-    socket.on('game:start', (payload, callback) => {
+    // 1. Host starts game or next round (supports both 'game:start' and 'loveletter:start-game')
+    const handleStart = (payload, callback) => {
       const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
 
       if (!room || room.hostId !== userId) {
@@ -767,10 +771,13 @@ export function registerLoveLetter(io) {
       if (typeof callback === 'function') {
         callback({ success: true });
       }
-    });
+    };
 
-    // 2. Play Card
-    socket.on('game:play-card', (payload, callback) => {
+    socket.on('game:start', handleStart);
+    socket.on('loveletter:start-game', handleStart);
+
+    // 2. Play Card (supports both 'game:play-card' and 'loveletter:play-card')
+    const handlePlayCard = (payload, callback) => {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
 
@@ -789,6 +796,9 @@ export function registerLoveLetter(io) {
           callback({ success: false, error: '카드 사용 처리 중 오류가 발생했습니다.' });
         }
       }
-    });
+    };
+
+    socket.on('game:play-card', handlePlayCard);
+    socket.on('loveletter:play-card', handlePlayCard);
   });
 }

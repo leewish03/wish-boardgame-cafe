@@ -180,6 +180,7 @@ export const AppRouter: React.FC = () => {
         gameState={gameState}
         myUserId={user.id}
         myHand={mySecretHand}
+        socket={socket}
         speakingUsers={webrtc.speakingUsers}
         userSubtitles={stt.userSubtitles}
         isMicOn={webrtc.isMicOn}
@@ -189,6 +190,7 @@ export const AppRouter: React.FC = () => {
         onToggleSpeaker={webrtc.toggleSpeaker}
         onToggleSTT={stt.toggleSTT}
         onPlayCard={handlePlayCard}
+        onStartNextRound={handleStartGame}
         onLeaveRoom={handleLeaveRoom}
       />
     );

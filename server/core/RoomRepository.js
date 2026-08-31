@@ -1,22 +1,33 @@
 export class MemoryRoomRepository {
   constructor() {
-    this.rooms = new Map();
+    this._rooms = new Map();
   }
 
   async getRoom(id) {
-    return this.rooms.get(id) || null;
+    if (!id) return null;
+    const code = String(id).toUpperCase().trim();
+    return this._rooms.get(code) || null;
   }
 
   async saveRoom(room) {
-    this.rooms.set(room.code, room);
+    if (!room || !room.code) return;
+    const code = String(room.code).toUpperCase().trim();
+    room.updatedAt = Date.now();
+    this._rooms.set(code, room);
   }
 
   async deleteRoom(id) {
-    this.rooms.delete(id);
+    if (!id) return;
+    const code = String(id).toUpperCase().trim();
+    this._rooms.delete(code);
   }
 
   async listRooms() {
-    return Array.from(this.rooms.values());
+    return Array.from(this._rooms.values());
+  }
+
+  clear() {
+    this._rooms.clear();
   }
 }
 

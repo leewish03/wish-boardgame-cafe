@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { THEME } from '../../../shared/theme';
 
 interface PriestSecretModalProps {
   isOpen: boolean;
@@ -33,17 +34,19 @@ export const PriestSecretModal: React.FC<PriestSecretModalProps> = ({
         >
           <SecretCardBox
             as={motion.div}
-            initial={{ scale: 0.5, rotateY: 90 }}
+            initial={{ scale: 0.7, rotateY: 90 }}
             animate={{ scale: 1, rotateY: 0 }}
-            exit={{ scale: 0.5, rotateY: 90 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            exit={{ scale: 0.7, rotateY: 90 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 22 }}
             onClick={e => e.stopPropagation()}
           >
             <HeaderTitle>🔮 사제의 은밀한 손패 투시</HeaderTitle>
-            <Subtitle>[{targetPlayerName}] 님의 손패를 확인했습니다</Subtitle>
+            <Subtitle>
+              <strong>[{targetPlayerName}]</strong> 님의 손패를 당신만 확인했습니다
+            </Subtitle>
 
             <CardFrame>
-              <EmblemWrapper>{getHeraldicIcon(secretCard.value, 48)}</EmblemWrapper>
+              <EmblemWrapper>{getHeraldicIcon(secretCard.value, 44)}</EmblemWrapper>
               <CardValueBig>{secretCard.value}</CardValueBig>
               <CardNameBig>{secretCard.name}</CardNameBig>
               <CardDescBig>{meta.description}</CardDescBig>
@@ -60,84 +63,100 @@ export const PriestSecretModal: React.FC<PriestSecretModalProps> = ({
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(9, 13, 22, 0.75);
   backdrop-filter: blur(8px);
   z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 `;
 
 const SecretCardBox = styled.div`
   width: 100%;
   max-width: 320px;
-  background: #18181b;
-  border: 2px solid #d4af37;
-  border-radius: 16px;
-  padding: 24px;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 2px solid ${THEME.gold};
+  border-radius: ${THEME.radius.xl};
+  padding: 22px 18px;
   text-align: center;
-  box-shadow: 0 0 35px rgba(212, 175, 55, 0.4);
+  box-shadow: 0 16px 40px rgba(9, 13, 22, 0.35), 0 0 24px rgba(197, 160, 89, 0.4);
 `;
 
 const HeaderTitle = styled.h3`
   margin: 0 0 4px;
   font-size: 15px;
-  color: #fef08a;
+  color: ${THEME.foreground};
+  font-family: ${THEME.font.serif};
   font-weight: 800;
 `;
 
 const Subtitle = styled.p`
   margin: 0 0 16px;
-  font-size: 11px;
-  color: #a1a1aa;
+  font-size: 11.5px;
+  color: ${THEME.mutedForeground};
+
+  strong {
+    color: ${THEME.burgundy};
+  }
 `;
 
 const CardFrame = styled.div`
-  background: radial-gradient(circle at 50% 30%, #ffffff 0%, #f7f4ed 100%);
-  border: 1.5px solid #d4af37;
-  border-radius: 12px;
+  background: radial-gradient(circle at 50% 30%, #ffffff 0%, #f8fafc 100%);
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.lg};
   padding: 16px;
-  color: #18181b;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  margin-bottom: 20px;
+  margin-bottom: 18px;
+  box-shadow: inset 0 0 0 1px rgba(197, 160, 89, 0.3), 0 4px 14px rgba(9, 13, 22, 0.08);
 `;
 
 const EmblemWrapper = styled.div`
-  display: flex;
-  justify-content: center;
   margin-bottom: 8px;
 `;
 
 const CardValueBig = styled.div`
-  font-family: 'Cinzel', serif;
-  font-size: 28px;
-  font-weight: 800;
-  color: #d4af37;
+  font-family: ${THEME.font.serif};
+  font-size: 26px;
+  font-weight: 900;
+  color: ${THEME.primary};
+  line-height: 1;
 `;
 
 const CardNameBig = styled.div`
-  font-size: 15px;
-  font-weight: 700;
-  color: #18181b;
-  margin: 2px 0 6px;
+  font-size: 14px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+  margin: 4px 0 8px;
 `;
 
 const CardDescBig = styled.p`
   margin: 0;
-  font-size: 10px;
-  color: #4b5563;
-  line-height: 1.35;
+  font-size: 10.5px;
+  color: ${THEME.mutedForeground};
+  line-height: 1.4;
 `;
 
 const ConfirmBtn = styled.button`
   width: 100%;
-  padding: 12px;
-  background: #d4af37;
-  color: #18181b;
-  border: none;
-  border-radius: 8px;
+  height: 40px;
+  background: ${THEME.gradients.obsidianButton};
+  color: ${THEME.goldLight};
+  font-family: ${THEME.font.serif};
+  font-weight: 800;
   font-size: 13px;
-  font-weight: 700;
+  border: 1px solid ${THEME.gold};
+  border-radius: ${THEME.radius.md};
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(9, 13, 22, 0.25);
+  transition: all 0.15s ease;
+
+  &:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 16px rgba(197, 160, 89, 0.4);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
 `;

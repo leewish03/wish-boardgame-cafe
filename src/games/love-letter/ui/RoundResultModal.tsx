@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { THEME } from '../../../shared/theme';
 
 interface RoundResultModalProps {
   isOpen: boolean;
@@ -23,7 +24,6 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({
   isHost,
   onNextRound,
 }) => {
-  // Wax seal stamps generator
   const renderTokens = () => {
     const tokens = [];
     for (let i = 0; i < targetTokens; i++) {
@@ -47,18 +47,18 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({
         >
           <ResultCard
             as={motion.div}
-            initial={{ scale: 0.7, y: 30 }}
+            initial={{ scale: 0.7, y: 20 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.7, y: 30 }}
+            exit={{ scale: 0.7, y: 20 }}
             transition={{ type: 'spring', stiffness: 280, damping: 22 }}
           >
             <WaxSealStamp>💌</WaxSealStamp>
-            <RoundBadge>ROUND {roundNumber} WINNER</RoundBadge>
+            <RoundBadge>ROUND {roundNumber} 승리</RoundBadge>
             <WinnerName>👑 {winnerName}</WinnerName>
             <WinnerReasonText>{winnerReason}</WinnerReasonText>
 
             <TokenStampContainer>
-              <TokenLabel>호감도 획득 현황 ({winnerTokens}/{targetTokens}):</TokenLabel>
+              <TokenLabel>호감도 토큰 획득 현황 ({winnerTokens}/{targetTokens}):</TokenLabel>
               <StampRow>{renderTokens()}</StampRow>
             </TokenStampContainer>
 
@@ -81,65 +81,74 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(9, 13, 22, 0.8);
   backdrop-filter: blur(8px);
   z-index: 1500;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 `;
 
 const ResultCard = styled.div`
   width: 100%;
   max-width: 360px;
-  background: #18181b;
-  border: 2px solid #d4af37;
-  border-radius: 16px;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 2px solid ${THEME.gold};
+  border-radius: ${THEME.radius.xl};
   padding: 24px 20px;
   text-align: center;
-  box-shadow: 0 0 40px rgba(212, 175, 55, 0.4);
+  box-shadow: 0 16px 40px rgba(9, 13, 22, 0.4), 0 0 24px rgba(197, 160, 89, 0.35);
+  box-sizing: border-box;
 `;
 
 const WaxSealStamp = styled.div`
-  font-size: 44px;
+  font-size: 34px;
   margin-bottom: 6px;
-  filter: drop-shadow(0 4px 12px rgba(225, 29, 72, 0.5));
+  filter: drop-shadow(0 2px 6px rgba(99, 19, 38, 0.3));
 `;
 
-const RoundBadge = styled.span`
+const RoundBadge = styled.div`
+  display: inline-block;
+  font-family: ${THEME.font.serif};
   font-size: 11px;
-  font-weight: 700;
-  color: #d4af37;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  font-weight: 900;
+  color: ${THEME.goldLight};
+  background: ${THEME.gradients.obsidianButton};
+  border: 1px solid ${THEME.gold};
+  padding: 2px 10px;
+  border-radius: ${THEME.radius.full};
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
 `;
 
 const WinnerName = styled.h2`
-  margin: 6px 0 2px;
-  font-size: 20px;
-  font-weight: 800;
-  color: #fef08a;
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 900;
+  color: ${THEME.foreground};
+  font-family: ${THEME.font.serif};
 `;
 
 const WinnerReasonText = styled.p`
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   font-size: 12px;
-  color: #a1a1aa;
+  color: ${THEME.mutedForeground};
 `;
 
 const TokenStampContainer = styled.div`
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(212, 175, 55, 0.25);
-  border-radius: 10px;
-  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.lg};
+  padding: 10px 14px;
   margin-bottom: 18px;
 `;
 
 const TokenLabel = styled.div`
   font-size: 11px;
-  color: #d4af37;
-  font-weight: 600;
+  font-weight: 700;
+  color: ${THEME.mutedForeground};
   margin-bottom: 6px;
 `;
 
@@ -151,27 +160,39 @@ const StampRow = styled.div`
 `;
 
 const HeartStamp = styled.span<{ $active: boolean }>`
-  font-size: 22px;
-  color: ${props => (props.$active ? '#f43f5e' : '#52525b')};
-  filter: ${props => (props.$active ? 'drop-shadow(0 0 8px #f43f5e)' : 'none')};
-  transition: all 0.3s ease;
+  font-size: 18px;
+  line-height: 1;
+  color: ${props => (props.$active ? THEME.burgundy : '#cbd5e1')};
+  filter: ${props => (props.$active ? 'drop-shadow(0 2px 4px rgba(99, 19, 38, 0.4))' : 'none')};
 `;
 
 const NextRoundBtn = styled.button`
   width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #d4af37 0%, #aa820a 100%);
-  color: #18181b;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 800;
+  height: 42px;
+  background: ${THEME.gradients.goldShimmer};
+  color: ${THEME.foreground};
+  font-family: ${THEME.font.serif};
+  font-weight: 900;
+  font-size: 13.5px;
+  border: 1px solid ${THEME.goldAntique};
+  border-radius: ${THEME.radius.md};
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3);
+  box-shadow: 0 4px 14px rgba(197, 160, 89, 0.4);
+  transition: all 0.15s ease;
+
+  &:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 6px 18px rgba(197, 160, 89, 0.6);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
 `;
 
-const WaitingNotice = styled.div`
-  font-size: 12px;
-  color: #d4af37;
-  padding: 10px;
+const WaitingNotice = styled.p`
+  margin: 0;
+  font-size: 11.5px;
+  color: ${THEME.mutedForeground};
+  line-height: 1.4;
 `;

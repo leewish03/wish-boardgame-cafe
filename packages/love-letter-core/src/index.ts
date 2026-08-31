@@ -5,4 +5,5 @@ export * from './commands';
 export * from './events';
 export * from './rules';
 export * from './selectors';
+export * from './reducer';
 export * from './engine';

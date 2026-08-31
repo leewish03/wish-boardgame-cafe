@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { THEME } from '../../../shared/theme';
 
 interface DiscardHistoryModalProps {
   isOpen: boolean;
@@ -30,13 +31,15 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
         >
           <ModalBox
             as={motion.div}
-            initial={{ scale: 0.9, y: 20 }}
+            initial={{ scale: 0.9, y: 15 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 20 }}
+            exit={{ scale: 0.9, y: 15 }}
             onClick={e => e.stopPropagation()}
           >
             <HeaderRow>
-              <ModalTitle>📜 [{playerName}] 님의 사용한 카드 히스토리 ({discardPile.length}장)</ModalTitle>
+              <ModalTitle>
+                📜 <strong>[{playerName}]</strong> 사용한 카드 히스토리 ({discardPile.length}장)
+              </ModalTitle>
               <CloseBtn onClick={onClose}>✕</CloseBtn>
             </HeaderRow>
 
@@ -48,8 +51,8 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
                   const meta = CARD_DEFINITIONS[card.value as CardValue] || { name: card.name, description: '' };
                   return (
                     <CardRow key={card.id || idx}>
-                      <EmblemBox>{getHeraldicIcon(card.value, 20)}</EmblemBox>
                       <ValueBadge>{card.value}</ValueBadge>
+                      <EmblemBox>{getHeraldicIcon(card.value, 20)}</EmblemBox>
                       <CardInfo>
                         <CardName>{card.name}</CardName>
                         <CardDesc>{meta.description}</CardDesc>
@@ -69,7 +72,7 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(9, 13, 22, 0.7);
   backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
@@ -80,101 +83,121 @@ const Overlay = styled.div`
 
 const ModalBox = styled.div`
   width: 100%;
-  max-width: 440px;
-  max-height: 80vh;
-  background: #18181b;
-  border: 1.5px solid #d4af37;
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+  max-width: 420px;
+  max-height: 75vh;
+  background-color: #ffffff;
+  background-image: ${THEME.gradients.marbleSlab};
+  border: 1.5px solid ${THEME.gold};
+  border-radius: ${THEME.radius.xl};
+  padding: 18px;
+  box-shadow: 0 16px 40px rgba(9, 13, 22, 0.3);
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 `;
 
 const HeaderRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.3);
-  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid ${THEME.border};
+  padding-bottom: 8px;
 `;
 
 const ModalTitle = styled.h3`
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: #fef08a;
+  font-size: 13px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+
+  strong {
+    color: ${THEME.burgundy};
+  }
 `;
 
 const CloseBtn = styled.button`
-  background: transparent;
-  border: none;
-  color: #a1a1aa;
-  font-size: 18px;
+  background: #f1f5f9;
+  border: 1px solid ${THEME.border};
+  color: ${THEME.mutedForeground};
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
   cursor: pointer;
+
   &:hover {
-    color: #fff;
+    background: #e2e8f0;
+    color: ${THEME.foreground};
   }
 `;
 
 const EmptyMessage = styled.p`
-  color: #71717a;
-  font-size: 13px;
+  margin: 24px 0;
+  font-size: 12px;
+  color: ${THEME.mutedForeground};
   text-align: center;
-  padding: 24px 0;
 `;
 
 const CardList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   overflow-y: auto;
+  max-height: 50vh;
+  padding-right: 4px;
 `;
 
 const CardRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(212, 175, 55, 0.2);
-  border-radius: 8px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+`;
+
+const ValueBadge = styled.div`
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: ${THEME.primary};
+  color: ${THEME.goldLight};
+  font-family: ${THEME.font.serif};
+  font-weight: 900;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid ${THEME.gold};
+  flex-shrink: 0;
 `;
 
 const EmblemBox = styled.div`
   display: flex;
   align-items: center;
-`;
-
-const ValueBadge = styled.span`
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #27272a;
-  border: 1px solid #d4af37;
-  color: #d4af37;
-  font-weight: 700;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 `;
 
 const CardInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  overflow: hidden;
 `;
 
 const CardName = styled.span`
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: ${THEME.foreground};
 `;
 
 const CardDesc = styled.span`
   font-size: 10px;
-  color: #a1a1aa;
-  line-height: 1.3;
+  color: ${THEME.mutedForeground};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;

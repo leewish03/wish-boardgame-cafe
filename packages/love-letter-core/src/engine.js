@@ -1,24 +1,16 @@
-import { GameState, PlayerId, CardInstance, CardValue } from './types';
-import { GameCommand } from './commands';
-import { GameEvent } from './events';
-import { createDeck, CARD_DEFINITIONS } from './cards';
-import { validatePlayCard } from './rules';
-import { isRoundOver, isMatchOver, determineRoundWinners, getActivePlayers } from './selectors';
+import { createDeck, CARD_DEFINITIONS } from './cards.js';
+import { validatePlayCard } from './rules.js';
+import { isRoundOver, isMatchOver, determineRoundWinners, getActivePlayers } from './selectors.js';
 
-export interface EngineResult {
-  nextState: GameState;
-  events: GameEvent[];
-}
-
-export function resolveCommand(state: GameState, command: GameCommand): EngineResult {
-  const events: GameEvent[] = [];
-  const s: GameState = JSON.parse(JSON.stringify(state));
+export function resolveCommand(state, command) {
+  const events = [];
+  const s = JSON.parse(JSON.stringify(state));
   s.stateVersion = (s.stateVersion || 0) + 1;
 
   switch (command.type) {
     case 'START_MATCH': {
-      if (s.players.length < s.config.minPlayers) {
-        throw new Error(`최소 ${s.config.minPlayers}명 이상의 플레이어가 필요합니다.`);
+      if (s.players.length < (s.config?.minPlayers || 2)) {
+        throw new Error(`최소 ${s.config?.minPlayers || 2}명 이상의 플레이어가 필요합니다.`);
       }
       s.matchState = 'PLAYING';
       s.roundNumber = 0;
@@ -37,14 +29,14 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       s.roundNumber = (s.roundNumber || 0) + 1;
       s.matchState = 'PLAYING';
       s.playPhase = 'ROUND_START';
+      s.roundWinnerIds = [];
       s.lastAction = null;
 
-      // Reset round state for all players
+      // Reset players
       for (const p of s.players) {
         p.isEliminated = false;
         p.isProtected = false;
         p.discardPile = [];
-        p.cardCount = 0;
         delete p.eliminationReason;
         delete p.eliminatedBy;
         s.secrets[p.id] = { id: p.id, hand: [] };
@@ -53,10 +45,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       // Generate & shuffle deck
       const deck = createDeck(s.players.length);
       s.setAsideCard = deck.pop() || null;
-      s.setAsideOpenCards = [];
       s.deck = deck;
 
-      // Deal 1 card each
+      // Deal 1 initial card to each active player
       for (const p of s.players) {
         const card = s.deck.pop();
         if (card) {
@@ -65,38 +56,29 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         }
       }
 
-      // Pick first player: previous round winner if alive, else host/first player
-      let firstPlayerId = s.players[0].id;
-      if (
-        s.roundWinnerIds &&
-        s.roundWinnerIds.length > 0 &&
-        s.players.some(p => p.id === s.roundWinnerIds[0])
-      ) {
-        firstPlayerId = s.roundWinnerIds[0];
-      } else {
-        const host = s.players.find(p => p.isHost);
-        firstPlayerId = host ? host.id : s.players[0].id;
+      // Determine first player
+      let firstPlayer = s.players[0];
+      if (s.lastRoundWinnerId) {
+        const prevWinner = s.players.find((p) => p.id === s.lastRoundWinnerId);
+        if (prevWinner) firstPlayer = prevWinner;
       }
-
-      s.currentTurnPlayerId = firstPlayerId;
-      s.roundWinnerIds = [];
+      s.currentTurnPlayerId = firstPlayer.id;
 
       events.push({
         type: 'ROUND_STARTED',
         roundNumber: s.roundNumber,
-        firstPlayerId,
+        firstPlayerId: firstPlayer.id,
         remainingDeckCount: s.deck.length,
       });
 
-      // Draw turn card for starting player
+      // Draw turn card for first player
       const drawCard = s.deck.pop();
-      const firstPlayer = s.players.find(p => p.id === firstPlayerId)!;
       if (drawCard) {
-        s.secrets[firstPlayerId].hand.push(drawCard);
-        firstPlayer.cardCount = s.secrets[firstPlayerId].hand.length;
+        s.secrets[firstPlayer.id].hand.push(drawCard);
+        firstPlayer.cardCount = s.secrets[firstPlayer.id].hand.length;
         events.push({
           type: 'CARD_DRAWN',
-          playerId: firstPlayerId,
+          playerId: firstPlayer.id,
           card: drawCard,
           remainingDeckCount: s.deck.length,
         });
@@ -104,11 +86,11 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
       s.playPhase = 'TURN_INPUT';
       s.turnStartedAt = Date.now();
-      s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
+      s.turnExpiresAt = s.turnStartedAt + (s.config?.turnTimeoutSeconds || 30) * 1000;
 
       events.push({
         type: 'TURN_STARTED',
-        playerId: firstPlayerId,
+        playerId: firstPlayer.id,
         turnExpiresAt: s.turnExpiresAt,
         remainingDeckCount: s.deck.length,
       });
@@ -118,22 +100,23 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
     case 'PLAY_CARD': {
       const { playerId, cardId, targetId, guessValue } = command;
-      const validation = validatePlayCard(s, playerId, cardId, targetId, guessValue);
-      if (!validation.valid) {
-        throw new Error(validation.error || '유효하지 않은 카드 플레이입니다.');
+      const val = validatePlayCard(s, playerId, cardId, targetId, guessValue);
+      if (!val.valid) {
+        throw new Error(val.error || '잘못된 카드 사용입니다.');
       }
 
-      const player = s.players.find(p => p.id === playerId)!;
+      s.playPhase = 'ACTION_RESOLVING';
+      const player = s.players.find((p) => p.id === playerId);
       const secret = s.secrets[playerId];
-      const cardIndex = secret.hand.findIndex(c => c.id === cardId);
+      const cardIndex = secret.hand.findIndex((c) => c.id === cardId);
       const playedCard = secret.hand.splice(cardIndex, 1)[0];
       player.cardCount = secret.hand.length;
       player.discardPile.push(playedCard);
 
-      // Remove turn player's Handmaid protection on their turn
+      // Reset turn player protection
       player.isProtected = false;
 
-      const actionId = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const actionId = `action_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       events.push({
         type: 'CARD_PLAYED',
         actionId,
@@ -143,23 +126,23 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
       let summaryResultType = 'CARD_PLAYED';
       let summaryDesc = `[${player.nickname}] 님이 [${playedCard.name}] 카드를 사용했습니다.`;
-      let summaryRevealed: CardInstance | null = null;
-      let summaryEliminatedId: PlayerId | null = null;
-      let summarySwapped = false;
+      let summaryRevealed = undefined;
+      let summaryEliminatedId = undefined;
+      let summarySwapped = undefined;
 
-      // Resolve card effect
       switch (playedCard.value) {
         case 1: { // Guard
           if (targetId) {
-            const target = s.players.find(p => p.id === targetId);
+            const target = s.players.find((p) => p.id === targetId);
             const targetSecret = s.secrets[targetId];
+
             if (target && !target.isEliminated && !target.isProtected && targetSecret) {
               events.push({ type: 'PLAYER_TARGETED', actionId, actorId: playerId, targetId });
-              events.push({ type: 'GUARD_GUESSED', actionId, actorId: playerId, targetId, guessValue: guessValue! });
-              events.push({ type: 'CARD_GUESSED', actionId, actorId: playerId, targetId, guessValue: guessValue! });
+              events.push({ type: 'GUARD_GUESSED', actionId, actorId: playerId, targetId, guessValue });
+              events.push({ type: 'CARD_GUESSED', actionId, actorId: playerId, targetId, guessValue });
 
-              const targetCard = targetSecret.hand[0];
-              if (targetCard && targetCard.value === guessValue) {
+              if (targetSecret.hand.some((c) => c.value === guessValue)) {
+                const victimCard = targetSecret.hand[0];
                 target.isEliminated = true;
                 target.eliminationReason = `경비병 저격 (${playedCard.name})`;
                 target.eliminatedBy = playerId;
@@ -168,17 +151,17 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                 target.cardCount = 0;
 
                 summaryResultType = 'GUARD_SUCCESS';
-                summaryDesc = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}]였습니다! 탈락!`;
+                summaryDesc = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님이 탈락했습니다.`;
                 summaryEliminatedId = targetId;
-                summaryRevealed = targetCard;
+                summaryRevealed = victimCard;
 
-                events.push({ type: 'GUARD_SUCCESS', actionId, actorId: playerId, targetId, guessedCard: targetCard });
-                events.push({ type: 'GUARD_SUCCEEDED', actionId, actorId: playerId, targetId, guessedCard: targetCard });
+                events.push({ type: 'GUARD_SUCCESS', actionId, actorId: playerId, targetId, guessedCard: victimCard });
+                events.push({ type: 'GUARD_SUCCEEDED', actionId, actorId: playerId, targetId, guessedCard: victimCard });
                 events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
               } else {
                 summaryResultType = 'GUARD_FAILED';
-                summaryDesc = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}] 카드가 없습니다.`;
-                events.push({ type: 'GUARD_FAILED', actionId, actorId: playerId, targetId, guessValue: guessValue! });
+                summaryDesc = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 해당 카드가 없습니다.`;
+                events.push({ type: 'GUARD_FAILED', actionId, actorId: playerId, targetId, guessValue });
               }
             }
           } else {
@@ -190,13 +173,14 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         case 2: { // Priest
           if (targetId) {
-            const target = s.players.find(p => p.id === targetId);
+            const target = s.players.find((p) => p.id === targetId);
             const targetSecret = s.secrets[targetId];
+
             if (target && !target.isEliminated && !target.isProtected && targetSecret) {
-              events.push({ type: 'PLAYER_TARGETED', actionId, actorId: playerId, targetId });
               const targetCard = targetSecret.hand[0];
+              events.push({ type: 'PLAYER_TARGETED', actionId, actorId: playerId, targetId });
               if (targetCard) {
-                summaryResultType = 'PRIEST_REVEAL';
+                summaryResultType = 'PRIEST_PEEK';
                 summaryDesc = `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 은밀히 확인했습니다.`;
                 summaryRevealed = targetCard;
                 events.push({ type: 'PRIEST_USED', actionId, actorId: playerId, targetId, revealedCard: targetCard });
@@ -212,18 +196,18 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         case 3: { // Baron
           if (targetId) {
-            const target = s.players.find(p => p.id === targetId);
+            const target = s.players.find((p) => p.id === targetId);
             const targetSecret = s.secrets[targetId];
+
             if (target && !target.isEliminated && !target.isProtected && targetSecret) {
               events.push({ type: 'PLAYER_TARGETED', actionId, actorId: playerId, targetId });
-
               const myCard = secret.hand[0];
               const oppCard = targetSecret.hand[0];
 
               if (myCard && oppCard) {
                 if (myCard.value > oppCard.value) {
                   target.isEliminated = true;
-                  target.eliminationReason = `남작 결투 패배 (${oppCard.name} < ${myCard.name})`;
+                  target.eliminationReason = `남작 결투 패배 (내 ${oppCard.name} < ${myCard.name})`;
                   target.eliminatedBy = playerId;
                   target.discardPile.push(...targetSecret.hand);
                   targetSecret.hand = [];
@@ -234,31 +218,12 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   summaryEliminatedId = targetId;
                   summaryRevealed = oppCard;
 
-                  events.push({
-                    type: 'BARON_DUEL_STARTED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    winnerId: playerId,
-                    eliminatedId: targetId,
-                  });
-                  events.push({
-                    type: 'BARON_COMPARED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    winnerId: playerId,
-                    eliminatedId: targetId,
-                  });
-                  events.push({
-                    type: 'PLAYER_ELIMINATED',
-                    playerId: targetId,
-                    reason: '남작 결투 패배',
-                    eliminatedBy: playerId,
-                  });
+                  events.push({ type: 'BARON_DUEL_STARTED', actionId, actorId: playerId, targetId, winnerId: playerId, eliminatedId: targetId });
+                  events.push({ type: 'BARON_COMPARED', actionId, actorId: playerId, targetId, winnerId: playerId, eliminatedId: targetId });
+                  events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '남작 결투 패배', eliminatedBy: playerId });
                 } else if (myCard.value < oppCard.value) {
                   player.isEliminated = true;
-                  player.eliminationReason = `남작 결투 패배 (${myCard.name} < ${oppCard.name})`;
+                  player.eliminationReason = `남작 결투 패배 (내 ${myCard.name} < ${oppCard.name})`;
                   player.eliminatedBy = targetId;
                   player.discardPile.push(...secret.hand);
                   secret.hand = [];
@@ -269,45 +234,14 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   summaryEliminatedId = playerId;
                   summaryRevealed = myCard;
 
-                  events.push({
-                    type: 'BARON_DUEL_STARTED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    winnerId: targetId,
-                    eliminatedId: playerId,
-                  });
-                  events.push({
-                    type: 'BARON_COMPARED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    winnerId: targetId,
-                    eliminatedId: playerId,
-                  });
-                  events.push({
-                    type: 'PLAYER_ELIMINATED',
-                    playerId,
-                    reason: '남작 결투 패배',
-                    eliminatedBy: targetId,
-                  });
+                  events.push({ type: 'BARON_DUEL_STARTED', actionId, actorId: playerId, targetId, winnerId: targetId, eliminatedId: playerId });
+                  events.push({ type: 'BARON_COMPARED', actionId, actorId: playerId, targetId, winnerId: targetId, eliminatedId: playerId });
+                  events.push({ type: 'PLAYER_ELIMINATED', playerId, reason: '남작 결투 패배', eliminatedBy: targetId });
                 } else {
                   summaryResultType = 'BARON_TIE';
-                  summaryDesc = `⚔️ 남작 결투! [${player.nickname}] 와 [${target.nickname}] 의 카드 숫자가 같습니다. (무승부)`;
-                  events.push({
-                    type: 'BARON_DUEL_STARTED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    isTie: true,
-                  });
-                  events.push({
-                    type: 'BARON_COMPARED',
-                    actionId,
-                    actorId: playerId,
-                    targetId,
-                    isTie: true,
-                  });
+                  summaryDesc = `⚔️ 남작 결투 무승부! 두 사람의 카드 숫자가 같습니다.`;
+                  events.push({ type: 'BARON_DUEL_STARTED', actionId, actorId: playerId, targetId, isTie: true });
+                  events.push({ type: 'BARON_COMPARED', actionId, actorId: playerId, targetId, isTie: true });
                 }
               }
             }
@@ -329,50 +263,49 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         case 5: { // Prince
           const princeTargetId = targetId || playerId;
-          const target = s.players.find(p => p.id === princeTargetId);
+          const target = s.players.find((p) => p.id === princeTargetId);
           const targetSecret = s.secrets[princeTargetId];
 
-          if (target && !target.isEliminated && targetSecret && targetSecret.hand.length > 0) {
+          if (target && !target.isEliminated && targetSecret) {
             events.push({ type: 'PLAYER_TARGETED', actionId, actorId: playerId, targetId: princeTargetId });
 
-            const discarded = targetSecret.hand.pop()!;
-            target.cardCount = targetSecret.hand.length;
-            target.discardPile.push(discarded);
-            events.push({ type: 'PRINCE_DISCARDED', actionId, actorId: playerId, targetId: princeTargetId, discardedCard: discarded });
-            events.push({ type: 'CARD_DISCARDED', playerId: princeTargetId, card: discarded });
+            if (targetSecret.hand.length > 0) {
+              const discarded = targetSecret.hand.pop();
+              target.cardCount = targetSecret.hand.length;
+              target.discardPile.push(discarded);
+              events.push({ type: 'PRINCE_DISCARDED', actionId, actorId: playerId, targetId: princeTargetId, discardedCard: discarded });
+              events.push({ type: 'CARD_DISCARDED', playerId: princeTargetId, card: discarded });
 
-            if (discarded.value === 8) { // Discarded Princess -> Instant Elimination
-              target.isEliminated = true;
-              target.eliminationReason = '왕자의 명령으로 공주를 버림';
-              target.eliminatedBy = playerId;
-              summaryResultType = 'PRINCE_PRINCESS_ELIMINATED';
-              summaryDesc = `👸 공주 카드가 버려졌습니다! [${target.nickname}] 즉시 탈락!`;
-              summaryEliminatedId = princeTargetId;
-              summaryRevealed = discarded;
-              events.push({ type: 'PLAYER_ELIMINATED', playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
-            } else {
-              summaryResultType = 'PRINCE_DISCARD';
-              summaryDesc = `👑 왕자의 명령! [${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
-              summaryRevealed = discarded;
+              if (discarded.value === 8) { // Princess discarded -> instant eliminate
+                target.isEliminated = true;
+                target.eliminationReason = '왕자의 명령으로 공주를 버림';
+                target.eliminatedBy = playerId;
+                summaryResultType = 'PRINCE_PRINCESS_ELIMINATED';
+                summaryDesc = `👸 [${target.nickname}] 님이 왕자의 명령으로 [공주]를 버려 즉시 탈락했습니다!`;
+                summaryEliminatedId = princeTargetId;
+                summaryRevealed = discarded;
+                events.push({ type: 'PLAYER_ELIMINATED', playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
+              } else {
+                summaryResultType = 'PRINCE_DISCARD';
+                summaryDesc = `👑 왕자의 명령! [${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
+                summaryRevealed = discarded;
 
-              // Draw new card (from deck or setAsideCard if deck empty)
-              let newCard: CardInstance | null = null;
-              if (s.deck.length > 0) {
-                newCard = s.deck.pop()!;
-              } else if (s.setAsideCard) {
-                newCard = s.setAsideCard;
-                s.setAsideCard = null;
-              }
-
-              if (newCard) {
-                targetSecret.hand.push(newCard);
-                target.cardCount = targetSecret.hand.length;
-                events.push({
-                  type: 'CARD_DRAWN',
-                  playerId: princeTargetId,
-                  card: newCard,
-                  remainingDeckCount: s.deck.length,
-                });
+                // Draw replacement card (from deck or setAsideCard if deck empty)
+                let newCard = s.deck.pop();
+                if (!newCard && s.setAsideCard) {
+                  newCard = s.setAsideCard;
+                  s.setAsideCard = null;
+                }
+                if (newCard) {
+                  targetSecret.hand.push(newCard);
+                  target.cardCount = targetSecret.hand.length;
+                  events.push({
+                    type: 'CARD_DRAWN',
+                    playerId: princeTargetId,
+                    card: newCard,
+                    remainingDeckCount: s.deck.length,
+                  });
+                }
               }
             }
           }
@@ -381,7 +314,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         case 6: { // King
           if (targetId) {
-            const target = s.players.find(p => p.id === targetId);
+            const target = s.players.find((p) => p.id === targetId);
             const targetSecret = s.secrets[targetId];
 
             if (target && !target.isEliminated && !target.isProtected && targetSecret) {
@@ -418,7 +351,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           player.isEliminated = true;
           player.eliminationReason = '스스로 공주 카드를 플레이함';
           player.eliminatedBy = playerId;
-          summaryResultType = 'PRINCESS_ELIMINATED';
+          summaryResultType = 'PRINCESS_SELF_ELIMINATED';
           summaryDesc = `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`;
           summaryEliminatedId = playerId;
           summaryRevealed = playedCard;
@@ -446,10 +379,11 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         s.matchState = 'ROUND_END';
 
         const winners = determineRoundWinners(s);
-        s.roundWinnerIds = winners.map(w => w.id);
+        s.roundWinnerIds = winners.map((w) => w.id);
+        s.lastRoundWinnerId = winners[0]?.id;
 
-        const winnerCards: Record<PlayerId, CardInstance> = {};
-        const scores: Record<PlayerId, number> = {};
+        const winnerCards = {};
+        const scores = {};
 
         for (const w of winners) {
           w.tokens = (w.tokens || 0) + 1;
@@ -482,7 +416,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         // Check match winner
         if (isMatchOver(s)) {
-          const matchWinner = s.players.find(p => p.tokens >= s.config.targetTokens) || winners[0];
+          const matchWinner = s.players.find((p) => p.tokens >= s.config.targetTokens) || winners[0];
           s.matchState = 'GAME_OVER';
           s.playPhase = 'GAME_OVER';
           s.matchWinnerId = matchWinner.id;
@@ -498,7 +432,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       }
 
       // Pass turn to next uneliminated player
-      const currentIndex = s.players.findIndex(p => p.id === playerId);
+      const currentIndex = s.players.findIndex((p) => p.id === playerId);
       let nextIndex = (currentIndex + 1) % s.players.length;
       let loop = 0;
       while (s.players[nextIndex].isEliminated && loop < s.players.length * 2) {
@@ -514,7 +448,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
       s.playPhase = 'TURN_INPUT';
       s.turnStartedAt = Date.now();
-      s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
+      s.turnExpiresAt = s.turnStartedAt + (s.config?.turnTimeoutSeconds || 30) * 1000;
 
       events.push({
         type: 'TURN_ENDED',
@@ -525,7 +459,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
       // Draw card for next player
       if (s.deck.length > 0) {
-        const nextDraw = s.deck.pop()!;
+        const nextDraw = s.deck.pop();
         s.secrets[nextPlayer.id].hand.push(nextDraw);
         nextPlayer.cardCount = s.secrets[nextPlayer.id].hand.length;
         events.push({
@@ -550,7 +484,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
     case 'TIMEOUT_FORFEIT':
     case 'PLAYER_LEAVE': {
       const { playerId } = command;
-      const player = s.players.find(p => p.id === playerId);
+      const player = s.players.find((p) => p.id === playerId);
       if (!player || player.isEliminated) {
         return { nextState: s, events };
       }
@@ -575,9 +509,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         s.matchState = 'ROUND_END';
 
         const winners = determineRoundWinners(s);
-        s.roundWinnerIds = winners.map(w => w.id);
-        const winnerCards: Record<PlayerId, CardInstance> = {};
-        const scores: Record<PlayerId, number> = {};
+        s.roundWinnerIds = winners.map((w) => w.id);
+        const winnerCards = {};
+        const scores = {};
 
         for (const w of winners) {
           w.tokens = (w.tokens || 0) + 1;
@@ -600,7 +534,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         });
 
         if (isMatchOver(s)) {
-          const matchWinner = s.players.find(p => p.tokens >= s.config.targetTokens) || winners[0];
+          const matchWinner = s.players.find((p) => p.tokens >= s.config.targetTokens) || winners[0];
           s.matchState = 'GAME_OVER';
           s.playPhase = 'GAME_OVER';
           s.matchWinnerId = matchWinner ? matchWinner.id : null;
@@ -619,7 +553,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
       // If eliminated player was turn player, pass turn to next
       if (s.currentTurnPlayerId === playerId) {
-        const currentIndex = s.players.findIndex(p => p.id === playerId);
+        const currentIndex = s.players.findIndex((p) => p.id === playerId);
         let nextIndex = (currentIndex + 1) % s.players.length;
         let loop = 0;
         while (s.players[nextIndex].isEliminated && loop < s.players.length * 2) {
@@ -633,10 +567,10 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         s.playPhase = 'TURN_INPUT';
         s.turnStartedAt = Date.now();
-        s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
+        s.turnExpiresAt = s.turnStartedAt + (s.config?.turnTimeoutSeconds || 30) * 1000;
 
         if (s.deck.length > 0) {
-          const nextDraw = s.deck.pop()!;
+          const nextDraw = s.deck.pop();
           s.secrets[nextPlayer.id].hand.push(nextDraw);
           nextPlayer.cardCount = s.secrets[nextPlayer.id].hand.length;
           events.push({

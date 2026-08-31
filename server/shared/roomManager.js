@@ -2,6 +2,7 @@
 // Room Manager Module - In-Memory Room & Player State Management
 // =========================================================================
 
+import { roomRepository } from '../core/RoomRepository.js';
 import {
   pauseGameTimer,
   resumeGameTimer,
@@ -9,7 +10,59 @@ import {
 } from '../games/love-letter.js';
 import { createBotPlayer } from '../games/love-letter-ai.js';
 
-export const rooms = {}; // key: roomCode (UPPERCASE) -> room data
+export { roomRepository };
+
+// Backward-compatible Proxy object wrapping roomRepository for synchronous access
+export const rooms = new Proxy({}, {
+  get(target, prop) {
+    if (typeof prop === 'string') {
+      const code = prop.toUpperCase().trim();
+      return roomRepository._rooms.get(code);
+    }
+    return Reflect.get(target, prop);
+  },
+  set(target, prop, value) {
+    if (typeof prop === 'string') {
+      const code = prop.toUpperCase().trim();
+      if (value) {
+        value.code = value.code || code;
+        roomRepository._rooms.set(code, value);
+      } else {
+        roomRepository._rooms.delete(code);
+      }
+      return true;
+    }
+    return Reflect.set(target, prop, value);
+  },
+  deleteProperty(target, prop) {
+    if (typeof prop === 'string') {
+      const code = prop.toUpperCase().trim();
+      roomRepository._rooms.delete(code);
+      return true;
+    }
+    return Reflect.deleteProperty(target, prop);
+  },
+  ownKeys() {
+    return Array.from(roomRepository._rooms.keys());
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    if (typeof prop === 'string' && roomRepository._rooms.has(prop.toUpperCase().trim())) {
+      return {
+        enumerable: true,
+        configurable: true,
+        value: roomRepository._rooms.get(prop.toUpperCase().trim()),
+      };
+    }
+    return undefined;
+  },
+  has(target, prop) {
+    if (typeof prop === 'string') {
+      return roomRepository._rooms.has(prop.toUpperCase().trim());
+    }
+    return false;
+  },
+});
+
 export const socketToUser = {}; // key: socketId -> { roomCode, userId }
 
 export function generateRoomCode() {
@@ -27,14 +80,15 @@ export function generateSessionToken(userId) {
 
 export function resolveRoomAndUser(socket, payload = {}) {
   let mapping = socketToUser[socket.id];
-  const { roomCode, userId } = payload || {};
+  const { roomCode, userId, playerId } = payload || {};
   let code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-  let uId = mapping?.userId || userId;
+  let uId = mapping?.userId || userId || playerId;
   let room = rooms[code];
 
   // Fallback: search across all active rooms if socket/user is registered
   if (!room) {
-    const found = Object.values(rooms).find((r) =>
+    const allRooms = Array.from(roomRepository._rooms.values());
+    const found = allRooms.find((r) =>
       r.players.some((p) => p.socketId === socket.id || (uId && p.id === uId))
     );
     if (found) {
@@ -62,7 +116,7 @@ export function resolveRoomAndUser(socket, payload = {}) {
     }
   }
 
-  return { room, roomCode: code, userId: uId };
+  return { room, roomCode: code, userId: uId, playerId: uId };
 }
 
 export function getPublicRoomState(room, requestUserId = null) {
@@ -73,12 +127,17 @@ export function getPublicRoomState(room, requestUserId = null) {
     gameType: room.gameType || 'LOVE_LETTER',
     hostId: room.hostId,
     gameState: room.gameState, // 'LOBBY' | 'PLAYING' | 'ROUND_END' | 'GAME_OVER'
+    playPhase: room.playPhase || (room.gameState === 'PLAYING' ? 'TURN_INPUT' : room.gameState),
+    stateVersion: room.stateVersion || 1,
+    serverTime: Date.now(),
     targetTokens: room.targetTokens || 4,
     maxPlayers: room.maxPlayers || 4,
     turnTimeLimit: room.turnTimeLimit || 60,
     deckCount: room.deck ? room.deck.length : 0,
     setAsideOpenCards: room.setAsideOpenCards || [],
     turnPlayerId: room.turnPlayerId,
+    turnStartTime: room.turnStartTime || null,
+    turnExpiresAt: room.turnExpiresAt || null,
     roundNumber: room.roundNumber || 1,
     roundWinner: room.roundWinner,
     gameWinner: room.gameWinner,
@@ -94,8 +153,10 @@ export function getPublicRoomState(room, requestUserId = null) {
       const isSelf = p.id === requestUserId;
       return {
         id: p.id,
+        playerId: p.id,
         nickname: p.nickname || p.name || '플레이어',
         avatarUrl: p.avatarUrl || p.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${p.id}`,
+        isHost: p.id === room.hostId,
         isBot: !!p.isBot,
         personality: p.personality || null,
         isReady: p.isReady,
@@ -137,6 +198,7 @@ export function handlePauseExpired(io, roomCode, userId) {
   room.isPaused = false;
   room.pausedPlayerId = null;
   room.pauseExpiresAt = null;
+  room.stateVersion = (room.stateVersion || 0) + 1;
 
   if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
     handleForfeitedPlayer(io, room, userId);
@@ -177,10 +239,12 @@ export function initRoomManager(io) {
 
         const player = {
           id: userId,
+          playerId: userId,
           sessionToken,
           socketId: socket.id,
           nickname,
           avatarUrl: avatar,
+          isHost: true,
           isReady: true, // Host is ready by default
           tokens: 0,
           isEliminated: false,
@@ -193,9 +257,12 @@ export function initRoomManager(io) {
 
         const newRoom = {
           code: roomCode,
+          id: roomCode,
           gameType,
           hostId: userId,
           gameState: 'LOBBY',
+          playPhase: 'LOBBY',
+          stateVersion: 1,
           targetTokens: Number(targetTokens) || 4,
           maxPlayers: Number(maxPlayers) || 4,
           turnTimeLimit: Number(turnTimeLimit) || 60,
@@ -206,17 +273,22 @@ export function initRoomManager(io) {
           turnPlayerId: null,
           turnTimer: null,
           turnStartTime: null,
+          turnExpiresAt: null,
           roundNumber: 1,
           roundWinner: null,
+          roundWinnerId: null,
           gameWinner: null,
           actionLogs: [],
           chatMessages: [],
           lastActionLog: '방이 생성되었습니다.',
+          lastActionDetail: null,
           isPaused: false,
           pausedPlayerId: null,
           pauseExpiresAt: null,
           pauseTimeout: null,
           savedTurnRemainingMs: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
 
         rooms[roomCode] = newRoom;
@@ -228,6 +300,7 @@ export function initRoomManager(io) {
             success: true,
             roomCode,
             userId,
+            playerId: userId,
             sessionToken,
             player,
           });
@@ -278,10 +351,12 @@ export function initRoomManager(io) {
 
         const player = {
           id: userId,
+          playerId: userId,
           sessionToken,
           socketId: socket.id,
           nickname,
           avatarUrl: avatar,
+          isHost: false,
           isReady: false,
           tokens: 0,
           isEliminated: false,
@@ -293,6 +368,7 @@ export function initRoomManager(io) {
         };
 
         room.players.push(player);
+        room.stateVersion = (room.stateVersion || 0) + 1;
         socketToUser[socket.id] = { roomCode: code, userId };
         socket.join(code);
 
@@ -304,6 +380,7 @@ export function initRoomManager(io) {
             success: true,
             roomCode: code,
             userId,
+            playerId: userId,
             sessionToken,
             player,
           });
@@ -321,9 +398,10 @@ export function initRoomManager(io) {
     // 3. Reconnect Room
     socket.on('room:reconnect', (payload, callback) => {
       try {
-        const { roomCode, userId, sessionToken } = payload || {};
+        const { roomCode, userId, playerId, sessionToken } = payload || {};
         const code = (roomCode || '').toUpperCase().trim();
         const room = rooms[code];
+        const targetId = userId || playerId;
 
         if (!room) {
           if (typeof callback === 'function') {
@@ -332,7 +410,7 @@ export function initRoomManager(io) {
           return;
         }
 
-        const player = room.players.find((p) => p.id === userId);
+        const player = room.players.find((p) => p.id === targetId);
         if (!player) {
           if (typeof callback === 'function') {
             callback({ success: false, error: '해당 방에 등록된 플레이어가 아닙니다.' });
@@ -340,7 +418,7 @@ export function initRoomManager(io) {
           return;
         }
 
-        if (player.sessionToken && player.sessionToken !== sessionToken) {
+        if (player.sessionToken && sessionToken && player.sessionToken !== sessionToken) {
           if (typeof callback === 'function') {
             callback({ success: false, error: '세션 토큰이 유효하지 않습니다.' });
           }
@@ -355,38 +433,35 @@ export function initRoomManager(io) {
         player.socketId = socket.id;
         player.isDisconnected = false;
         player.disconnectedAt = null;
-        socketToUser[socket.id] = { roomCode: code, userId };
+        socketToUser[socket.id] = { roomCode: code, userId: player.id };
         socket.join(code);
 
         // Check if room was paused because of this player (or any player)
-        if (room.isPaused && (room.pausedPlayerId === userId || !room.players.some(p => p.isDisconnected))) {
+        if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
+          const pausedId = room.pausedPlayerId || player.id;
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
             room.pauseTimeout = null;
           }
-          room.isPaused = false;
-          room.pausedPlayerId = null;
-          room.pauseExpiresAt = null;
-          resumeGameTimer(io, room);
-          io.to(code).emit('room:resumed', {
-            resumedByUserId: userId,
-            resumedAt: Date.now(),
-            turnPlayerId: room.turnPlayerId,
-          });
+          room.stateVersion = (room.stateVersion || 0) + 1;
+          resumeGameTimer(io, room, pausedId);
         }
 
         // Notify WebRTC peer reconnect
-        socket.to(code).emit('webrtc:peer-reconnected', { userId });
+        socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
 
-        const publicState = getPublicRoomState(room, userId);
+        const publicState = getPublicRoomState(room, player.id);
         if (typeof callback === 'function') {
           callback({
             success: true,
             roomCode: code,
-            userId,
+            userId: player.id,
+            playerId: player.id,
             sessionToken: player.sessionToken,
             player,
             gameState: publicState,
+            stateVersion: room.stateVersion,
+            serverTime: Date.now(),
           });
         }
 
@@ -403,9 +478,9 @@ export function initRoomManager(io) {
     socket.on('session:heartbeat', (payload, callback) => {
       try {
         let mapping = socketToUser[socket.id];
-        const { roomCode, userId, sessionToken } = payload || {};
+        const { roomCode, userId, playerId, sessionToken } = payload || {};
         const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-        const uId = mapping?.userId || userId;
+        const uId = mapping?.userId || userId || playerId;
         const room = rooms[code];
 
         if (!room) {
@@ -444,11 +519,14 @@ export function initRoomManager(io) {
             success: true,
             roomCode: code,
             userId: uId,
+            playerId: uId,
             isPaused: !!room.isPaused,
             pausedPlayerId: room.pausedPlayerId || null,
             pauseExpiresAt: room.pauseExpiresAt || null,
             gameState: room.gameState,
+            playPhase: room.playPhase || 'LOBBY',
             turnPlayerId: room.turnPlayerId,
+            stateVersion: room.stateVersion || 1,
             serverTime: Date.now(),
           });
         }
@@ -470,6 +548,7 @@ export function initRoomManager(io) {
         const player = room.players.find((p) => p.id === userId);
         if (player && player.id !== room.hostId) {
           player.isReady = payload?.isReady !== undefined ? !!payload.isReady : !player.isReady;
+          room.stateVersion = (room.stateVersion || 0) + 1;
           broadcastRoomState(io, roomCode);
           if (typeof callback === 'function') callback({ success: true, isReady: player.isReady });
         } else {
@@ -500,6 +579,7 @@ export function initRoomManager(io) {
 
         const bot = createBotPlayer(room.players);
         room.players.push(bot);
+        room.stateVersion = (room.stateVersion || 0) + 1;
         broadcastRoomState(io, roomCode);
         if (typeof callback === 'function') callback({ success: true, bot });
       } catch (err) {
@@ -540,6 +620,7 @@ export function initRoomManager(io) {
         }
 
         const removed = room.players.splice(botIdx, 1)[0];
+        room.stateVersion = (room.stateVersion || 0) + 1;
         broadcastRoomState(io, roomCode);
         if (typeof callback === 'function') callback({ success: true, removedBotId: removed.id });
       } catch (err) {
@@ -579,9 +660,9 @@ export function initRoomManager(io) {
     const handleForfeit = (payload, callback) => {
       try {
         let mapping = socketToUser[socket.id];
-        const { roomCode, userId } = payload || {};
+        const { roomCode, userId, playerId } = payload || {};
         const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-        const uId = mapping?.userId || userId;
+        const uId = mapping?.userId || userId || playerId;
         delete socketToUser[socket.id];
 
         const room = rooms[code];
@@ -605,6 +686,7 @@ export function initRoomManager(io) {
           handleForfeitedPlayer(io, room, uId, true);
         } else {
           room.players = room.players.filter((p) => p.id !== uId);
+          room.stateVersion = (room.stateVersion || 0) + 1;
         }
 
         if (room.players.length === 0) {
@@ -617,6 +699,7 @@ export function initRoomManager(io) {
         if (room.hostId === uId && room.players.length > 0) {
           room.hostId = room.players[0].id;
           room.players[0].isReady = true;
+          room.players[0].isHost = true;
         }
 
         broadcastRoomState(io, code);
@@ -646,6 +729,7 @@ export function initRoomManager(io) {
       player.isDisconnected = true;
       player.disconnectedAt = Date.now();
       player.socketId = null;
+      room.stateVersion = (room.stateVersion || 0) + 1;
 
       socket.leave(roomCode);
       socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
@@ -658,6 +742,7 @@ export function initRoomManager(io) {
           const p = currentRoom.players.find((pl) => pl.id === userId);
           if (p && p.isDisconnected) {
             currentRoom.players = currentRoom.players.filter((pl) => pl.id !== userId);
+            currentRoom.stateVersion = (currentRoom.stateVersion || 0) + 1;
             if (currentRoom.players.length === 0) {
               delete rooms[roomCode];
               return;
@@ -665,6 +750,7 @@ export function initRoomManager(io) {
             if (currentRoom.hostId === userId) {
               currentRoom.hostId = currentRoom.players[0].id;
               currentRoom.players[0].isReady = true;
+              currentRoom.players[0].isHost = true;
             }
             broadcastRoomState(io, roomCode);
           }
