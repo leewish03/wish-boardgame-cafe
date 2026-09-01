@@ -24,7 +24,7 @@ export interface UseGameSocketReturn {
   clearPriestSecret: () => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
-  playCard: (cardId: string, targetId?: string, guessValue?: number) => void;
+  playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
   startNextRound: (expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
   startRematch: (expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
   forfeit: () => void;
@@ -327,8 +327,11 @@ export function useGameSocket({
   }, []);
 
   const playCard = useCallback(
-    (cardId: string, targetId?: string, guessValue?: number) => {
-      if (!socket) return;
+    (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => {
+      if (!socket?.connected) {
+        callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
+        return;
+      }
       const code = roomCode || rawRoomState?.code;
 
       sfx.hapticSnap();
@@ -338,6 +341,7 @@ export function useGameSocket({
         SOCKET_EVENTS.GAME_COMMAND,
         {
           roomCode: code,
+          userId: myUserId,
           commandId: `cmd_${Date.now()}`,
           timestamp: Date.now(),
           command: { type: 'PLAY_CARD', cardId, targetId, guessValue },
@@ -346,6 +350,7 @@ export function useGameSocket({
           if (res && !res.success && res.error) {
             console.error('Play card error:', res.error);
           }
+          callback?.(res || { success: false, error: '서버 응답을 받지 못했습니다.' });
         }
       );
     },

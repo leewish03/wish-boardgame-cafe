@@ -14,8 +14,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  TabsList,
-  TabsTrigger,
   TabsContent,
   Badge,
   Input,
@@ -206,6 +204,8 @@ const MainContent = styled.main`
   padding: ${({ $isGame }) => ($isGame ? '0' : '28px 16px')};
   max-width: ${({ $isGame }) => ($isGame ? '100%' : '1080px')};
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
   ${({ $isGame }) =>
     $isGame &&
@@ -220,10 +220,56 @@ const MainContent = styled.main`
 // Game Card Grid Layout
 const GameGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 24px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 18px;
+
+  > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  @media (max-width: 560px) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+`;
+
+const LobbySegmentedNav = styled.nav`
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  width:100%;
+  min-width:0;
+  max-width:620px;
+  padding:3px;
+  box-sizing:border-box;
+  border:1px solid ${THEME.border};
+  border-radius:${THEME.radius.md};
+  background:rgba(255,255,255,.72);
+`;
+
+const LobbySegmentButton = styled.button`
+  min-width:0;
+  height:38px;
+  padding:0 8px;
+  border:0;
+  border-radius:calc(${THEME.radius.md} - 3px);
+  background:${({$active})=>$active ? THEME.primary : 'transparent'};
+  color:${({$active})=>$active ? '#fff' : THEME.mutedForeground};
+  font:800 12px ${THEME.font.sans};
+  letter-spacing:.02em;
+  cursor:pointer;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  .desktop-label{display:inline;}
+  .mobile-label{display:none;}
+  @media(max-width:560px){
+    height:36px;
+    padding:0 4px;
+    font-size:12px;
+    .desktop-label{display:none;}
+    .mobile-label{display:inline;}
+  }
 `;
 
 const GameThumbnail = styled.div`
@@ -886,28 +932,28 @@ export default function App() {
         {/* SCREEN 2: Lobby (Tabs + Game Cards Grid) */}
         {/* ========================================================= */}
         {screen === 'lobby' && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '20px' }}>
-              <TabsList>
-                <TabsTrigger
+          <div style={{ width: '100%', minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: '100%', minWidth: 0, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '20px' }}>
+              <LobbySegmentedNav aria-label="로비 메뉴">
+                <LobbySegmentButton
                   $active={activeTab === 'games'}
                   onClick={() => setActiveTab('games')}
                 >
-                  SALON GAMES
-                </TabsTrigger>
-                <TabsTrigger
+                  <span className="desktop-label">SALON GAMES</span><span className="mobile-label">게임</span>
+                </LobbySegmentButton>
+                <LobbySegmentButton
                   $active={activeTab === 'rooms'}
                   onClick={() => setActiveTab('rooms')}
                 >
-                  ROOM STATUS
-                </TabsTrigger>
-                <TabsTrigger
+                  <span className="desktop-label">ROOM STATUS</span><span className="mobile-label">방 현황</span>
+                </LobbySegmentButton>
+                <LobbySegmentButton
                   $active={activeTab === 'join'}
                   onClick={() => setActiveTab('join')}
                 >
-                  ENTER CODE
-                </TabsTrigger>
-              </TabsList>
+                  <span className="desktop-label">ENTER CODE</span><span className="mobile-label">코드 입장</span>
+                </LobbySegmentButton>
+              </LobbySegmentedNav>
             </div>
 
             <TabsContent style={{ marginTop: '0', width: '100%' }}>

@@ -40,6 +40,7 @@ const DeckStack = styled.div`
   position: relative;
   width: 48px;
   height: 70px;
+  @media(max-width:360px), (max-height:650px){width:40px;height:58px;}
 `;
 
 const BackCardLayer = styled.div<{ $offset: number }>`
@@ -77,8 +78,8 @@ const DeckCountBadge = styled.span`
   letter-spacing: 0.04em;
 `;
 
-const AsideStack = styled.div`display:flex; flex-direction:column; align-items:center; gap:3px; margin-left:20px;`;
-const AsideCard = styled.div`width:26px; height:39px; border-radius:5px; background:${THEME.burgundyDeep}; border:1px solid ${THEME.goldAntique}; box-shadow:2px 2px 0 rgba(9,13,22,.16);`;
+const AsideStack = styled.div`display:flex; flex-direction:column; align-items:center; gap:3px; margin-left:8px; @media(max-width:360px), (max-height:650px){margin-left:5px;}`;
+const AsideCard = styled.div`width:24px; height:36px; border-radius:5px; background:${THEME.burgundyDeep}; border:1px solid ${THEME.goldAntique}; box-shadow:2px 2px 0 rgba(9,13,22,.16); @media(max-width:360px), (max-height:650px){width:19px;height:29px;}`;
 const AsideLabel = styled.span`font-size:8px; color:${THEME.mutedForeground}; font-weight:800; white-space:nowrap;`;
 
 const EmptyDeckSlot = styled.div`

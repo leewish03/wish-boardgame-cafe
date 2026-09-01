@@ -3,8 +3,7 @@ import styled from 'styled-components';
 import { GameHud } from './GameHud';
 import { OpponentRail } from './OpponentRail';
 import { ActionStage } from './ActionStage';
-import { PlayerHand } from './PlayerHand';
-import { PlayerSeat } from './PlayerSeat';
+import { LocalPlayerZone } from './PlayerZone';
 import { GuessSelector } from './GuessSelector';
 import { DiscardHistoryModal } from './DiscardHistoryModal';
 import { PriestSecretModal } from './PriestSecretModal';
@@ -13,6 +12,7 @@ import { MatchResultModal } from './MatchResultModal';
 import { PauseOverlay } from './PauseOverlay';
 import { GameMenuDrawer } from './GameMenuDrawer';
 import { SpatialMotionStage } from '../presentation/SpatialMotionStage';
+import { TableAnchorProvider } from '../presentation/TableAnchorRegistry';
 import { useActionTimeline } from '../presentation/useActionTimeline';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { sfx } from '../../../shared/sfx';
@@ -80,7 +80,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
 
   // Presentation timeline
-  const { currentAction, phase, enqueueAction, isActionPlaying } = useActionTimeline();
+  const { currentAction, phase, enqueueAction, advancePresentation, isActionPlaying } = useActionTimeline();
 
   // Socket adapter hook
   const gameSocket = useGameSocket({
@@ -124,6 +124,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [isAdvancingRound, setIsAdvancingRound] = useState(false);
   const [advanceRequestedVersion, setAdvanceRequestedVersion] = useState<number | null>(null);
   const [resultRequestError, setResultRequestError] = useState<string | null>(null);
+  const [actionRequestError, setActionRequestError] = useState<string | null>(null);
 
   // Modal States
   const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
@@ -141,7 +142,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const me = gameState.players.find(p => p.id === activeUserId);
   const opponents = gameState.players.filter(p => p.id !== activeUserId);
   const isMyTurn = gameState.currentTurnPlayerId === activeUserId && !me?.isEliminated;
-  const canInteract = isMyTurn && !isActionPlaying;
+  const canInteract = isMyTurn && !isActionPlaying && gameSocket.isConnected;
 
   // Sound effects on state transitions
   useEffect(() => {
@@ -242,10 +243,18 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const executePlayCard = useCallback(
     (cardId: string, targetId?: string, guessValue?: number) => {
       setInteractionState('SUBMITTING');
+      setActionRequestError(null);
       if (propOnPlayCard) {
         propOnPlayCard(cardId, targetId, guessValue);
       } else {
-        gameSocket.playCard(cardId, targetId, guessValue);
+        gameSocket.playCard(cardId, targetId, guessValue, result => {
+          if (result.success) return;
+          setSelectedCardId(null);
+          setSelectedTargetId(null);
+          setIsGuessOpen(false);
+          setInteractionState('IDLE');
+          setActionRequestError(result.error || '카드를 사용하지 못했습니다. 다시 시도하세요.');
+        });
       }
     },
     [propOnPlayCard, gameSocket]
@@ -272,6 +281,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     }
 
     setSelectedCardId(card.id);
+    setActionRequestError(null);
     sfx.playCardDraw();
 
     const meta = CARD_DEFINITIONS[card.value as CardValue];
@@ -380,7 +390,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
 
   return (
-    <BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
+    <TableAnchorProvider><BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
       {/* 1. TOP HUD (Section 3 Tier 1) */}
       <GameHud
         roundNumber={gameState.roundNumber}
@@ -403,7 +413,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         currentAction={currentAction}
         phase={phase}
         myUserId={activeUserId}
-        players={gameState.players}
+        onPhaseComplete={advancePresentation}
       />
 
       {/* 2. OPPONENT RAIL (Section 3 Tier 2) */}
@@ -421,12 +431,13 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
         deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
-        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount || 0}
+        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount ?? 1}
         players={gameState.players}
         lastAction={gameSocket.lastAction || gameState.lastAction}
         presentationAction={currentAction}
         presentationPhase={phase}
         interactionState={interactionState}
+        actionError={actionRequestError}
         isOverDropZone={isOverDropZone}
         activeCard={selectedCard}
         targetPlayerName={targetPlayer?.nickname}
@@ -434,31 +445,24 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onSelectSelfTarget={() => handleSelectTarget(activeUserId)}
       />
 
-      {/* My cards are played in front of me, not into the middle of the table. */}
+      {/* My public discard shelf is physically attached directly above my hand. */}
       {me && (
-        <MyPlayArea data-player-id={activeUserId}>
-          <PlayerSeat
+          <LocalPlayerZone
             player={me}
             isCurrentTurn={isMyTurn}
             isTargetable={targetablePlayerIds.includes(activeUserId)}
             isSelectedTarget={selectedTargetId === activeUserId}
-            isSelf
             isSpeaking={!!speakingUsers[activeUserId]}
-            subtitle={userSubtitles[activeUserId]}
-            onClickTarget={() => handleSelectTarget(activeUserId)}
-            onInspectDiscards={() => handleInspectDiscards(activeUserId)}
+            onSelect={() => handleSelectTarget(activeUserId)}
+            onInspect={() => handleInspectDiscards(activeUserId)}
+            hand={myHand}
+            isMyTurn={canInteract}
+            selectedCardId={selectedCardId}
+            interactionState={interactionState}
+            onSelectCard={handleSelectCard}
+            onCancelSelection={handleCancelAction}
           />
-        </MyPlayArea>
       )}
-      <PlayerHand
-        hand={myHand}
-        isMyTurn={canInteract}
-        selectedCardId={selectedCardId}
-        interactionState={interactionState}
-        onSelectCard={handleSelectCard}
-        onValidDrop={handleSelectCard}
-        onCancelSelection={handleCancelAction}
-      />
 
       {/* Modals & Bottom Sheets */}
       <GuessSelector
@@ -530,31 +534,25 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onClose={() => setMenuDrawerOpen(false)}
         onLeaveRoom={handleLeaveCallback}
       />
-    </BoardSurface>
+    </BoardSurface></TableAnchorProvider>
   );
 };
 
 const BoardSurface = styled.div`
   position: relative;
-  width: 100vw;
+  width: 100%;
+  min-width: 0;
   height: 100dvh;
   max-height: 100dvh;
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows:auto auto minmax(68px, 1fr) auto;
   overflow: hidden;
   user-select: none;
   box-sizing: border-box;
   font-family: ${THEME.font.sans};
   color: ${THEME.foreground};
-`;
-
-const MyPlayArea = styled.div`
-  width: min(240px, calc(100% - 16px));
-  align-self: center;
-  flex-shrink: 0;
-  margin-top: 2px;
 `;
 
 export default LoveLetterGame;
