@@ -42,6 +42,7 @@ export function useWebRTC(socket, roomCode, userId) {
   const roomRef = useRef(roomCode);
   const userRef = useRef(userId);
   const speakerRef = useRef(true);
+  const voiceJoinInFlightRef = useRef(null);
 
   useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { roomRef.current = roomCode; }, [roomCode]);
@@ -166,20 +167,36 @@ export function useWebRTC(socket, roomCode, userId) {
   }, [createPeer, emitSignal]);
 
   const joinVoice = useCallback(() => {
+    if (voiceJoinInFlightRef.current) return voiceJoinInFlightRef.current;
     if (!socketRef.current || !roomRef.current || !userRef.current) {
       setVoiceError('방에 연결된 뒤 음성 채팅에 참여할 수 있습니다.');
       return Promise.resolve(false);
     }
     setVoiceError(null);
     setVoiceStatus('joining');
-    return new Promise((resolve) => {
+    const request = new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        voiceJoinInFlightRef.current = null;
+        resolve(result);
+      };
+      const timeout = window.setTimeout(() => {
+        joinedRef.current = false;
+        setIsVoiceJoined(false);
+        setVoiceStatus('error');
+        setVoiceError('음성 서버 응답이 지연됩니다. 다시 시도해 주세요.');
+        finish(false);
+      }, 4000);
       socketRef.current.emit('voice:join', { roomCode: roomRef.current }, (result) => {
+        window.clearTimeout(timeout);
         if (!result?.success) {
           joinedRef.current = false;
           setIsVoiceJoined(false);
           setVoiceStatus('error');
           setVoiceError(result?.error || '음성 채팅 참여에 실패했습니다. 다시 시도해 주세요.');
-          resolve(false);
+          finish(false);
           return;
         }
         joinedRef.current = true;
@@ -191,9 +208,11 @@ export function useWebRTC(socket, roomCode, userId) {
           if (peerId && !peer?.isBot) negotiatePeer(peerId);
         });
         socketRef.current?.emit('voice:presence', { roomCode: roomRef.current, listening: true, micEnabled: !!localStreamRef.current?.getAudioTracks?.()[0]?.enabled });
-        resolve(true);
+        finish(true);
       });
     });
+    voiceJoinInFlightRef.current = request;
+    return request;
   }, [negotiatePeer]);
 
   const leaveVoice = useCallback(() => {
@@ -203,6 +222,7 @@ export function useWebRTC(socket, roomCode, userId) {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     joinedRef.current = false;
+    voiceJoinInFlightRef.current = null;
     setLocalStream(null); setIsMicOn(false); setIsVoiceJoined(false); setVoiceStatus('idle'); setSpeakingUsers({});
   }, [clearVAD, removePeer]);
 

@@ -45,13 +45,13 @@ export const RoomVoiceControls: React.FC<RoomVoiceControlsProps> = ({ voice, com
     <VoiceBlock $compact={compact} aria-live="polite">
       {!compact && <VoiceHeading><Radio size={14} /> 음성 채팅 <VoiceState>{statusLabel}</VoiceState></VoiceHeading>}
       <VoiceControls>
-        <VoiceButton $active={joined} onClick={() => joined ? voice.leaveVoice?.() : voice.joinVoice?.()}>
+        <VoiceButton type="button" $active={joined} onClick={(event) => { event.preventDefault(); void (joined ? voice.leaveVoice?.() : voice.joinVoice?.()); }}>
           <Headphones size={14} />{joined ? '나가기' : '듣기 참여'}
         </VoiceButton>
-        <VoiceButton $active={micOn} disabled={!joined} onClick={() => voice.toggleMic?.()}>
+        <VoiceButton type="button" $active={micOn} disabled={!joined} onClick={(event) => { event.preventDefault(); void voice.toggleMic?.(); }}>
           {micOn ? <Mic size={14} /> : <MicOff size={14} />}{micOn ? '마이크 켜짐' : '마이크'}
         </VoiceButton>
-        <VoiceButton $active={speakerOn} disabled={!joined} onClick={() => voice.toggleSpeaker?.()}>
+        <VoiceButton type="button" $active={speakerOn} disabled={!joined} onClick={(event) => { event.preventDefault(); voice.toggleSpeaker?.(); }}>
           {speakerOn ? <Volume2 size={14} /> : <VolumeX size={14} />}{speakerOn ? '스피커 켜짐' : '스피커'}
         </VoiceButton>
       </VoiceControls>
