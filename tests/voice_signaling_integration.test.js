@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import { io as ClientIO } from 'socket.io-client';
-import { initRoomManager, rooms } from '../server/shared/roomManager.js';
+import { initRoomManager, rooms, socketToUser } from '../server/shared/roomManager.js';
 import { initWebRTCSignaling } from '../server/shared/webrtcSignaling.js';
 
 function once(socket, event, timeout = 3_000) {
@@ -48,6 +48,18 @@ async function main() {
     assert.equal(voiceB.success, true);
     assert.deepEqual(voiceB.peers.map((peer) => peer.userId), [created.userId]);
     assert.equal((await joinedNotice).userId, joined.userId);
+
+    // A fresh Socket.IO transport can temporarily lose only its lightweight
+    // mapping. The authenticated heartbeat must restore it before voice joins.
+    delete socketToUser[a.id];
+    assert.equal((await emit(a, 'voice:peers', { roomCode })).success, false);
+    const healed = await emit(a, 'session:heartbeat', {
+      roomCode,
+      userId: created.userId,
+      sessionToken: created.sessionToken,
+    });
+    assert.equal(healed.success, true, 'authenticated heartbeat must restore the room/socket mapping');
+    assert.equal((await emit(a, 'voice:peers', { roomCode })).success, true);
 
     const leftNotice = once(b, 'voice:peer-left');
     a.disconnect();

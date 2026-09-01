@@ -424,7 +424,7 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
 
   // WebRTC and STT Hooks
-  const webrtc = useWebRTC(socket, roomState?.code, currentUser?.id);
+  const webrtc = useWebRTC(socket, roomState?.code, currentUser?.id, currentUser?.sessionToken);
   const stt = useSTT(socket, roomState?.code, currentUser?.id);
 
   const avatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${avatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`;

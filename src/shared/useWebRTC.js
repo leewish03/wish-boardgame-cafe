@@ -22,7 +22,7 @@ function closeAudio(audio) {
 }
 
 /** Shared, room-level WebRTC voice client. Entering a room never requests a mic. */
-export function useWebRTC(socket, roomCode, userId) {
+export function useWebRTC(socket, roomCode, userId, sessionToken = null) {
   const [localStream, setLocalStream] = useState(null);
   const [isVoiceJoined, setIsVoiceJoined] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
@@ -41,6 +41,7 @@ export function useWebRTC(socket, roomCode, userId) {
   const socketRef = useRef(socket);
   const roomRef = useRef(roomCode);
   const userRef = useRef(userId);
+  const sessionTokenRef = useRef(sessionToken);
   const speakerRef = useRef(true);
   const voiceJoinInFlightRef = useRef(null);
   const voiceJoinResolveRef = useRef(null);
@@ -51,6 +52,7 @@ export function useWebRTC(socket, roomCode, userId) {
   useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { roomRef.current = roomCode; }, [roomCode]);
   useEffect(() => { userRef.current = userId; }, [userId]);
+  useEffect(() => { sessionTokenRef.current = sessionToken; }, [sessionToken]);
   useEffect(() => { joinedRef.current = isVoiceJoined; }, [isVoiceJoined]);
   useEffect(() => { speakerRef.current = isSpeakerOn; }, [isSpeakerOn]);
 
@@ -217,7 +219,7 @@ export function useWebRTC(socket, roomCode, userId) {
       setVoiceError('음성 서버 응답이 지연됩니다. 다시 시도해 주세요.');
       finish(false);
     }, 4000);
-    socketRef.current.emit('voice:join', { roomCode: roomRef.current }, (result) => {
+    const submitVoiceJoin = () => socketRef.current?.emit('voice:join', { roomCode: roomRef.current }, (result) => {
       if (epoch !== voiceEpochRef.current) return;
       if (!result?.success) {
         joinedRef.current = false;
@@ -238,6 +240,29 @@ export function useWebRTC(socket, roomCode, userId) {
       socketRef.current?.emit('voice:presence', { roomCode: roomRef.current, listening: true, micEnabled: !!localStreamRef.current?.getAudioTracks?.()[0]?.enabled });
       finish(true);
     });
+    // Socket.IO can reconnect before the room session restores its socket
+    // mapping. Verify and heal that mapping before asking the voice server to
+    // authenticate this listener, instead of exposing a transient error.
+    if (sessionTokenRef.current) {
+      socketRef.current.emit('session:heartbeat', {
+        roomCode: roomRef.current,
+        userId: userRef.current,
+        sessionToken: sessionTokenRef.current,
+      }, (sync) => {
+        if (epoch !== voiceEpochRef.current) return;
+        if (!sync?.success) {
+          joinedRef.current = false;
+          setIsVoiceJoined(false);
+          setVoiceStatus('error');
+          setVoiceError('방 연결을 확인할 수 없습니다. 방에 다시 접속해 주세요.');
+          finish(false);
+          return;
+        }
+        submitVoiceJoin();
+      });
+    } else {
+      submitVoiceJoin();
+    }
     return request;
   }, [negotiatePeer]);
 
