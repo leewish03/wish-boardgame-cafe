@@ -161,7 +161,10 @@ export function getPublicRoomState(room, requestUserId = null) {
       isPaused: !!room.isPaused,
       pausedPlayerId: room.pausedPlayerId || null,
       pauseExpiresAt: room.pauseExpiresAt || null,
-      players: game.players.map((player) => {
+      players: (game.outcome?.reason === 'INSUFFICIENT_HUMANS'
+        ? game.players.filter((player) => room.players.some((member) => member.id === player.id))
+        : game.players
+      ).map((player) => {
         const sessionPlayer = room.players.find((candidate) => candidate.id === player.id);
         const isSelf = player.id === requestUserId;
         return {
@@ -244,9 +247,31 @@ export function broadcastRoomState(io, roomCode) {
   });
 }
 
+function appendRoomMessage(room, message) {
+  if (!room) return null;
+  if (!room.chatMessages) room.chatMessages = [];
+  const entry = {
+    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+    ...message,
+  };
+  room.chatMessages.push(entry);
+  // Keep the durable room payload bounded just like the public projection.
+  if (room.chatMessages.length > 100) room.chatMessages.splice(0, room.chatMessages.length - 100);
+  return entry;
+}
+
+function emitSystemMessage(io, roomCode, room, text) {
+  const message = appendRoomMessage(room, { type: 'system', text });
+  if (message) io.to(roomCode).emit('chat:message', message);
+  return message;
+}
+
 function openRoomSummary(room) {
   const game = room.gameStateObject;
-  const players = game?.players || room.players || [];
+  const players = game?.outcome?.reason === 'INSUFFICIENT_HUMANS'
+    ? (room.players || [])
+    : (game?.players || room.players || []);
   return {
     id: `room_${String(room.code || '').slice(-2)}`,
     gameType: room.gameType || 'LOVE_LETTER',
@@ -263,7 +288,7 @@ function openRoomSummary(room) {
   };
 }
 
-export function handlePauseExpired(io, roomCode, userId) {
+export async function handlePauseExpired(io, roomCode, userId) {
   const room = rooms[roomCode];
   if (!room) return;
 
@@ -279,7 +304,20 @@ export function handlePauseExpired(io, roomCode, userId) {
   room.stateVersion = (room.stateVersion || 0) + 1;
 
   if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
-    handleForfeitedPlayer(io, room, userId);
+    if (room.gameStateObject && coreGameLifecycle?.forfeit) {
+      await coreGameLifecycle.forfeit(roomCode, userId);
+      room.players = room.players.filter((candidate) => candidate.id !== userId);
+      emitSystemMessage(io, roomCode, room, `${player.nickname}님이 재접속하지 않아 퇴장했습니다.`);
+      if (room.hostId === userId && room.players.length) {
+        room.hostId = room.players[0].id;
+        room.players[0].isHost = true;
+        room.players[0].isReady = true;
+      }
+      await roomRepository.saveRoom(room);
+      broadcastRoomState(io, roomCode);
+    } else {
+      handleForfeitedPlayer(io, room, userId);
+    }
   } else {
     room.players = room.players.filter((p) => p.id !== userId);
     if (room.players.length === 0) {
@@ -458,6 +496,8 @@ export function initRoomManager(io) {
 
         // Notify WebRTC peer join
         socket.to(code).emit('webrtc:peer-joined', { newUserId: userId });
+        socket.to(code).emit('voice:peer-joined', { userId });
+        emitSystemMessage(io, code, room, `${player.nickname}님이 입장했습니다.`);
 
         if (typeof callback === 'function') {
           callback({
@@ -537,7 +577,11 @@ export function initRoomManager(io) {
           }
         }
 
-        if (!alreadyConnected) socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
+        if (!alreadyConnected) {
+          socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
+          socket.to(code).emit('voice:peer-reconnected', { userId: player.id });
+          emitSystemMessage(io, code, room, `${player.nickname}님이 다시 연결했습니다.`);
+        }
 
         const publicState = getPublicRoomState(room, player.id);
         if (typeof callback === 'function') {
@@ -670,6 +714,7 @@ export function initRoomManager(io) {
         const bot = createBotPlayer(room.players);
         room.players.push(bot);
         room.stateVersion = (room.stateVersion || 0) + 1;
+        emitSystemMessage(io, roomCode, room, `${bot.nickname}님이 입장했습니다.`);
         broadcastRoomState(io, roomCode);
         if (typeof callback === 'function') callback({ success: true, bot });
       } catch (err) {
@@ -711,6 +756,7 @@ export function initRoomManager(io) {
 
         const removed = room.players.splice(botIdx, 1)[0];
         room.stateVersion = (room.stateVersion || 0) + 1;
+        emitSystemMessage(io, roomCode, room, `${removed.nickname}님이 퇴장했습니다.`);
         broadcastRoomState(io, roomCode);
         if (typeof callback === 'function') callback({ success: true, removedBotId: removed.id });
       } catch (err) {
@@ -720,29 +766,28 @@ export function initRoomManager(io) {
     });
 
     // 5. Chat Message
-    socket.on('chat:message', (payload) => {
+    socket.on('chat:message', (payload, callback) => {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room) return;
+        if (!room) throw new Error('방을 찾을 수 없습니다.');
 
         const sender = room.players.find((p) => p.id === userId);
-        if (!sender || !payload?.text?.trim()) return;
+        if (!sender || !payload?.text?.trim()) throw new Error('메시지 내용을 입력해 주세요.');
 
-        const msg = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        const msg = appendRoomMessage(room, {
+          type: 'chat',
           userId: sender.id,
           nickname: sender.nickname,
           avatarUrl: sender.avatarUrl,
           text: payload.text.trim(),
-          timestamp: Date.now(),
-        };
-
-        if (!room.chatMessages) room.chatMessages = [];
-        room.chatMessages.push(msg);
+        });
 
         io.to(roomCode).emit('chat:message', msg);
+        void roomRepository.saveRoom(room);
+        if (typeof callback === 'function') callback({ success: true, message: msg });
       } catch (err) {
         console.error('chat:message error:', err);
+        if (typeof callback === 'function') callback({ success: false, error: err.message || '메시지 전송에 실패했습니다.' });
       }
     });
 
@@ -756,6 +801,7 @@ export function initRoomManager(io) {
         }
 
         if (!uId) throw new Error('기권할 플레이어를 찾을 수 없습니다.');
+        const departingPlayer = room.players.find((player) => player.id === uId);
 
         if (room.pauseTimeout && room.pausedPlayerId === uId) {
           clearTimeout(room.pauseTimeout);
@@ -791,10 +837,12 @@ export function initRoomManager(io) {
           room.players[0].isHost = true;
         }
 
+        emitSystemMessage(io, code, room, `${departingPlayer?.nickname || '플레이어'}님이 퇴장했습니다.`);
         broadcastRoomState(io, code);
         delete socketToUser[socket.id];
         socket.leave(code);
         socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
+        socket.to(code).emit('voice:peer-left', { userId: uId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         console.error('room:forfeit error:', err);
@@ -815,6 +863,7 @@ export function initRoomManager(io) {
         }
         delete socketToUser[socket.id];
         socket.leave(roomCode);
+        const departingPlayer = room.players.find((player) => player.id === userId);
         room.players = room.players.filter((player) => player.id !== userId);
         if (room.players.length === 0) {
           delete rooms[roomCode];
@@ -825,8 +874,11 @@ export function initRoomManager(io) {
             room.players[0].isReady = true;
           }
           room.stateVersion = (room.stateVersion || 0) + 1;
+          emitSystemMessage(io, roomCode, room, `${departingPlayer?.nickname || '플레이어'}님이 퇴장했습니다.`);
           broadcastRoomState(io, roomCode);
         }
+        socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
+        socket.to(roomCode).emit('voice:peer-left', { userId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         if (typeof callback === 'function') callback({ success: false, error: err.message || '방을 나가지 못했습니다.' });
@@ -853,6 +905,7 @@ export function initRoomManager(io) {
 
       socket.leave(roomCode);
       socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
+      socket.to(roomCode).emit('voice:peer-left', { userId });
 
       // If in LOBBY, allow 30 seconds for refresh/reconnect before cleaning up
       if (room.gameState === 'LOBBY') {
@@ -896,7 +949,9 @@ export function initRoomManager(io) {
 
           if (room.pauseTimeout) clearTimeout(room.pauseTimeout);
           room.pauseTimeout = setTimeout(() => {
-            handlePauseExpired(io, roomCode, userId);
+            void handlePauseExpired(io, roomCode, userId).catch((error) => {
+              console.error('Disconnected player expiry failed:', error);
+            });
           }, 180000);
         }
 

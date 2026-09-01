@@ -6,7 +6,7 @@ import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/card
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
 import { sfx } from '../../../shared/sfx';
-import { Copy, Check, BookOpen, Volume2, VolumeX, Music2, LogOut, X } from 'lucide-react';
+import { Copy, Check, BookOpen, Volume2, VolumeX, Music2, LogOut, X, Headphones, Mic, MicOff, Radio } from 'lucide-react';
 
 interface GameMenuDrawerProps {
   isOpen: boolean;
@@ -14,7 +14,51 @@ interface GameMenuDrawerProps {
   targetTokens?: number;
   onClose: () => void;
   onLeaveRoom: () => void;
+  /** The common room-voice hook. Optional while non-game room screens migrate. */
+  voice?: RoomVoiceControlsProps['voice'];
 }
+
+export interface RoomVoiceControlsProps {
+  voice?: {
+    isVoiceJoined?: boolean;
+    isMicOn?: boolean;
+    isSpeakerOn?: boolean;
+    voiceStatus?: string;
+    voiceError?: string | null;
+    joinVoice?: () => boolean | void;
+    leaveVoice?: () => void;
+    toggleMic?: () => void;
+    toggleSpeaker?: () => void;
+  };
+  compact?: boolean;
+}
+
+/** Reusable in the waiting room and the in-game settings panel. */
+export const RoomVoiceControls: React.FC<RoomVoiceControlsProps> = ({ voice, compact = false }) => {
+  const joined = Boolean(voice?.isVoiceJoined);
+  const micOn = Boolean(voice?.isMicOn);
+  const speakerOn = voice?.isSpeakerOn !== false;
+  const statusLabel = voice?.voiceStatus === 'requesting-mic' ? '권한 요청 중' : voice?.voiceStatus === 'joining' ? '연결 중' : joined ? '듣는 중' : '미참여';
+
+  if (!voice) return null;
+  return (
+    <VoiceBlock $compact={compact} aria-live="polite">
+      {!compact && <VoiceHeading><Radio size={14} /> 음성 채팅 <VoiceState>{statusLabel}</VoiceState></VoiceHeading>}
+      <VoiceControls>
+        <VoiceButton $active={joined} onClick={() => joined ? voice.leaveVoice?.() : voice.joinVoice?.()}>
+          <Headphones size={14} />{joined ? '나가기' : '듣기 참여'}
+        </VoiceButton>
+        <VoiceButton $active={micOn} disabled={!joined} onClick={() => voice.toggleMic?.()}>
+          {micOn ? <Mic size={14} /> : <MicOff size={14} />}{micOn ? '마이크 켜짐' : '마이크'}
+        </VoiceButton>
+        <VoiceButton $active={speakerOn} disabled={!joined} onClick={() => voice.toggleSpeaker?.()}>
+          {speakerOn ? <Volume2 size={14} /> : <VolumeX size={14} />}{speakerOn ? '스피커 켜짐' : '스피커'}
+        </VoiceButton>
+      </VoiceControls>
+      {voice.voiceError && <VoiceError role="alert">{voice.voiceError}</VoiceError>}
+    </VoiceBlock>
+  );
+};
 
 export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   isOpen,
@@ -22,6 +66,7 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   targetTokens = 4,
   onClose,
   onLeaveRoom,
+  voice,
 }) => {
   const [copied, setCopied] = useState(false);
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
@@ -162,6 +207,8 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
                     <label htmlFor="sfx-volume">효과음 볼륨 <strong>{sfxVolume}%</strong></label>
                     <input id="sfx-volume" type="range" min="0" max="100" value={sfxVolume} onChange={event => handleSfxVolume(Number(event.target.value))} disabled={!sfxOn} />
                   </VolumeRow>
+
+                  <RoomVoiceControls voice={voice} />
 
                   <SettingRow>
                     <span>목표 호감도 토큰</span>
@@ -335,6 +382,8 @@ const CardGuideItem = styled.div`
   border-radius: ${THEME.radius.md};
   padding: 8px 10px;
   box-shadow: 0 1px 3px rgba(9, 13, 22, 0.03);
+  min-height: 68px;
+  box-sizing: border-box;
 `;
 
 const CardGuideHeader = styled.div`
@@ -379,6 +428,68 @@ const CardDesc = styled.p`
   margin: 0;
   font-size: 10px;
   color: ${THEME.mutedForeground};
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+`;
+
+const VoiceBlock = styled.section<{ $compact: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: ${props => props.$compact ? '0' : '10px 12px'};
+  background: ${props => props.$compact ? 'transparent' : '#ffffff'};
+  border: ${props => props.$compact ? 'none' : `1px solid ${THEME.border}`};
+  border-radius: ${THEME.radius.md};
+`;
+
+const VoiceHeading = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: ${THEME.foreground};
+`;
+
+const VoiceState = styled.span`
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: ${THEME.mutedForeground};
+`;
+
+const VoiceControls = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+`;
+
+const VoiceButton = styled.button<{ $active: boolean }>`
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 4px;
+  border: 1px solid ${props => props.$active ? THEME.gold : THEME.border};
+  border-radius: ${THEME.radius.sm};
+  background: ${props => props.$active ? 'rgba(197, 160, 89, 0.14)' : '#f8fafc'};
+  color: ${props => props.$active ? THEME.primary : THEME.mutedForeground};
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+`;
+
+const VoiceError = styled.p`
+  margin: 0;
+  color: ${THEME.destructive};
+  font-size: 10.5px;
   line-height: 1.35;
 `;
 

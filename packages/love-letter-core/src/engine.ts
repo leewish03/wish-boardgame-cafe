@@ -359,11 +359,13 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
               // Draw new card (from deck or setAsideCard if deck empty)
               let newCard: CardInstance | null = null;
+              let drawSource: 'DECK' | 'SET_ASIDE' = 'DECK';
               if (s.deck.length > 0) {
                 newCard = s.deck.pop()!;
               } else if (s.setAsideCard) {
                 newCard = s.setAsideCard;
                 s.setAsideCard = null;
+                drawSource = 'SET_ASIDE';
               }
 
               if (newCard) {
@@ -374,6 +376,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   playerId: princeTargetId,
                   card: newCard,
                   remainingDeckCount: s.deck.length,
+                  drawSource,
                 });
               }
             }
@@ -577,6 +580,41 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         playerId,
         reason: player.eliminationReason,
       });
+
+      // A multiplayer match is only meaningful while at least two humans remain.
+      // Bots are table-fillers, never a replacement for a departed person.
+      const remainingHumans = s.players.filter((candidate) => !candidate.isBot && !candidate.isEliminated);
+      if (remainingHumans.length <= 1) {
+        const scores: Record<PlayerId, number> = {};
+        const previousScores: Record<PlayerId, number> = {};
+        for (const candidate of s.players) {
+          scores[candidate.id] = candidate.tokens || 0;
+          previousScores[candidate.id] = candidate.tokens || 0;
+        }
+        s.matchState = 'GAME_OVER';
+        s.playPhase = 'GAME_OVER';
+        s.currentTurnPlayerId = null;
+        s.roundWinnerIds = [];
+        s.roundWinnerReason = '참가자 부족으로 게임이 종료되었습니다.';
+        s.matchWinnerId = null;
+        s.outcome = {
+          kind: 'MATCH',
+          reason: 'INSUFFICIENT_HUMANS',
+          winnerIds: [],
+          winnerCards: {},
+          scores,
+          previousScores,
+          nextStarterId: null,
+          advanceAt: null,
+        };
+        events.push({
+          type: 'MATCH_ENDED',
+          matchWinnerId: null,
+          finalScores: scores,
+          reason: 'INSUFFICIENT_HUMANS',
+        });
+        return { nextState: s, events };
+      }
 
       if (isRoundOver(s)) {
         s.playPhase = 'ROUND_END';

@@ -18,7 +18,7 @@ function createTestState(playersConfig, options = {}) {
     nickname: p.nickname || `Player${idx + 1}`,
     avatar: p.avatar || '👑',
     isHost: idx === 0,
-    isBot: false,
+    isBot: !!p.isBot,
   }));
 
   const state = createInitialGameState(initialPlayers, {
@@ -60,6 +60,24 @@ function createTestState(playersConfig, options = {}) {
   });
 
   return state;
+}
+
+// 0. A departed human must end a table with only one human remaining; bots
+// may not continue playing each other or award a token by default.
+console.log('▶ [0/17] Forfeit with one human remaining -> insufficient humans game over');
+{
+  const state = createTestState([
+    { id: 'p1', hand: [{ id: 'c_p1', value: 1, name: '경비병' }] },
+    { id: 'p2', hand: [{ id: 'c_p2', value: 2, name: '사제' }] },
+    { id: 'bot', isBot: true, hand: [{ id: 'c_bot', value: 3, name: '남작' }] },
+  ]);
+  const { nextState, events } = executeCommand(state, { type: 'FORFEIT', playerId: 'p1' });
+  assert.strictEqual(nextState.matchState, 'GAME_OVER');
+  assert.strictEqual(nextState.outcome.reason, 'INSUFFICIENT_HUMANS');
+  assert.deepStrictEqual(nextState.outcome.winnerIds, []);
+  assert.strictEqual(nextState.players.find((p) => p.id === 'p2').tokens, 0);
+  assert.ok(events.some((event) => event.type === 'MATCH_ENDED' && event.reason === 'INSUFFICIENT_HUMANS'));
+  console.log('   ✅ No bot-only continuation or token award occurs.\n');
 }
 
 // 1. Guard 성공 (올바른 추측 → 탈락)

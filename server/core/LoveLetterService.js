@@ -39,7 +39,9 @@ const core = loadTs(path.join(root, 'packages/love-letter-core/src/index.ts'));
 const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts'));
 // Leave time for the client-side causal sequence (card → target → result → discard)
 // before an automated opponent creates the next authoritative action.
-const BOT_PRESENTATION_GAP_MS = 3_500;
+// The client has its own short causal presentation. Keeping a second 3.5s
+// server delay made multiplayer turns feel stalled after the snapshot settled.
+const BOT_PRESENTATION_GAP_MS = 900;
 export { SOCKET_EVENTS };
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -73,7 +75,9 @@ export class LoveLetterService {
     this.broadcastRoomState = broadcastRoomState || (() => {});
     this.turnCoordinator = new TurnCoordinator(io, this);
     this.eventCounters = new Map();
+    this.commandQueues = new Map();
     this.botTimers = new Map();
+    this.pauseExpiryTimers = new Map();
     this.roundAdvanceTimers = new Map();
     this.progressRequests = new Map();
   }
@@ -171,6 +175,19 @@ export class LoveLetterService {
   }
 
   async handleCommand(roomCode, command) {
+    // Socket.IO can deliver two clicks or a timeout and a click in the same
+    // tick. Serialize authoritative mutations per room so a stale command
+    // cannot apply against the same snapshot twice.
+    const previous = this.commandQueues.get(roomCode) || Promise.resolve();
+    const operation = previous.catch(() => {}).then(() => this.applyCommand(roomCode, command));
+    this.commandQueues.set(roomCode, operation);
+    operation.finally(() => {
+      if (this.commandQueues.get(roomCode) === operation) this.commandQueues.delete(roomCode);
+    }).catch(() => {});
+    return operation;
+  }
+
+  async applyCommand(roomCode, command) {
     const room = await roomRepository.getRoom(roomCode);
     if (!room || !room.gameStateObject) {
       throw new Error('방을 찾을 수 없습니다.');
@@ -178,9 +195,21 @@ export class LoveLetterService {
     if (room.isPaused && command.type !== 'FORFEIT') {
       throw new Error('재접속을 기다리는 동안 게임이 일시 정지되었습니다.');
     }
+    if (command.type === 'FORFEIT') {
+      this.clearPauseExpiryTimer(roomCode);
+    }
 
     const { nextState, events } = core.executeCommand(room.gameStateObject, command);
     this.applyGameStateToRoom(room, nextState);
+    if (nextState.outcome?.reason === 'INSUFFICIENT_HUMANS') {
+      this.clearBotTimer(roomCode);
+      this.turnCoordinator.clearTurnTimer(roomCode);
+      this.clearRoundAdvanceTimer(roomCode);
+      // Bots are not valid remaining participants after a human leaves. Keep
+      // the authoritative game snapshot intact for the result sheet, but take
+      // their sessions out of the room immediately so no bot turn can resume.
+      room.players = room.players.filter((player) => !player.isBot);
+    }
     this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
@@ -323,11 +352,19 @@ export class LoveLetterService {
     }
     if (gameState.config.turnTimeoutSeconds <= 0) return;
     const playerId = gameState.currentTurnPlayerId;
+    const stateVersion = gameState.stateVersion;
+    const turnExpiresAt = gameState.turnExpiresAt;
     this.turnCoordinator.startTurnTimer(roomCode, gameState.turnExpiresAt, () => {
       roomRepository.getRoom(roomCode).then((room) => {
         if (room?.isPaused) return;
         const latestState = room?.gameStateObject;
-        if (!latestState || latestState.currentTurnPlayerId !== playerId || latestState.matchState !== 'PLAYING') return;
+        if (
+          !latestState ||
+          latestState.currentTurnPlayerId !== playerId ||
+          latestState.stateVersion !== stateVersion ||
+          latestState.turnExpiresAt !== turnExpiresAt ||
+          latestState.matchState !== 'PLAYING'
+        ) return;
         const timeoutPlay = createTimeoutPlayCommand(latestState, playerId);
         if (!timeoutPlay) return;
         return this.handleCommand(roomCode, timeoutPlay);
@@ -343,6 +380,52 @@ export class LoveLetterService {
     this.botTimers.delete(roomCode);
   }
 
+  clearPauseExpiryTimer(roomCode) {
+    const timer = this.pauseExpiryTimers.get(roomCode);
+    if (timer) clearTimeout(timer);
+    this.pauseExpiryTimers.delete(roomCode);
+  }
+
+  appendSystemMessage(room, text) {
+    if (!room.chatMessages) room.chatMessages = [];
+    const message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: 'system',
+      text,
+      timestamp: Date.now(),
+    };
+    room.chatMessages.push(message);
+    if (room.chatMessages.length > 100) room.chatMessages.splice(0, room.chatMessages.length - 100);
+    return message;
+  }
+
+  async expirePausedPlayer(roomCode, playerId, expectedExpiry) {
+    const room = await roomRepository.getRoom(roomCode);
+    if (!room?.isPaused || room.pausedPlayerId !== playerId || room.pauseExpiresAt !== expectedExpiry) return;
+    const player = room.players.find((candidate) => candidate.id === playerId);
+    if (!player?.isDisconnected) return;
+
+    room.isPaused = false;
+    room.pausedPlayerId = null;
+    room.pauseExpiresAt = null;
+    delete room.pausedTurnRemainingMs;
+    await this.handleCommand(roomCode, { type: 'FORFEIT', playerId });
+
+    // The disconnected member is no longer eligible to rejoin a finished
+    // table. Bots have already been removed by handleCommand if humans fell
+    // below two.
+    room.players = room.players.filter((candidate) => candidate.id !== playerId);
+    if (room.hostId === playerId && room.players.length) {
+      room.hostId = room.players[0].id;
+      room.players[0].isHost = true;
+      room.players[0].isReady = true;
+    }
+    const message = this.appendSystemMessage(room, `${player.nickname}님이 재접속하지 않아 퇴장했습니다.`);
+    this.io.to(roomCode).emit('chat:message', message);
+    await roomRepository.saveRoom(room);
+    this.broadcastRoomState(this.io, roomCode);
+  }
+
   async pauseRoom(roomCode, playerId) {
     const room = await roomRepository.getRoom(roomCode);
     if (!room?.gameStateObject || room.isPaused) return;
@@ -353,6 +436,16 @@ export class LoveLetterService {
     room.pausedTurnRemainingMs = Math.max(0, room.gameStateObject.turnExpiresAt - Date.now());
     this.turnCoordinator.clearTurnTimer(roomCode);
     this.clearBotTimer(roomCode);
+    this.clearPauseExpiryTimer(roomCode);
+    const pauseExpiry = room.pauseExpiresAt;
+    const timer = setTimeout(() => {
+      this.pauseExpiryTimers.delete(roomCode);
+      this.expirePausedPlayer(roomCode, playerId, pauseExpiry).catch((error) => {
+        console.error('Paused player expiry failed:', error.message);
+      });
+    }, Math.max(1_000, pauseExpiry - Date.now()));
+    timer.unref?.();
+    this.pauseExpiryTimers.set(roomCode, timer);
     await roomRepository.saveRoom(room);
     this.broadcastRoomState(this.io, roomCode);
   }
@@ -362,6 +455,7 @@ export class LoveLetterService {
     if (!room?.gameStateObject || !room.isPaused) return;
 
     const now = Date.now();
+    this.clearPauseExpiryTimer(roomCode);
     const remaining = Math.max(1_000, Number(room.pausedTurnRemainingMs) || room.gameStateObject.config.turnTimeoutSeconds * 1_000);
     const nextState = {
       ...room.gameStateObject,
@@ -387,6 +481,8 @@ export class LoveLetterService {
 
     const gs = room.gameStateObject;
     const currentTurnPlayer = gs.players.find(p => p.id === gs.currentTurnPlayerId);
+    const expectedStateVersion = gs.stateVersion;
+    const expectedTurnExpiresAt = gs.turnExpiresAt;
 
     if (currentTurnPlayer && currentTurnPlayer.isBot && !currentTurnPlayer.isEliminated) {
       this.clearBotTimer(roomCode);
@@ -395,7 +491,12 @@ export class LoveLetterService {
         const latestRoom = await roomRepository.getRoom(roomCode);
         if (!latestRoom || !latestRoom.gameStateObject || latestRoom.isPaused) return;
         const latestGs = latestRoom.gameStateObject;
-        if (latestGs.currentTurnPlayerId !== currentTurnPlayer.id || latestGs.matchState !== 'PLAYING') return;
+        if (
+          latestGs.currentTurnPlayerId !== currentTurnPlayer.id ||
+          latestGs.stateVersion !== expectedStateVersion ||
+          latestGs.turnExpiresAt !== expectedTurnExpiresAt ||
+          latestGs.matchState !== 'PLAYING'
+        ) return;
 
         const botAction = decideBotAction(latestGs, currentTurnPlayer);
         if (botAction) {

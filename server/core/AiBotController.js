@@ -1,20 +1,20 @@
 const BOT_NAMES = [
-  { name: '알렉산더 남작', avatar: '🎩', personality: 'AGGRESSIVE' },
-  { name: '마리안느 시녀', avatar: '🪞', personality: 'DEFENSIVE' },
-  { name: '줄리앙 기사', avatar: '⚔️', personality: 'CALCULATING' },
-  { name: '엘레나 백작부인', avatar: '🌹', personality: 'BLUFFING' },
+  { name: '알렉산더', avatar: '🎩', personality: 'AGGRESSIVE' },
+  { name: '마리안느', avatar: '🪞', personality: 'DEFENSIVE' },
+  { name: '줄리앙', avatar: '⚔️', personality: 'CALCULATING' },
+  { name: '엘레나', avatar: '🌹', personality: 'BLUFFING' },
 ];
 
 export function createBotPlayer(existingPlayers = []) {
   const existingNames = new Set(existingPlayers.map(p => p.nickname));
-  const available = BOT_NAMES.filter(b => !existingNames.has(`${b.name} (AI)`));
+  const available = BOT_NAMES.filter(b => !existingNames.has(b.name));
   const chosen = available.length > 0
     ? available[Math.floor(Math.random() * available.length)]
     : BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
 
   return {
     id: `bot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    nickname: `${chosen.name} (AI)`,
+    nickname: chosen.name,
     avatar: chosen.avatar,
     tokens: 0,
     isReady: true,

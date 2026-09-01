@@ -292,9 +292,11 @@ export function resolveCommand(state, command) {
 
                 // Draw replacement card (from deck or setAsideCard if deck empty)
                 let newCard = s.deck.pop();
+                let drawSource = 'DECK';
                 if (!newCard && s.setAsideCard) {
                   newCard = s.setAsideCard;
                   s.setAsideCard = null;
+                  drawSource = 'SET_ASIDE';
                 }
                 if (newCard) {
                   targetSecret.hand.push(newCard);
@@ -303,7 +305,8 @@ export function resolveCommand(state, command) {
                     type: 'CARD_DRAWN',
                     playerId: princeTargetId,
                     card: newCard,
-                    remainingDeckCount: s.deck.length,
+                  remainingDeckCount: s.deck.length,
+                  drawSource,
                   });
                 }
               }
@@ -503,6 +506,40 @@ export function resolveCommand(state, command) {
         playerId,
         reason: player.eliminationReason,
       });
+
+      // Bots never continue a match on their own after humans leave.
+      const remainingHumans = s.players.filter((candidate) => !candidate.isBot && !candidate.isEliminated);
+      if (remainingHumans.length <= 1) {
+        const scores = {};
+        const previousScores = {};
+        for (const candidate of s.players) {
+          scores[candidate.id] = candidate.tokens || 0;
+          previousScores[candidate.id] = candidate.tokens || 0;
+        }
+        s.matchState = 'GAME_OVER';
+        s.playPhase = 'GAME_OVER';
+        s.currentTurnPlayerId = null;
+        s.roundWinnerIds = [];
+        s.roundWinnerReason = '참가자 부족으로 게임이 종료되었습니다.';
+        s.matchWinnerId = null;
+        s.outcome = {
+          kind: 'MATCH',
+          reason: 'INSUFFICIENT_HUMANS',
+          winnerIds: [],
+          winnerCards: {},
+          scores,
+          previousScores,
+          nextStarterId: null,
+          advanceAt: null,
+        };
+        events.push({
+          type: 'MATCH_ENDED',
+          matchWinnerId: null,
+          finalScores: scores,
+          reason: 'INSUFFICIENT_HUMANS',
+        });
+        return { nextState: s, events };
+      }
 
       if (isRoundOver(s)) {
         s.playPhase = 'ROUND_END';

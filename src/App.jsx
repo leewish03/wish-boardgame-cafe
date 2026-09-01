@@ -22,6 +22,7 @@ import {
 import { useSocket } from './shared/useSocket';
 import { useWebRTC } from './shared/useWebRTC';
 import { useSTT } from './shared/useSTT';
+import { RoomChat } from './shared/RoomChat';
 import { sfx } from './shared/sfx';
 import {
   useSessionGuard,
@@ -31,6 +32,7 @@ import {
 } from './shared/useSessionGuard';
 import LoveLetterBoard from './games/love-letter/LoveLetterBoard';
 import LoveLetterGame from './games/love-letter/ui/LoveLetterGame';
+import { RoomVoiceControls } from './games/love-letter/ui/GameMenuDrawer';
 import {
   Coffee,
   Users,
@@ -403,6 +405,7 @@ export default function App() {
   const [openRooms, setOpenRooms] = useState([]);
   const [roomsUpdatedAt, setRoomsUpdatedAt] = useState(0);
   const reconnectInFlightRef = useRef(false);
+  const [reconnectOffer, setReconnectOffer] = useState(null);
 
   // Room State from Server
   const [roomState, setRoomState] = useState(null);
@@ -486,14 +489,15 @@ export default function App() {
     onReconnectRequest: handleReconnectRequest,
   });
 
-  // Attempt auto-reconnect on initial socket connection if session exists
+  // A previous room is a deliberate choice, not an automatic navigation. This
+  // also prevents a cancelled refresh dialog from looking like a reconnect.
   useEffect(() => {
     if (!socket || !connected) return;
     const session = loadSession();
     if (session && session.roomCode && session.userId && session.sessionToken) {
-      handleReconnectRequest(session);
+      setReconnectOffer((previous) => previous || session);
     }
-  }, [socket, connected, handleReconnectRequest]);
+  }, [socket, connected]);
 
   const refreshOpenRooms = useCallback(() => {
     if (!socket?.connected) return;
@@ -543,9 +547,21 @@ export default function App() {
     socket.on('room:state', handleRoomState);
     socket.on('room:resumed', handleRoomResumed);
 
+    const handleChatMessage = (message) => {
+      if (!message?.id) return;
+      setRoomState((previous) => {
+        if (!previous) return previous;
+        const messages = previous.chatMessages || [];
+        if (messages.some((candidate) => candidate.id === message.id)) return previous;
+        return { ...previous, chatMessages: [...messages, message].slice(-30) };
+      });
+    };
+    socket.on('chat:message', handleChatMessage);
+
     return () => {
       socket.off('room:state', handleRoomState);
       socket.off('room:resumed', handleRoomResumed);
+      socket.off('chat:message', handleChatMessage);
     };
   }, [socket, sfx]);
 
@@ -765,13 +781,14 @@ export default function App() {
   };
 
   // Send Waiting Room Chat
-  const handleSendChat = (e) => {
-    e?.preventDefault();
-    if (!chatInput.trim() || !socket) return;
+  const handleSendChat = (eventOrText) => {
+    eventOrText?.preventDefault?.();
+    const text = typeof eventOrText === 'string' ? eventOrText.trim() : chatInput.trim();
+    if (!text || !socket) return;
     socket.emit('chat:message', {
       roomCode: roomState?.code,
       userId: currentUser?.id,
-      text: chatInput.trim(),
+      text,
     });
     setChatInput('');
   };
@@ -821,6 +838,14 @@ export default function App() {
     <AppContainer $isGame={screen === 'game'}>
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+
+      <Dialog open={!!reconnectOffer} onClose={() => setReconnectOffer(null)}>
+        <DialogHeader><DialogTitle>이전 방으로 돌아갈까요?</DialogTitle><DialogDescription>진행 중이던 방 또는 대기실 세션을 찾았습니다. 원할 때만 다시 연결합니다.</DialogDescription></DialogHeader>
+        <DialogFooter>
+          <Button $variant="secondary" onClick={() => { const saved = reconnectOffer; setReconnectOffer(null); saveSession({ nickname: saved?.nickname, avatarUrl: saved?.avatarUrl }); }}>로비로</Button>
+          <Button $variant="gold" onClick={() => { const saved = reconnectOffer; setReconnectOffer(null); handleReconnectRequest(saved); }}>재접속</Button>
+        </DialogFooter>
+      </Dialog>
 
       {/* Top Header (Hidden during full-screen game) */}
       {screen !== 'game' && (
@@ -1074,6 +1099,12 @@ export default function App() {
 
               {activeTab === 'rooms' && (
                 <div style={{ width: '100%', maxWidth: '720px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {(() => {
+                    const saved = loadSession();
+                    return saved?.roomCode && saved?.userId && saved?.sessionToken ? (
+                      <Card style={{ borderColor: THEME.gold }}><CardContent style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}><div style={{ minWidth: 0 }}><strong style={{ fontSize: '13px' }}>내가 있던 방</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '3px' }}>코드 {saved.roomCode} · 다시 연결할 수 있습니다.</div></div><Button $variant="gold" $size="sm" onClick={() => handleReconnectRequest(saved)}>다시 접속</Button></CardContent></Card>
+                    ) : null;
+                  })()}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                     <div><CardTitle>열린 방 현황</CardTitle><CardDescription>방 코드는 숨겨지며 여기서 입장할 수 없습니다.</CardDescription></div>
                     <Button $variant="secondary" $size="sm" onClick={refreshOpenRooms}>새로고침</Button>
@@ -1174,22 +1205,15 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {p.nickname || '플레이어'}
-                            {p.isBot && <Bot size={14} color={THEME.emerald} />}
                             {isPlayerHost && <Crown size={14} color={THEME.gold} />}
                             {isMe && <span style={{ fontSize: '11px', color: THEME.goldAntique }}>(나)</span>}
                           </div>
-                          {p.isBot && (
-                            <div style={{ fontSize: '10px', color: THEME.mutedForeground }}>
-                              지능형 살롱 VIP 봇
-                            </div>
-                          )}
                         </div>
                       </div>
 
                       <div>
                         {p.isBot ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Badge $variant="emerald">BOT READY</Badge>
                             {isHost && (
                               <button
                                 style={{ background: 'transparent', border: 'none', color: THEME.rose, cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
@@ -1213,28 +1237,9 @@ export default function App() {
                 })}
               </div>
 
-              {/* Waiting Room Chat */}
-              <ChatWrapper>
-                <ChatFeed>
-                  {(roomState?.chatMessages || []).map((msg) => (
-                    <ChatBubble key={msg.id}>
-                      <span className="name">{msg.nickname}:</span>
-                      <span className="text">{msg.text}</span>
-                    </ChatBubble>
-                  ))}
-                </ChatFeed>
-                <ChatInputRow onSubmit={handleSendChat}>
-                  <Input
-                    type="text"
-                    placeholder="메시지 입력..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                  />
-                  <Button type="submit" $variant="ghost" $size="icon">
-                    <Send size={16} />
-                  </Button>
-                </ChatInputRow>
-              </ChatWrapper>
+              <div style={{ marginTop: '12px' }}><RoomVoiceControls voice={webrtc} compact /></div>
+
+              <RoomChat messages={roomState?.chatMessages || []} onSend={handleSendChat} />
             </CardContent>
 
             <CardFooter style={{ borderTop: `1px solid ${THEME.border}`, paddingTop: '16px' }}>
@@ -1278,6 +1283,8 @@ export default function App() {
             socket={socket}
             webrtc={webrtc}
             stt={stt}
+            chatMessages={roomState?.chatMessages || []}
+            onSendChat={handleSendChat}
             onLeave={handleLeaveRoom}
           />
         )}

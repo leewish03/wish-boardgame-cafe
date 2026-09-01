@@ -41,7 +41,7 @@ export const PlayerIdentity: React.FC<IdentityProps> = ({ player, isSelf=false, 
     $turn={isCurrentTurn} $targetable={isTargetable} $selected={isSelectedTarget} $eliminated={player.isEliminated} $self={isSelf}
     aria-label={`${player.nickname}${isTargetable ? ' 선택 가능' : ''}`} aria-disabled={!isTargetable} whileTap={isTargetable ? {scale:.98} : undefined}>
     <Avatar $turn={isCurrentTurn} $speaking={isSpeaking}>{imageAvatar ? <img src={player.avatar} alt=""/> : player.nickname.slice(0,1)}{player.isProtected && <Status><ShieldCheck size={10}/></Status>}{player.isEliminated && <Status><CircleSlash size={10}/></Status>}</Avatar>
-    <IdentityCopy><Name>{player.nickname}</Name><Meta><Heart size={9} fill="currentColor"/> {player.tokens}{player.isBot && <small>AI</small>}{isSelf && <small>나</small>}</Meta></IdentityCopy>
+    <IdentityCopy><Name>{player.nickname}</Name><Meta><Heart size={9} fill="currentColor"/> {player.tokens}{isSelf && <small>나</small>}</Meta></IdentityCopy>
     {isCurrentTurn && <Turn>차례</Turn>}
   </IdentityButton>;
 };
@@ -99,8 +99,8 @@ const IdentityCopy=styled.span`min-width:0;flex:1;display:flex;flex-direction:co
 const Name=styled.strong`font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@media(max-width:360px){font-size:8px;letter-spacing:-.35px;}`;
 const Meta=styled.span`display:flex;align-items:center;gap:2px;color:${THEME.burgundy};font-size:8px;font-weight:800;small{font-size:6.5px;color:${THEME.mutedForeground};border:1px solid ${THEME.border};border-radius:3px;padding:0 2px;}`;
 const Turn=styled.span`font-size:7px;font-weight:900;color:${THEME.burgundy};`;
-const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:46px; height:29px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.8);transform-origin:top center;height:24px;}`;
-const HeldCards=styled.span`height:100%;display:flex;align-items:flex-start;justify-content:center;gap:4px;`;
+const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:52px; height:29px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.8);transform-origin:top center;height:24px;}`;
+const HeldCards=styled.span`height:100%;display:flex;align-items:flex-start;justify-content:center;gap:5px;`;
 const HeldBack=styled.span`display:block;width:19px;height:27px;border-radius:3px;background:${THEME.burgundyDeep};border:1px solid ${THEME.goldAntique};box-shadow:1px 2px 3px rgba(9,13,22,.18);`;
 const Count=styled.span`position:absolute;right:-5px;bottom:-2px;min-width:12px;height:12px;display:grid;place-items:center;border-radius:7px;background:${THEME.primary};color:#fff;font-size:7px;font-weight:900;`;
 const Empty=styled.span`font-size:6px;color:${THEME.mutedForeground};white-space:nowrap;position:absolute;left:50%;top:8px;transform:translateX(-50%);`;

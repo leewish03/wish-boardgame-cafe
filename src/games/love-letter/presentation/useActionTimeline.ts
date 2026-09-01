@@ -14,6 +14,11 @@ const SKIPPED_BEATS = new Set([
 
 const isVisualBeat = (envelope: GameEventEnvelope) => !SKIPPED_BEATS.has((envelope.event as any).type);
 const actionKey = (envelope: GameEventEnvelope) => envelope.actionId || envelope.eventId;
+const resolutionBeat = (envelope: GameEventEnvelope) => [
+  'PLAYER_TARGETED', 'GUARD_FAILED', 'GUARD_SUCCESS', 'GUARD_SUCCEEDED',
+  'PRIEST_USED', 'BARON_COMPARED', 'PLAYER_PROTECTED', 'PRINCE_DISCARDED',
+  'HANDS_SWAPPED', 'PLAYER_ELIMINATED',
+].includes((envelope.event as any).type);
 
 function createAction(envelope: GameEventEnvelope): PresentationAction {
   return { ...envelope, presentationEvents: [envelope], presentationIndex: 0 };
@@ -79,8 +84,11 @@ export function useActionTimeline() {
     const current = currentRef.current;
     if (!current) return startNext();
 
-    const nextIndex = current.presentationIndex + 1;
-    if (nextIndex < current.presentationEvents.length) {
+    // A command may create eight wire events. They describe one physical card
+    // action, not eight turns. Show the played card and at most one meaningful
+    // resolution beat; ActionStage still has the full aggregate for its copy.
+    const nextIndex = current.presentationEvents.findIndex(resolutionBeat);
+    if (phase === 'CARD_PLAYING' && nextIndex >= 0 && nextIndex !== current.presentationIndex) {
       const nextEvent = current.presentationEvents[nextIndex];
       const updated = { ...current, presentationIndex: nextIndex, event: nextEvent.event, eventId: nextEvent.eventId };
       currentRef.current = updated;

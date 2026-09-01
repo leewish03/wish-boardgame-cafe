@@ -109,7 +109,7 @@ export interface GameEventSummary {
   swapped?: boolean;
 }
 
-export type OutcomeReason = 'LAST_SURVIVOR' | 'DECK_EXHAUSTED' | 'FORFEIT' | 'TIE_BREAK';
+export type OutcomeReason = 'LAST_SURVIVOR' | 'DECK_EXHAUSTED' | 'FORFEIT' | 'TIE_BREAK' | 'INSUFFICIENT_HUMANS';
 
 export interface GameOutcome {
   kind: 'ROUND' | 'MATCH';

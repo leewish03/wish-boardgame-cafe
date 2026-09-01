@@ -20,6 +20,7 @@ import { THEME } from '../../../shared/theme';
 import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
 import { calculateRemainingCards } from '../../../../packages/love-letter-core/src/selectors';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
+import { RoomChat } from '../../../shared/RoomChat';
 
 export interface LoveLetterGameProps {
   // Support both direct legacy props from App.jsx and pure GameState
@@ -28,6 +29,8 @@ export interface LoveLetterGameProps {
   socket?: any;
   webrtc?: any;
   stt?: any;
+  chatMessages?: any[];
+  onSendChat?: (text: string) => void;
   onLeave?: () => void;
 
   // Pure props fallback
@@ -56,6 +59,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   socket,
   webrtc,
   stt,
+  chatMessages = [],
+  onSendChat,
   onLeave,
 
   gameState: propGameState,
@@ -142,7 +147,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const me = gameState.players.find(p => p.id === activeUserId);
   const opponents = gameState.players.filter(p => p.id !== activeUserId);
   const isMyTurn = gameState.currentTurnPlayerId === activeUserId && !me?.isEliminated;
-  const canInteract = isMyTurn && !isActionPlaying && gameSocket.isConnected;
+  // The server snapshot decides when input is legal.  Presentation remains on
+  // screen to explain the previous action, but must never make the next human
+  // turn feel stalled.
+  const canInteract = isMyTurn && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
 
   // Sound effects on state transitions
   useEffect(() => {
@@ -534,7 +542,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         targetTokens={gameState.config?.targetTokens || 4}
         onClose={() => setMenuDrawerOpen(false)}
         onLeaveRoom={handleLeaveCallback}
+        voice={webrtc}
       />
+      <RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" />
     </BoardSurface></TableAnchorProvider>
   );
 };

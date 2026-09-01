@@ -180,7 +180,8 @@ const CardSub = styled.span`
 `;
 
 const EmblemArea = styled.div`
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,6 +189,10 @@ const EmblemArea = styled.div`
 `;
 
 const DescriptionArea = styled.div`
+  flex: 0 0 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
   background: rgba(24, 24, 27, 0.04);
   border-radius: 4px;
   padding: 4px;
@@ -200,6 +205,10 @@ const DescText = styled.p`
   line-height: 1.25;
   color: #3f3f46;
   text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 `;
 
 const DisabledBadge = styled.div`

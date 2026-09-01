@@ -40,8 +40,8 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
   const reduceMotion=useReducedMotion();
   const event:any=currentAction?.event;
   const kind=event ? kindFor(event) : 'reaction';
-  const [points,setPoints]=useState<{deck:Point;actorHand:Point;actorDiscard:Point;targetHand:Point;targetDiscard:Point;targetIdentity:Point}>({
-    deck:fallback(.12,.5),actorHand:fallback(.5,.85),actorDiscard:fallback(.5,.72),targetHand:fallback(.5,.2),targetDiscard:fallback(.5,.3),targetIdentity:fallback(.5,.16),
+  const [points,setPoints]=useState<{deck:Point;aside:Point;actorHand:Point;actorDiscard:Point;targetHand:Point;targetDiscard:Point;targetIdentity:Point}>({
+    deck:fallback(.12,.5),aside:fallback(.2,.5),actorHand:fallback(.5,.85),actorDiscard:fallback(.5,.72),targetHand:fallback(.5,.2),targetDiscard:fallback(.5,.3),targetIdentity:fallback(.5,.16),
   });
 
   useLayoutEffect(()=>{
@@ -52,6 +52,7 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
       const eliminatedId=event.eliminatedId || event.presentation?.eliminatedPlayerId || event.playerId;
       setPoints({
         deck:pointOf(registry.get('deck','deck'),fallback(.12,.5)),
+        aside:pointOf(registry.get('deck','aside'),fallback(.2,.5)),
         actorHand:pointOf(registry.get(actorId,'hand'),fallback(.5,.82)),
         actorDiscard:pointOf(registry.get(actorId,'discard'),fallback(.5,.7)),
         targetHand:pointOf(registry.get(targetId,'hand'),fallback(.5,.2)),
@@ -66,8 +67,8 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
 
   const isResultHold=phase==='RESULT';
   const card=event ? visibleCard(event,kind) : null;
-  const duration=reduceMotion ? .05 : isResultHold ? 1.2 : kind==='swap' ? .55 : kind==='target' || kind==='reaction' ? .28 : .46;
-  const source=kind==='draw' ? points.deck : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
+  const duration=reduceMotion ? .05 : isResultHold ? .5 : kind==='swap' ? .42 : kind==='target' || kind==='reaction' ? .2 : .38;
+  const source=kind==='draw' ? (event?.drawSource === 'SET_ASIDE' ? points.aside : points.deck) : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
   const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
   const canFly=!isResultHold && (kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard');
   const showConnector=!isResultHold && (kind==='target' || kind==='swap');

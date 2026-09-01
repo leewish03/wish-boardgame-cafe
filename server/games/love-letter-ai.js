@@ -6,27 +6,27 @@
 // 살롱 VIP AI 봇 프로필 프리셋
 export const AI_BOT_PROFILES = [
   {
-    nickname: '알렉산더 남작 (AI)',
+    nickname: '알렉산더',
     avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Alexander&backgroundColor=3b0b17,1e293b,047857',
     personality: 'AGGRESSIVE', // 공격적/남작 결투 선호
   },
   {
-    nickname: '마리안느 시녀 (AI)',
+    nickname: '마리안느',
     avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Marianne&backgroundColor=047857,1e293b,090d16',
     personality: 'DEFENSIVE', // 방어적/하녀 면역 선호
   },
   {
-    nickname: '줄리앙 기사 (AI)',
+    nickname: '줄리앙',
     avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Julien&backgroundColor=1e293b,047857,3b0b17',
     personality: 'CALCULATING', // 계산적/확률 기반 저격
   },
   {
-    nickname: '빅토리아 백작부인 (AI)',
+    nickname: '빅토리아',
     avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Victoria&backgroundColor=c5a059,3b0b17,1e293b',
     personality: 'STRATEGIC', // 심리전/안전 패 위주
   },
   {
-    nickname: '펠릭스 대주교 (AI)',
+    nickname: '펠릭스',
     avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=090d16,c5a059,047857',
     personality: 'INFORMATIVE', // 사제 투시 후 기억 저격
   },

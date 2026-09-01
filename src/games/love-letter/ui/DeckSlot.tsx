@@ -10,6 +10,7 @@ interface DeckSlotProps {
 
 export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) => {
   const deckAnchor = useTableAnchor('deck', 'deck');
+  const asideAnchor = useTableAnchor('deck', 'aside');
   return (
     <DeckWrapper>
       <DeckStack ref={deckAnchor} id="deck-slot">
@@ -25,7 +26,7 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) 
           <EmptyDeckSlot>덱 소진</EmptyDeckSlot>
         )}
       </DeckStack>
-      {setAsideCount > 0 && <AsideStack aria-label={`이번 라운드 제외 카드 ${setAsideCount}장`}><AsideCard /><AsideLabel>제외 {setAsideCount}</AsideLabel></AsideStack>}
+      {setAsideCount > 0 && <AsideStack ref={asideAnchor} aria-label={`이번 라운드 제외 카드 ${setAsideCount}장`}><AsideCard /><AsideLabel>제외 {setAsideCount}</AsideLabel></AsideStack>}
     </DeckWrapper>
   );
 };
