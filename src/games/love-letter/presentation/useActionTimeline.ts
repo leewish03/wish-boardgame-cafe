@@ -31,14 +31,20 @@ export function useActionTimeline() {
   const currentRef = useRef<PresentationAction | null>(null);
   const processedEventIdsRef = useRef<Set<string>>(new Set());
   const scheduledStartRef = useRef(false);
+  const phaseRef = useRef<PresentationPhase>('IDLE');
+
+  const setPresentationPhase = useCallback((next: PresentationPhase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
 
   const startNext = useCallback(() => {
     const next = queueRef.current.shift() || null;
     currentRef.current = next;
     setCurrentAction(next);
     setIsActionPlaying(!!next);
-    setPhase(next ? 'CARD_PLAYING' : 'IDLE');
-  }, []);
+    setPresentationPhase(next ? 'CARD_PLAYING' : 'IDLE');
+  }, [setPresentationPhase]);
 
   const scheduleStart = useCallback(() => {
     if (scheduledStartRef.current || currentRef.current) return;
@@ -91,25 +97,25 @@ export function useActionTimeline() {
       return;
     }
 
-    if (phase !== 'RESULT') {
-      setPhase('RESULT');
+    if (phaseRef.current !== 'RESULT') {
+      setPresentationPhase('RESULT');
       return;
     }
 
     currentRef.current = null;
     setCurrentAction(null);
     setIsActionPlaying(false);
-    setPhase('IDLE');
+    setPresentationPhase('IDLE');
     startNext();
-  }, [phase, startNext]);
+  }, [setPresentationPhase, startNext]);
 
   const resetTimeline = useCallback(() => {
     queueRef.current = [];
     currentRef.current = null;
     setCurrentAction(null);
     setIsActionPlaying(false);
-    setPhase('IDLE');
-  }, []);
+    setPresentationPhase('IDLE');
+  }, [setPresentationPhase]);
 
   useEffect(() => {
     const settle = () => resetTimeline();

@@ -41,7 +41,10 @@ const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts
 // before an automated opponent creates the next authoritative action.
 // The client has its own short causal presentation. Keeping a second 3.5s
 // server delay made multiplayer turns feel stalled after the snapshot settled.
-const BOT_PRESENTATION_GAP_MS = 900;
+// A bot may act only after the longest normal client causal sequence has had
+// time to settle. This keeps two adjacent bot turns legible without returning
+// to the old multi-second artificial stall.
+const BOT_PRESENTATION_GAP_MS = 2000;
 export { SOCKET_EVENTS };
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -89,15 +92,15 @@ export class LoveLetterService {
   }
 
   getActionId(gameState, event) {
-    // A normal turn draw must never inherit the previous card action. It is a
-    // distinct physical movement when the engine did not attach an actionId.
-    if (event.type === 'CARD_DRAWN') return event.actionId || `draw_${gameState.stateVersion}_${event.playerId}_${event.remainingDeckCount}`;
+    // A replacement/next-turn draw is the final physical beat of the command
+    // that caused it. Initial dealing has no last action and stays separate.
+    if (event.type === 'CARD_DRAWN') return event.actionId || gameState.lastAction?.actionId || `draw_${gameState.stateVersion}_${event.playerId}_${event.remainingDeckCount}`;
     return event.actionId || gameState.lastAction?.actionId || `transition_${gameState.stateVersion}`;
   }
 
   projectEventForPlayer(event, gameState, recipientPlayerId) {
     const projected = { ...event };
-    if (projected.type === 'CARD_DRAWN') {
+    if (projected.type === 'CARD_DRAWN' && projected.playerId !== recipientPlayerId) {
       delete projected.card;
     }
     if (
@@ -227,8 +230,8 @@ export class LoveLetterService {
     this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
-    for (const ev of events) {
-      this.broadcastGameEvent(roomCode, nextState, ev);
+    for (const [sequence, ev] of events.entries()) {
+      this.broadcastGameEvent(roomCode, nextState, { ...ev, sequence: ev.sequence ?? sequence });
     }
 
     this.broadcastGameSnapshot(roomCode, room);
@@ -284,7 +287,7 @@ export class LoveLetterService {
     this.clearRoundAdvanceTimer(roomCode);
     this.applyGameStateToRoom(room, nextState);
     await roomRepository.saveRoom(room);
-    for (const event of events) this.broadcastGameEvent(roomCode, nextState, event);
+    for (const [sequence, event] of events.entries()) this.broadcastGameEvent(roomCode, nextState, { ...event, sequence: event.sequence ?? sequence });
     this.broadcastGameSnapshot(roomCode, room);
     this.broadcastRoomState(this.io, roomCode);
     this.scheduleTurnTimeout(roomCode, nextState);

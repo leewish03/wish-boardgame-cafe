@@ -181,8 +181,7 @@ export function useGameSocket({
   useEffect(() => {
     if (initialRoomState) {
       const snapshot = latestSnapshotRef.current;
-      const incomingVersion = Number(initialRoomState.stateVersion || 0);
-      if (snapshot && Number(snapshot.stateVersion || 0) >= incomingVersion) {
+      if (snapshot && snapshot.matchState && snapshot.matchState !== 'LOBBY') {
         setRawRoomState((previous: any) => ({
           ...snapshot,
           code: initialRoomState.code || snapshot.code,
@@ -207,10 +206,10 @@ export function useGameSocket({
     const handleRoomState = (state: any) => {
       if (state) {
         // A room projection intentionally omits private/result fields.  Never let
-        // it replace the authoritative game snapshot which arrived just before it.
-        const version = Number(state.stateVersion || 0);
+        // it replace an active authoritative game snapshot, even if unrelated
+        // room metadata advanced its own version (chat, host, presence).
         const snapshot = latestSnapshotRef.current;
-        if (snapshot && Number(snapshot.stateVersion || 0) >= version) {
+        if (snapshot && snapshot.matchState && snapshot.matchState !== 'LOBBY') {
           setRawRoomState((previous: any) => ({
             ...snapshot,
             code: state.code || snapshot.code,

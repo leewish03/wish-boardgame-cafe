@@ -14,6 +14,7 @@ import { GameMenuDrawer } from './GameMenuDrawer';
 import { SpatialMotionStage } from '../presentation/SpatialMotionStage';
 import { TableAnchorProvider } from '../presentation/TableAnchorRegistry';
 import { useActionTimeline } from '../presentation/useActionTimeline';
+import { useVisualTableState } from '../presentation/useVisualTableState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { sfx } from '../../../shared/sfx';
 import { THEME } from '../../../shared/theme';
@@ -117,6 +118,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   };
 
   const myHand: CardInstance[] = propMyHand || gameSocket.myHand || [];
+  const visual = useVisualTableState(gameState, myHand, activeUserId, isActionPlaying);
 
   // Interactive UI States
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -150,7 +152,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   // The server snapshot decides when input is legal.  Presentation remains on
   // screen to explain the previous action, but must never make the next human
   // turn feel stalled.
-  const canInteract = isMyTurn && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
+  const canInteract = isMyTurn && !isActionPlaying && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
 
   // A transport restoration invalidates DOM coordinates and any in-flight
   // projection. The next server snapshot is the only safe settled table.
@@ -381,6 +383,11 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     }
   };
 
+  const handlePresentationComplete = useCallback(() => {
+    if (currentAction && phase !== 'RESULT') visual.applyCompletedEvent((currentAction as any).event);
+    advancePresentation();
+  }, [advancePresentation, currentAction, phase, visual]);
+
   // Media controls resolution
   const isMicOn = propIsMicOn ?? webrtc?.isMicOn ?? false;
   const isSpeakerOn = propIsSpeakerOn ?? webrtc?.isSpeakerOn ?? true;
@@ -426,16 +433,16 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       <SpatialMotionStage
         currentAction={currentAction}
         phase={phase}
-        onPhaseComplete={advancePresentation}
+        onPhaseComplete={handlePresentationComplete}
       />
 
       {/* 2. OPPONENT RAIL (Section 3 Tier 2) */}
       <OpponentRail
-        opponents={opponents}
+        opponents={visual.visualTable.players.filter(p => p.id !== activeUserId)}
         currentTurnPlayerId={gameState.currentTurnPlayerId}
         targetablePlayerIds={targetablePlayerIds}
         selectedTargetId={selectedTargetId}
-        presentationAction={currentAction}
+        presentationAction={null}
         speakingUsers={speakingUsers}
         userSubtitles={userSubtitles}
         onSelectTarget={handleSelectTarget}
@@ -444,9 +451,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
-        deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
-        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount || ((currentAction?.event as any)?.drawSource === 'SET_ASIDE' ? 1 : 0)}
-        players={gameState.players}
+        deckCount={visual.visualTable.deckCount}
+        setAsideCount={visual.visualTable.setAsideCount}
+        players={visual.visualTable.players}
         lastAction={gameState.lastAction || gameSocket.lastAction}
         presentationAction={currentAction}
         presentationPhase={phase}
@@ -460,17 +467,17 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       />
 
       {/* My public discard shelf is physically attached directly above my hand. */}
-      {me && (
+      {visual.visualTable.players.find(p => p.id === activeUserId) && (
           <LocalPlayerZone
-            player={me}
+            player={visual.visualTable.players.find(p => p.id === activeUserId)!}
             isCurrentTurn={isMyTurn}
             isTargetable={targetablePlayerIds.includes(activeUserId)}
             isSelectedTarget={selectedTargetId === activeUserId}
             isSpeaking={!!speakingUsers[activeUserId]}
             onSelect={() => handleSelectTarget(activeUserId)}
             onInspect={() => handleInspectDiscards(activeUserId)}
-            presentationAction={currentAction}
-            hand={myHand}
+            presentationAction={null}
+            hand={visual.visualTable.myHand}
             isMyTurn={canInteract}
             selectedCardId={selectedCardId}
             interactionState={interactionState}

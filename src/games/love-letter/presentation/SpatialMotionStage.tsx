@@ -86,8 +86,8 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
   if(!event || phase==='IDLE') return null;
 
   return <MotionOverlay aria-live="polite">
-    <React.Fragment key={currentAction?.eventId}>
-    <PhaseClock as={motion.div} initial={{opacity:.001}} animate={{opacity:.002}} transition={{duration}} onAnimationComplete={onPhaseComplete}/>
+    <React.Fragment key={`${currentAction?.eventId}:${phase}:${(currentAction as any)?.presentationIndex || 0}`}>
+    <PhaseClock as={motion.div} initial={{opacity:0}} animate={{opacity:[0.001,0.002]}} transition={{duration}} onAnimationComplete={onPhaseComplete}/>
     {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.28,duration)}}/></Connector>}
     {!isResultHold && (kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
       <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
