@@ -168,24 +168,32 @@ export function useWebRTC(socket, roomCode, userId) {
   const joinVoice = useCallback(() => {
     if (!socketRef.current || !roomRef.current || !userRef.current) {
       setVoiceError('방에 연결된 뒤 음성 채팅에 참여할 수 있습니다.');
-      return false;
+      return Promise.resolve(false);
     }
     setVoiceError(null);
     setVoiceStatus('joining');
-    joinedRef.current = true;
-    setIsVoiceJoined(true);
-    socketRef.current.emit('voice:join', { roomCode: roomRef.current });
-    socketRef.current.emit('voice:peers', { roomCode: roomRef.current }, (result) => {
-      if (!result?.success) return;
-      (result.peers || []).forEach((peer) => {
-        const peerId = typeof peer === 'string' ? peer : peer?.userId || peer?.id;
-        if (peerId && !peer?.isBot) negotiatePeer(peerId);
+    return new Promise((resolve) => {
+      socketRef.current.emit('voice:join', { roomCode: roomRef.current }, (result) => {
+        if (!result?.success) {
+          joinedRef.current = false;
+          setIsVoiceJoined(false);
+          setVoiceStatus('error');
+          setVoiceError(result?.error || '음성 채팅 참여에 실패했습니다. 다시 시도해 주세요.');
+          resolve(false);
+          return;
+        }
+        joinedRef.current = true;
+        setIsVoiceJoined(true);
+        setVoiceStatus('connected');
+        setVoiceError(null);
+        (result.peers || []).forEach((peer) => {
+          const peerId = typeof peer === 'string' ? peer : peer?.userId || peer?.id;
+          if (peerId && !peer?.isBot) negotiatePeer(peerId);
+        });
+        socketRef.current?.emit('voice:presence', { roomCode: roomRef.current, listening: true, micEnabled: !!localStreamRef.current?.getAudioTracks?.()[0]?.enabled });
+        resolve(true);
       });
     });
-    // Kept until all signalling servers have moved to voice:join.
-    socketRef.current.emit('webrtc:join', { roomCode: roomRef.current });
-    setVoiceStatus('connected');
-    return true;
   }, [negotiatePeer]);
 
   const leaveVoice = useCallback(() => {
@@ -217,7 +225,7 @@ export function useWebRTC(socket, roomCode, userId) {
   }, [startVAD]);
 
   const setMicrophoneEnabled = useCallback(async (enabled) => {
-    if (enabled && !joinedRef.current && !joinVoice()) return false;
+    if (enabled && !joinedRef.current && !(await joinVoice())) return false;
     const stream = await ensureLocalAudio();
     if (!stream) return false;
     stream.getAudioTracks().forEach((track) => { track.enabled = enabled; });
@@ -234,7 +242,7 @@ export function useWebRTC(socket, roomCode, userId) {
   }, [ensureLocalAudio, joinVoice, negotiatePeer]);
 
   const toggleMic = useCallback(() => setMicrophoneEnabled(!isMicOn), [isMicOn, setMicrophoneEnabled]);
-  const initLocalAudio = useCallback(async () => { if (!joinedRef.current) joinVoice(); return ensureLocalAudio(); }, [ensureLocalAudio, joinVoice]);
+  const initLocalAudio = useCallback(async () => { if (!joinedRef.current && !(await joinVoice())) return null; return ensureLocalAudio(); }, [ensureLocalAudio, joinVoice]);
   const toggleSpeaker = useCallback(() => {
     setIsSpeakerOn((previous) => {
       const next = !previous;
@@ -283,13 +291,18 @@ export function useWebRTC(socket, roomCode, userId) {
       const id = getId(payload); if (!id || id === userId) return;
       setPeerPresence((previous) => ({ ...previous, [id]: { ...previous[id], ...payload } }));
     };
+    const onSocketConnect = () => {
+      // The server deliberately clears voice membership on a transport close.
+      // Re-register only people who explicitly joined before the reconnect.
+      if (joinedRef.current) joinVoice();
+    };
     socket.on('voice:peers', onPeers); socket.on('voice:peer-joined', onPeerJoined); socket.on('voice:peer-reconnected', onPeerJoined); socket.on('voice:peer-left', onPeerLeft); socket.on('voice:presence', onPresence);
-    socket.on('webrtc:peer-joined', onPeerJoined); socket.on('webrtc:peer-reconnected', onPeerJoined); socket.on('webrtc:peer-left', onPeerLeft); socket.on('webrtc:offer', onOffer); socket.on('webrtc:answer', onAnswer); socket.on('webrtc:ice-candidate', onIce);
+    socket.on('connect', onSocketConnect); socket.on('webrtc:peer-joined', onPeerJoined); socket.on('webrtc:peer-reconnected', onPeerJoined); socket.on('webrtc:peer-left', onPeerLeft); socket.on('webrtc:offer', onOffer); socket.on('webrtc:answer', onAnswer); socket.on('webrtc:ice-candidate', onIce);
     return () => {
       socket.off('voice:peers', onPeers); socket.off('voice:peer-joined', onPeerJoined); socket.off('voice:peer-reconnected', onPeerJoined); socket.off('voice:peer-left', onPeerLeft); socket.off('voice:presence', onPresence);
-      socket.off('webrtc:peer-joined', onPeerJoined); socket.off('webrtc:peer-reconnected', onPeerJoined); socket.off('webrtc:peer-left', onPeerLeft); socket.off('webrtc:offer', onOffer); socket.off('webrtc:answer', onAnswer); socket.off('webrtc:ice-candidate', onIce);
+      socket.off('connect', onSocketConnect); socket.off('webrtc:peer-joined', onPeerJoined); socket.off('webrtc:peer-reconnected', onPeerJoined); socket.off('webrtc:peer-left', onPeerLeft); socket.off('webrtc:offer', onOffer); socket.off('webrtc:answer', onAnswer); socket.off('webrtc:ice-candidate', onIce);
     };
-  }, [socket, roomCode, userId, createPeer, emitSignal, flushIce, negotiatePeer, removePeer]);
+  }, [socket, roomCode, userId, createPeer, emitSignal, flushIce, negotiatePeer, removePeer, joinVoice]);
 
   useEffect(() => () => { leaveVoice(); }, [leaveVoice]);
 

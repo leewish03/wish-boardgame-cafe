@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 
-export type TableAnchorKind = 'identity' | 'hand' | 'discard' | 'deck' | 'aside';
+export type TableAnchorKind = 'identity' | 'hand' | 'hand-slot-0' | 'hand-slot-1' | 'discard' | 'discard-latest' | 'deck' | 'aside';
 
 interface RegistryValue {
   register: (playerId: string, kind: TableAnchorKind, element: HTMLElement | null) => void;

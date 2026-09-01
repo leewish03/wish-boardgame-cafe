@@ -176,7 +176,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
                 events.push({ type: 'GUARD_SUCCESS', actionId, actorId: playerId, targetId, guessedCard: targetCard });
                 events.push({ type: 'GUARD_SUCCEEDED', actionId, actorId: playerId, targetId, guessedCard: targetCard });
-                events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
+                events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
               } else {
                 summaryResultType = 'GUARD_FAILED';
                 summaryDesc = `[${player.nickname}] 지목 실패 · [${target.nickname}] 님은 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}] 카드가 없습니다.`;
@@ -253,7 +253,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                     eliminatedId: targetId,
                   });
                   events.push({
-                    type: 'PLAYER_ELIMINATED',
+                    type: 'PLAYER_ELIMINATED', actionId, sequence: events.length,
                     playerId: targetId,
                     reason: '남작 결투 패배',
                     eliminatedBy: playerId,
@@ -288,7 +288,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                     eliminatedId: playerId,
                   });
                   events.push({
-                    type: 'PLAYER_ELIMINATED',
+                    type: 'PLAYER_ELIMINATED', actionId, sequence: events.length,
                     playerId,
                     reason: '남작 결투 패배',
                     eliminatedBy: targetId,
@@ -351,7 +351,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
               summaryDesc = `공주 카드가 버려져 [${target.nickname}] 님이 탈락했습니다.`;
               summaryEliminatedId = princeTargetId;
               summaryRevealed = discarded;
-              events.push({ type: 'PLAYER_ELIMINATED', playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
+              events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
             } else {
               summaryResultType = 'PRINCE_DISCARD';
               summaryDesc = `[${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
@@ -427,7 +427,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           summaryDesc = `[${player.nickname}] 님이 공주 카드를 사용해 탈락했습니다.`;
           summaryEliminatedId = playerId;
           summaryRevealed = playedCard;
-          events.push({ type: 'PLAYER_ELIMINATED', playerId, reason: '공주 카드 자진 제출', eliminatedBy: playerId });
+          events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId, reason: '공주 카드 자진 제출', eliminatedBy: playerId });
           break;
         }
       }

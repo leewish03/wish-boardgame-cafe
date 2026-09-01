@@ -85,7 +85,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
 
   // Presentation timeline
-  const { currentAction, phase, enqueueAction, advancePresentation, isActionPlaying } = useActionTimeline();
+  const { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying } = useActionTimeline();
 
   // Socket adapter hook
   const gameSocket = useGameSocket({
@@ -151,6 +151,12 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   // screen to explain the previous action, but must never make the next human
   // turn feel stalled.
   const canInteract = isMyTurn && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
+
+  // A transport restoration invalidates DOM coordinates and any in-flight
+  // projection. The next server snapshot is the only safe settled table.
+  useEffect(() => {
+    if (gameSocket.isConnected) resetTimeline();
+  }, [gameSocket.isConnected, resetTimeline]);
 
   // Sound effects on state transitions
   useEffect(() => {
@@ -439,9 +445,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
         deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
-        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount ?? 1}
+        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount || ((currentAction?.event as any)?.drawSource === 'SET_ASIDE' ? 1 : 0)}
         players={gameState.players}
-        lastAction={gameSocket.lastAction || gameState.lastAction}
+        lastAction={gameState.lastAction || gameSocket.lastAction}
         presentationAction={currentAction}
         presentationPhase={phase}
         interactionState={interactionState}
@@ -528,6 +534,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         isHost={me?.isHost || false}
         requestError={resultRequestError}
         isRequesting={isAdvancingRound}
+        reason={gameState.outcome?.reason}
       />
 
       <PauseOverlay

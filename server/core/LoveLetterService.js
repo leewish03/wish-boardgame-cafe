@@ -89,6 +89,9 @@ export class LoveLetterService {
   }
 
   getActionId(gameState, event) {
+    // A normal turn draw must never inherit the previous card action. It is a
+    // distinct physical movement when the engine did not attach an actionId.
+    if (event.type === 'CARD_DRAWN') return event.actionId || `draw_${gameState.stateVersion}_${event.playerId}_${event.remainingDeckCount}`;
     return event.actionId || gameState.lastAction?.actionId || `transition_${gameState.stateVersion}`;
   }
 
@@ -159,6 +162,17 @@ export class LoveLetterService {
     if (!room || !room.gameStateObject) return;
     const gs = room.gameStateObject;
 
+    const publicState = core.getPublicGameState(gs);
+    // A no-contest match removes bot/departed sessions immediately. Project
+    // the same roster into the authoritative snapshot so the board cannot
+    // retain ghost seats while room:state catches up.
+    if (gs.outcome?.reason === 'INSUFFICIENT_HUMANS') {
+      const activeIds = new Set(room.players.map((player) => player.id));
+      publicState.players = publicState.players.filter((player) => activeIds.has(player.id));
+      publicState.roundWinnerIds = [];
+      publicState.matchWinnerId = null;
+      publicState.outcome = { ...publicState.outcome, winnerIds: [], matchWinnerId: null };
+    }
     for (const player of room.players) {
       if (player.socketId) {
         const secret = core.getPrivatePlayerState(gs, player.id);
@@ -166,7 +180,7 @@ export class LoveLetterService {
           roomId: roomCode,
           stateVersion: gs.stateVersion,
           serverTime: Date.now(),
-          publicState: core.getPublicGameState(gs),
+          publicState,
           privateState: secret,
         };
         this.io.to(player.socketId).emit(SOCKET_EVENTS.GAME_SNAPSHOT, snapshot);

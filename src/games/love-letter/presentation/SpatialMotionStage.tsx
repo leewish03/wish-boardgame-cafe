@@ -25,14 +25,15 @@ function kindFor(event:any):MotionKind {
   if (event.type === 'CARD_PLAYED') return 'play';
   if (event.type === 'PRINCE_DISCARDED') return 'forcedDiscard';
   if (event.type === 'HANDS_SWAPPED') return 'swap';
+  if (event.type === 'PLAYER_ELIMINATED') return 'revealDiscard';
   if ((event.type === 'GUARD_SUCCESS' || event.type === 'GUARD_SUCCEEDED' || event.type === 'BARON_COMPARED') && (event.eliminatedId || event.presentation?.eliminatedPlayerId)) return 'revealDiscard';
   if (event.targetId) return 'target';
   return 'reaction';
 }
 
-function visibleCard(event:any, kind:MotionKind):CardInstance|null {
+function visibleCard(event:any, kind:MotionKind, priorEvent?:any):CardInstance|null {
   if (kind === 'draw' || kind === 'swap') return null;
-  return event.discardedCard || event.guessedCard || event.revealedCard || event.presentation?.revealedCard || event.card || null;
+  return event.discardedCard || event.guessedCard || event.revealedCard || event.presentation?.revealedCard || event.card || priorEvent?.discardedCard || priorEvent?.guessedCard || priorEvent?.revealedCard || priorEvent?.card || null;
 }
 
 export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentAction,phase='IDLE',onPhaseComplete})=>{
@@ -53,10 +54,10 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
       setPoints({
         deck:pointOf(registry.get('deck','deck'),fallback(.12,.5)),
         aside:pointOf(registry.get('deck','aside'),fallback(.2,.5)),
-        actorHand:pointOf(registry.get(actorId,'hand'),fallback(.5,.82)),
-        actorDiscard:pointOf(registry.get(actorId,'discard'),fallback(.5,.7)),
-        targetHand:pointOf(registry.get(targetId,'hand'),fallback(.5,.2)),
-        targetDiscard:pointOf(registry.get(targetId,'discard'),fallback(.5,.3)),
+        actorHand:pointOf(registry.get(actorId,'hand-slot-1') || registry.get(actorId,'hand-slot-0') || registry.get(actorId,'hand'),fallback(.5,.82)),
+        actorDiscard:pointOf(registry.get(actorId,'discard-latest') || registry.get(actorId,'discard'),fallback(.5,.7)),
+        targetHand:pointOf(registry.get(targetId,'hand-slot-1') || registry.get(targetId,'hand-slot-0') || registry.get(targetId,'hand'),fallback(.5,.2)),
+        targetDiscard:pointOf(registry.get(targetId,'discard-latest') || registry.get(targetId,'discard'),fallback(.5,.3)),
         targetIdentity:pointOf(registry.get(eliminatedId || targetId,'identity'),fallback(.5,.17)),
       });
     };
@@ -66,7 +67,8 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
   },[event,phase,registry]);
 
   const isResultHold=phase==='RESULT';
-  const card=event ? visibleCard(event,kind) : null;
+  const priorRevealEvent = (currentAction as any)?.presentationEvents?.slice(0, (currentAction as any)?.presentationIndex || 0).reverse().map((envelope:any) => envelope.event).find((candidate:any) => candidate?.discardedCard || candidate?.guessedCard || candidate?.revealedCard || candidate?.card);
+  const card=event ? visibleCard(event,kind,priorRevealEvent) : null;
   const duration=reduceMotion ? .05 : isResultHold ? .5 : kind==='swap' ? .42 : kind==='target' || kind==='reaction' ? .2 : .38;
   const source=kind==='draw' ? (event?.drawSource === 'SET_ASIDE' ? points.aside : points.deck) : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
   const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;

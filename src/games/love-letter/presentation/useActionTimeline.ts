@@ -8,18 +8,13 @@ export interface PresentationAction extends GameEventEnvelope {
   presentationIndex: number;
 }
 
-const SKIPPED_BEATS = new Set([
-  'CARD_GUESSED', 'GUARD_SUCCEEDED', 'PRIEST_REVEALED', 'HANDMAID_PROTECTED', 'KING_SWAP',
-]);
+// These are protocol-detail duplicates of a visible preceding beat. Every
+// other event remains in the sequence: a card effect is not complete until
+// discard, reveal/swap and replacement draw have all been explained.
+const SKIPPED_BEATS = new Set(['CARD_GUESSED', 'GUARD_SUCCEEDED', 'PRIEST_REVEALED', 'HANDMAID_PROTECTED', 'KING_SWAP', 'CARD_DISCARDED', 'TURN_ENDED', 'TURN_STARTED']);
 
 const isVisualBeat = (envelope: GameEventEnvelope) => !SKIPPED_BEATS.has((envelope.event as any).type);
 const actionKey = (envelope: GameEventEnvelope) => envelope.actionId || envelope.eventId;
-const resolutionBeat = (envelope: GameEventEnvelope) => [
-  'PLAYER_TARGETED', 'GUARD_FAILED', 'GUARD_SUCCESS', 'GUARD_SUCCEEDED',
-  'PRIEST_USED', 'BARON_COMPARED', 'PLAYER_PROTECTED', 'PRINCE_DISCARDED',
-  'HANDS_SWAPPED', 'PLAYER_ELIMINATED',
-].includes((envelope.event as any).type);
-
 function createAction(envelope: GameEventEnvelope): PresentationAction {
   return { ...envelope, presentationEvents: [envelope], presentationIndex: 0 };
 }
@@ -84,11 +79,10 @@ export function useActionTimeline() {
     const current = currentRef.current;
     if (!current) return startNext();
 
-    // A command may create eight wire events. They describe one physical card
-    // action, not eight turns. Show the played card and at most one meaningful
-    // resolution beat; ActionStage still has the full aggregate for its copy.
-    const nextIndex = current.presentationEvents.findIndex(resolutionBeat);
-    if (phase === 'CARD_PLAYING' && nextIndex >= 0 && nextIndex !== current.presentationIndex) {
+    // Each entry is one causal beat. Do not collapse a Prince discard, an
+    // elimination, a King swap or a replacement draw into a generic result.
+    const nextIndex = current.presentationIndex + 1;
+    if (nextIndex < current.presentationEvents.length) {
       const nextEvent = current.presentationEvents[nextIndex];
       const updated = { ...current, presentationIndex: nextIndex, event: nextEvent.event, eventId: nextEvent.eventId };
       currentRef.current = updated;

@@ -494,9 +494,8 @@ export function initRoomManager(io) {
         socketToUser[socket.id] = { roomCode: code, userId };
         socket.join(code);
 
-        // Notify WebRTC peer join
-        socket.to(code).emit('webrtc:peer-joined', { newUserId: userId });
-        socket.to(code).emit('voice:peer-joined', { userId });
+        // Room membership is not voice membership. The signalling service
+        // announces peers only after the user explicitly joins voice.
         emitSystemMessage(io, code, room, `${player.nickname}님이 입장했습니다.`);
 
         if (typeof callback === 'function') {
@@ -578,8 +577,6 @@ export function initRoomManager(io) {
         }
 
         if (!alreadyConnected) {
-          socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
-          socket.to(code).emit('voice:peer-reconnected', { userId: player.id });
           emitSystemMessage(io, code, room, `${player.nickname}님이 다시 연결했습니다.`);
         }
 

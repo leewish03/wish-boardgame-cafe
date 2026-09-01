@@ -157,7 +157,7 @@ export function resolveCommand(state, command) {
 
                 events.push({ type: 'GUARD_SUCCESS', actionId, actorId: playerId, targetId, guessedCard: victimCard });
                 events.push({ type: 'GUARD_SUCCEEDED', actionId, actorId: playerId, targetId, guessedCard: victimCard });
-                events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
+                events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
               } else {
                 summaryResultType = 'GUARD_FAILED';
                 summaryDesc = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 해당 카드가 없습니다.`;
@@ -220,7 +220,7 @@ export function resolveCommand(state, command) {
 
                   events.push({ type: 'BARON_DUEL_STARTED', actionId, actorId: playerId, targetId, winnerId: playerId, eliminatedId: targetId });
                   events.push({ type: 'BARON_COMPARED', actionId, actorId: playerId, targetId, winnerId: playerId, eliminatedId: targetId });
-                  events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '남작 결투 패배', eliminatedBy: playerId });
+                  events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId: targetId, reason: '남작 결투 패배', eliminatedBy: playerId });
                 } else if (myCard.value < oppCard.value) {
                   player.isEliminated = true;
                   player.eliminationReason = `남작 결투 패배 (내 ${myCard.name} < ${oppCard.name})`;
@@ -236,7 +236,7 @@ export function resolveCommand(state, command) {
 
                   events.push({ type: 'BARON_DUEL_STARTED', actionId, actorId: playerId, targetId, winnerId: targetId, eliminatedId: playerId });
                   events.push({ type: 'BARON_COMPARED', actionId, actorId: playerId, targetId, winnerId: targetId, eliminatedId: playerId });
-                  events.push({ type: 'PLAYER_ELIMINATED', playerId, reason: '남작 결투 패배', eliminatedBy: targetId });
+                  events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId, reason: '남작 결투 패배', eliminatedBy: targetId });
                 } else {
                   summaryResultType = 'BARON_TIE';
                   summaryDesc = `⚔️ 남작 결투 무승부! 두 사람의 카드 숫자가 같습니다.`;
@@ -284,7 +284,7 @@ export function resolveCommand(state, command) {
                 summaryDesc = `👸 [${target.nickname}] 님이 왕자의 명령으로 [공주]를 버려 즉시 탈락했습니다!`;
                 summaryEliminatedId = princeTargetId;
                 summaryRevealed = discarded;
-                events.push({ type: 'PLAYER_ELIMINATED', playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
+                events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
               } else {
                 summaryResultType = 'PRINCE_DISCARD';
                 summaryDesc = `👑 왕자의 명령! [${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
@@ -358,7 +358,7 @@ export function resolveCommand(state, command) {
           summaryDesc = `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`;
           summaryEliminatedId = playerId;
           summaryRevealed = playedCard;
-          events.push({ type: 'PLAYER_ELIMINATED', playerId, reason: '공주 카드 자진 제출', eliminatedBy: playerId });
+          events.push({ type: 'PLAYER_ELIMINATED', actionId, sequence: events.length, playerId, reason: '공주 카드 자진 제출', eliminatedBy: playerId });
           break;
         }
       }

@@ -25,7 +25,7 @@ export interface RoomVoiceControlsProps {
     isSpeakerOn?: boolean;
     voiceStatus?: string;
     voiceError?: string | null;
-    joinVoice?: () => boolean | void;
+    joinVoice?: () => Promise<boolean> | boolean | void;
     leaveVoice?: () => void;
     toggleMic?: () => void;
     toggleSpeaker?: () => void;

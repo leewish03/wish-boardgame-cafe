@@ -190,6 +190,17 @@ export function useSessionGuard({
   useEffect(() => {
     if (!socket || (screen !== 'waitingRoom' && screen !== 'game')) return;
 
+    // Socket.IO assigns a new socket id after a real transport loss. Restore
+    // the verified room session immediately instead of leaving a paused turn
+    // frozen until the 15-second heartbeat runs.
+    const handleSocketConnect = () => {
+      const session = loadSession();
+      if (session?.roomCode && session?.userId && session?.sessionToken && typeof onReconnectRequestRef.current === 'function') {
+        onReconnectRequestRef.current(session);
+      }
+    };
+    socket.on('connect', handleSocketConnect);
+
     const intervalId = setInterval(() => {
       const session = loadSession();
       if (!session || !session.roomCode || !session.userId || !session.sessionToken) return;
@@ -225,6 +236,7 @@ export function useSessionGuard({
 
     return () => {
       clearInterval(intervalId);
+      socket.off('connect', handleSocketConnect);
     };
   }, [socket, screen]);
 }
