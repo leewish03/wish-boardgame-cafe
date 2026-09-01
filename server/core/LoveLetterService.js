@@ -191,7 +191,16 @@ export class LoveLetterService {
       personality: player.personality,
       memory: player.memory,
     }));
-    const baseState = room.gameStateObject || core.createInitialGameState(players, {
+    const storedState = room.gameStateObject;
+    // A player who forfeited remains in the completed round snapshot, but not
+    // in the next deal. Preserve all remaining players' score state.
+    const baseState = storedState && room.gameState === 'ROUND_END'
+      ? {
+          ...storedState,
+          players: storedState.players.filter((player) => players.some((active) => active.id === player.id)),
+          secrets: Object.fromEntries(Object.entries(storedState.secrets || {}).filter(([id]) => players.some((active) => active.id === id))),
+        }
+      : storedState || core.createInitialGameState(players, {
       targetTokens: room.targetTokens,
       turnTimeoutSeconds: room.turnTimeLimit,
       maxPlayers: room.maxPlayers,
@@ -225,7 +234,10 @@ export class LoveLetterService {
     this.clearRoundAdvanceTimer(roomCode);
     if (gameState.matchState !== 'ROUND_END') return;
     const advanceAt = Date.now() + 10_000;
-    if (gameState.outcome) gameState.outcome.advanceAt = advanceAt;
+    if (gameState.outcome) {
+      gameState.outcome.advanceAt = advanceAt;
+      gameState.outcome.canAdvanceAt = advanceAt - 7_000;
+    }
     room.gameStateObject = gameState;
     const timer = setTimeout(async () => {
       this.roundAdvanceTimers.delete(roomCode);
@@ -242,7 +254,10 @@ export class LoveLetterService {
     const key = `${roomCode}:${hostId}:${requestId}`;
     const existing = this.progressRequests.get(key);
     if (existing) return existing;
-    const request = Promise.resolve().then(operation).then(() => ({ accepted: true }));
+    const request = Promise.resolve().then(operation).then((result) => ({
+      accepted: true,
+      resultingStateVersion: result?.nextState?.stateVersion ?? null,
+    }));
     this.progressRequests.set(key, request);
     const clearRequest = () => {
       const expiry = setTimeout(() => this.progressRequests.delete(key), 60_000);

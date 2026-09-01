@@ -151,6 +151,12 @@ export function getPublicRoomState(room, requestUserId = null) {
       turnPlayerId: game.currentTurnPlayerId,
       turnExpiresAt: game.turnExpiresAt,
       roundNumber: game.roundNumber,
+      setAsideCardCount: game.setAsideCard ? 1 : 0,
+      outcome: game.outcome || null,
+      roundWinnerIds: game.roundWinnerIds || [],
+      roundWinnerReason: game.roundWinnerReason || game.outcome?.reason || null,
+      matchWinnerId: game.matchWinnerId || null,
+      lastAction: game.lastAction || null,
       chatMessages: (room.chatMessages || []).slice(-30),
       isPaused: !!room.isPaused,
       pausedPlayerId: room.pausedPlayerId || null,
@@ -238,6 +244,25 @@ export function broadcastRoomState(io, roomCode) {
   });
 }
 
+function openRoomSummary(room) {
+  const game = room.gameStateObject;
+  const players = game?.players || room.players || [];
+  return {
+    id: `room_${String(room.code || '').slice(-2)}`,
+    gameType: room.gameType || 'LOVE_LETTER',
+    hostName: players.find((player) => player.id === room.hostId)?.nickname || '방장',
+    playerCount: players.length,
+    humanCount: players.filter((player) => !player.isBot).length,
+    botCount: players.filter((player) => player.isBot).length,
+    connectedCount: (room.players || []).filter((player) => !player.isDisconnected).length,
+    maxPlayers: game?.config?.maxPlayers || room.maxPlayers || 4,
+    targetTokens: game?.config?.targetTokens || room.targetTokens || 4,
+    roundNumber: game?.roundNumber || room.roundNumber || 1,
+    status: room.isPaused ? 'RECONNECTING' : (game?.matchState || room.gameState || 'LOBBY'),
+    updatedAt: room.updatedAt || room.createdAt || Date.now(),
+  };
+}
+
 export function handlePauseExpired(io, roomCode, userId) {
   const room = rooms[roomCode];
   if (!room) return;
@@ -271,6 +296,12 @@ export function handlePauseExpired(io, roomCode, userId) {
 
 export function initRoomManager(io) {
   io.on('connection', (socket) => {
+    socket.on('room:list', (_payload, callback) => {
+      const publicRooms = Array.from(roomRepository._rooms.values())
+        .filter((room) => (room.players || []).length > 0)
+        .map(openRoomSummary);
+      if (typeof callback === 'function') callback({ success: true, rooms: publicRooms, serverTime: Date.now() });
+    });
     // 1. Create Room
     socket.on('room:create', (payload, callback) => {
       try {
@@ -478,6 +509,8 @@ export function initRoomManager(io) {
           return;
         }
 
+        // A repeated request from the same connected socket is merely a sync.
+        const alreadyConnected = player.socketId === socket.id && !player.isDisconnected;
         // Clean up previous socket mapping if socketId changed
         if (player.socketId && player.socketId !== socket.id) {
           delete socketToUser[player.socketId];
@@ -504,13 +537,13 @@ export function initRoomManager(io) {
           }
         }
 
-        // Notify WebRTC peer reconnect
-        socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
+        if (!alreadyConnected) socket.to(code).emit('webrtc:peer-reconnected', { userId: player.id });
 
         const publicState = getPublicRoomState(room, player.id);
         if (typeof callback === 'function') {
           callback({
             success: true,
+            alreadyConnected,
             roomCode: code,
             userId: player.id,
             playerId: player.id,
@@ -716,20 +749,13 @@ export function initRoomManager(io) {
     // 6. Explicit Forfeit / Leave Room
     const handleForfeit = async (payload, callback) => {
       try {
-        let mapping = socketToUser[socket.id];
-        const { roomCode, userId, playerId } = payload || {};
-        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-        const uId = mapping?.userId || userId || playerId;
-        delete socketToUser[socket.id];
-
-        const room = rooms[code];
+        const { room, roomCode: code, userId: uId } = resolveRoomAndUser(socket, payload);
         if (!room) {
           if (typeof callback === 'function') callback({ success: true });
           return;
         }
 
-        socket.leave(code);
-        socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
+        if (!uId) throw new Error('기권할 플레이어를 찾을 수 없습니다.');
 
         if (room.pauseTimeout && room.pausedPlayerId === uId) {
           clearTimeout(room.pauseTimeout);
@@ -741,6 +767,9 @@ export function initRoomManager(io) {
 
         if (room.gameStateObject && coreGameLifecycle?.forfeit) {
           await coreGameLifecycle.forfeit(code, uId);
+          // Core keeps the round outcome for history; the room roster must not
+          // deal the departed player into the following round.
+          room.players = room.players.filter((player) => player.id !== uId);
         } else if (room.gameState === 'PLAYING') {
           handleForfeitedPlayer(io, room, uId, true);
         } else {
@@ -748,6 +777,7 @@ export function initRoomManager(io) {
           room.stateVersion = (room.stateVersion || 0) + 1;
         }
 
+        await roomRepository.saveRoom(room);
         if (room.players.length === 0) {
           if (room.turnTimer) clearTimeout(room.turnTimer);
           delete rooms[code];
@@ -762,10 +792,13 @@ export function initRoomManager(io) {
         }
 
         broadcastRoomState(io, code);
+        delete socketToUser[socket.id];
+        socket.leave(code);
+        socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         console.error('room:forfeit error:', err);
-        if (typeof callback === 'function') callback({ success: true });
+        if (typeof callback === 'function') callback({ success: false, error: err.message || '기권 처리에 실패했습니다.' });
       }
     };
 

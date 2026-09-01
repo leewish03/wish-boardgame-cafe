@@ -15,7 +15,6 @@ import { GameMenuDrawer } from './GameMenuDrawer';
 import { SpatialMotionStage } from '../presentation/SpatialMotionStage';
 import { useActionTimeline } from '../presentation/useActionTimeline';
 import { useGameSocket } from '../hooks/useGameSocket';
-import { useGameSession } from '../hooks/useGameSession';
 import { sfx } from '../../../shared/sfx';
 import { THEME } from '../../../shared/theme';
 import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
@@ -93,13 +92,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     onGameEvent: enqueueAction,
   });
 
-  // Session guard hook
-  useGameSession({
-    socket: socket || null,
-    roomCode: propRoomState?.code,
-    currentUser: currentUser,
-  });
-
   // Resolved Game State & Hand
   const gameState: GameState = propGameState || gameSocket.gameState || {
     matchState: 'LOBBY',
@@ -130,6 +122,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [interactionState, setInteractionState] = useState<string>('IDLE');
   const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
   const [isAdvancingRound, setIsAdvancingRound] = useState(false);
+  const [advanceRequestedVersion, setAdvanceRequestedVersion] = useState<number | null>(null);
   const [resultRequestError, setResultRequestError] = useState<string | null>(null);
 
   // Modal States
@@ -172,6 +165,17 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       setInteractionState('IDLE');
     }
   }, [gameState.matchState]);
+
+  // A progress ACK means the server accepted the request, not that the next
+  // round is visible yet.  Keep the result button locked until its snapshot
+  // arrives, which prevents repeat taps during snapshot/room-state ordering.
+  useEffect(() => {
+    if (advanceRequestedVersion === null) return;
+    if (gameState.stateVersion > advanceRequestedVersion && gameState.matchState !== 'ROUND_END') {
+      setIsAdvancingRound(false);
+      setAdvanceRequestedVersion(null);
+    }
+  }, [advanceRequestedVersion, gameState.stateVersion, gameState.matchState]);
 
   // Reset selection when turn ends
   useEffect(() => {
@@ -332,11 +336,15 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       propOnStartNextRound();
     } else {
       setIsAdvancingRound(true);
+      setAdvanceRequestedVersion(gameState.stateVersion);
       setResultRequestError(null);
       const progress = gameState.matchState === 'GAME_OVER' ? gameSocket.startRematch : gameSocket.startNextRound;
       progress(gameState.stateVersion, result => {
-        setIsAdvancingRound(false);
-        if (!result.success) setResultRequestError(result.error || '다음 라운드를 시작하지 못했습니다.');
+        if (!result.success) {
+          setIsAdvancingRound(false);
+          setAdvanceRequestedVersion(null);
+          setResultRequestError(result.error || '다음 라운드를 시작하지 못했습니다.');
+        }
       });
     }
   };
@@ -413,6 +421,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
         deckCount={(gameState as GameState & { deckCount?: number }).deckCount ?? gameState.deck.length}
+        setAsideCount={(gameState as GameState & { setAsideCardCount?: number }).setAsideCardCount || 0}
+        players={gameState.players}
         lastAction={gameSocket.lastAction || gameState.lastAction}
         presentationAction={currentAction}
         presentationPhase={phase}
@@ -490,6 +500,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         previousScores={gameState.outcome?.previousScores}
         winnerCards={gameState.outcome?.winnerCards}
         advanceAt={gameState.outcome?.advanceAt}
+        canAdvanceAt={gameState.outcome?.canAdvanceAt}
         isRequesting={isAdvancingRound}
         requestError={resultRequestError}
       />
@@ -530,9 +541,8 @@ const BoardSurface = styled.div`
   max-height: 100dvh;
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display:grid;
+  grid-template-rows:auto auto minmax(0, 1fr) auto auto;
   overflow: hidden;
   user-select: none;
   box-sizing: border-box;

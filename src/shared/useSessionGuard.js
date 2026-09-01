@@ -55,7 +55,7 @@ export function clearSession() {
  * Hook to guard session:
  * 1. Screen Wake Lock API (prevents mobile display sleeping during game)
  * 2. beforeunload listener (warns before accidental refresh/tab close)
- * 3. visibilitychange, pageshow, focus, online listeners (auto-reconnect on return)
+ * 3. visibility/focus sync without faking a socket reconnection
  */
 export function useSessionGuard({
   socket,
@@ -162,22 +162,13 @@ export function useSessionGuard({
     };
   }, [screen]);
 
-  // 3. visibilitychange, pageshow, focus, online (Auto Reconnect & Sync)
+  // 3. Focus return happens when users cancel browser reload dialogs. It is
+  // not a reconnect event, so only request a harmless state sync.
   useEffect(() => {
     const handleResume = () => {
-      if (document.visibilityState === 'visible' || (typeof navigator !== 'undefined' && navigator.onLine)) {
-        const session = loadSession();
-        if (session && session.roomCode && session.userId && session.sessionToken) {
-          // If socket disconnected, reconnect
-          if (socket && !socket.connected) {
-            socket.connect();
-          }
-
-          // Trigger reconnect callback
-          if (typeof onReconnectRequestRef.current === 'function') {
-            onReconnectRequestRef.current(session);
-          }
-        }
+      const session = loadSession();
+      if (socket?.connected && session?.roomCode && session?.userId) {
+        socket.emit('game:sync-request', { roomCode: session.roomCode, userId: session.userId, sessionToken: session.sessionToken });
       }
     };
 
@@ -194,7 +185,7 @@ export function useSessionGuard({
     };
   }, [socket]);
 
-  // 4. 1-Second Heartbeat & Session State Verification Polling
+  // 4. Lightweight disconnect recovery; do not reconnect on ordinary focus.
   useEffect(() => {
     if (!socket || (screen !== 'waitingRoom' && screen !== 'game')) return;
 
@@ -229,7 +220,7 @@ export function useSessionGuard({
           }
         }
       );
-    }, 1000);
+    }, 15000);
 
     return () => {
       clearInterval(intervalId);

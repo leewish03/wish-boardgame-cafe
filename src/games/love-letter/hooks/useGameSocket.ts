@@ -173,13 +173,27 @@ export function useGameSocket({
   const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
   const [lastAction, setLastAction] = useState<any | null>(null);
   const latestStateVersionRef = useRef(0);
+  const latestSnapshotRef = useRef<any>(null);
 
   const myUserId = currentUser?.id || '';
 
   // Update raw room state when initialRoomState prop changes
   useEffect(() => {
     if (initialRoomState) {
-      setRawRoomState(initialRoomState);
+      const snapshot = latestSnapshotRef.current;
+      const incomingVersion = Number(initialRoomState.stateVersion || 0);
+      if (snapshot && Number(snapshot.stateVersion || 0) >= incomingVersion) {
+        setRawRoomState((previous: any) => ({
+          ...snapshot,
+          code: initialRoomState.code || snapshot.code,
+          hostId: initialRoomState.hostId || snapshot.hostId,
+          isPaused: initialRoomState.isPaused,
+          pausedPlayerId: initialRoomState.pausedPlayerId,
+          pauseExpiresAt: initialRoomState.pauseExpiresAt,
+        }));
+      } else {
+        setRawRoomState(initialRoomState);
+      }
     }
   }, [initialRoomState]);
 
@@ -192,6 +206,22 @@ export function useGameSocket({
 
     const handleRoomState = (state: any) => {
       if (state) {
+        // A room projection intentionally omits private/result fields.  Never let
+        // it replace the authoritative game snapshot which arrived just before it.
+        const version = Number(state.stateVersion || 0);
+        const snapshot = latestSnapshotRef.current;
+        if (snapshot && Number(snapshot.stateVersion || 0) >= version) {
+          setRawRoomState((previous: any) => ({
+            ...snapshot,
+            code: state.code || snapshot.code,
+            hostId: state.hostId || snapshot.hostId,
+            isPaused: state.isPaused,
+            pausedPlayerId: state.pausedPlayerId,
+            pauseExpiresAt: state.pauseExpiresAt,
+            chatMessages: state.chatMessages,
+          }));
+          return;
+        }
         setRawRoomState(state);
       }
     };
@@ -200,10 +230,14 @@ export function useGameSocket({
       if (!snapshot?.publicState || snapshot.stateVersion < latestStateVersionRef.current) return;
       latestStateVersionRef.current = snapshot.stateVersion;
       setLastAction(snapshot.publicState.lastAction || null);
-      setRawRoomState({
+      const nextState = {
         ...snapshot.publicState,
+        code: roomCode,
+        hostId: snapshot.publicState.players?.find((player: any) => player.isHost)?.id,
         mySecretHand: snapshot.privateState?.hand || [],
-      });
+      };
+      latestSnapshotRef.current = nextState;
+      setRawRoomState(nextState);
     };
 
     const handleGameEvent = (envelope: GameEventEnvelope) => {
@@ -283,7 +317,7 @@ export function useGameSocket({
       socket.off(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
       socket.off(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
     };
-  }, [socket, onGameEvent]);
+  }, [socket, onGameEvent, roomCode]);
 
   // Derive GameState & Hand
   const { gameState, myHand } = adaptRoomStateToGameState(rawRoomState, myUserId);
@@ -357,17 +391,13 @@ export function useGameSocket({
   const forfeit = useCallback(() => {
     if (!socket) return;
     const code = roomCode || rawRoomState?.code;
-    socket.emit(SOCKET_EVENTS.GAME_COMMAND, {
-      roomCode: code,
-      commandId: `cmd_${Date.now()}`,
-      timestamp: Date.now(),
-      command: { type: 'FORFEIT' },
-    });
+    socket.emit('room:forfeit', { roomCode: code, userId: myUserId });
   }, [socket, roomCode, rawRoomState?.code, myUserId, onLeaveRoom]);
 
   const leaveRoom = useCallback(() => {
-    forfeit();
-  }, [forfeit]);
+    if (!socket) return;
+    socket.emit('room:leave', { roomCode: roomCode || rawRoomState?.code, userId: myUserId });
+  }, [socket, roomCode, rawRoomState?.code, myUserId]);
 
   const pausedPlayer = rawRoomState?.pausedPlayerId
     ? rawRoomState.players?.find((p: any) => p.id === rawRoomState.pausedPlayerId)?.nickname

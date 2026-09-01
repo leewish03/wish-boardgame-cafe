@@ -56,19 +56,19 @@ export const PlayerSeat: React.FC<PlayerSeatProps> = ({
           </AvatarRing>
           <IdentityText>
             <NameRow><PlayerName>{player.nickname}</PlayerName>{player.isBot && <Tag>AI</Tag>}{isSelf && <Tag>나</Tag>}</NameRow>
-            <StatsRow><Heart size={10} fill="currentColor" /> {player.tokens}<HandBack aria-label={`손패 ${player.cardCount}장`}>{player.cardCount}</HandBack></StatsRow>
+            <StatsRow><Heart size={10} fill="currentColor" /> {player.tokens}</StatsRow>
           </IdentityText>
           {isCurrentTurn && <TurnMark>차례</TurnMark>}
         </IdentityRow>
 
-        <PublicPile onClick={event => { if (isTargetable) return; event.stopPropagation(); onInspectDiscards?.(); }} title={`${player.nickname} 공개 패 ${player.discardPile?.length || 0}장`}>
+        <PileRow><PublicPile onClick={event => { if (isTargetable) return; event.stopPropagation(); onInspectDiscards?.(); }} title={`${player.nickname} 공개 패 ${player.discardPile?.length || 0}장`}>
           {visibleDiscards.length ? visibleDiscards.map((card, index) => (
             <PublicCard key={`${card.id}_${index}`} $index={index} aria-label={`${card.value} ${card.name}`}>
               <span>{card.value}</span>{getHeraldicIcon(card.value, 10)}
             </PublicCard>
           )) : <EmptyPile>공개 패 없음</EmptyPile>}
           {hiddenDiscardCount > 0 && <OverflowCount>+{hiddenDiscardCount}</OverflowCount>}
-        </PublicPile>
+        </PublicPile><HeldCards aria-label={`손패 ${player.cardCount}장`}><HeldCard />{player.cardCount > 1 && <HeldCount>{player.cardCount}</HeldCount>}</HeldCards></PileRow>
 
         {player.isProtected && <StateText>보호</StateText>}
         {player.isEliminated && <StateText>탈락</StateText>}
@@ -108,14 +108,17 @@ const NameRow = styled.div`display:flex; min-width:0; gap:3px; align-items:cente
 const PlayerName = styled.span`font-size:10px; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
 const Tag = styled.span`font-size:7px; color:${THEME.mutedForeground}; border:1px solid ${THEME.border}; padding:0 2px; border-radius:3px; flex:0 0 auto;`;
 const StatsRow = styled.div`display:flex; align-items:center; gap:2px; color:${THEME.burgundy}; font-size:9px; font-weight:800;`;
-const HandBack = styled.span`margin-left:3px; color:${THEME.mutedForeground}; font-size:8px; border:1px solid ${THEME.border}; border-radius:3px; padding:0 3px;`;
 const TurnMark = styled.span`font-size:8px; font-weight:900; color:${THEME.burgundy}; flex:0 0 auto;`;
-const PublicPile = styled.div`position:relative; display:flex; align-items:flex-end; width:100%; height:31px; margin-top:4px; padding:0; cursor:pointer;`;
+const PileRow = styled.div`display:flex; gap:5px; align-items:flex-end; min-width:0;`;
+const PublicPile = styled.div`position:relative; display:flex; align-items:flex-end; flex:1; min-width:0; height:31px; margin-top:4px; padding:0; cursor:pointer;`;
 const PublicCard = styled.span<{ $index:number }>`
   position:absolute; left:${p => p.$index * 16}px; bottom:0; width:22px; height:29px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
   border-radius:3px; background:#fffdf7; border:1px solid ${THEME.gold}; color:${THEME.primary}; box-shadow:0 1px 3px rgba(9,13,22,.14); font-family:${THEME.font.serif}; font-size:11px; font-weight:900;
 `;
 const EmptyPile = styled.span`align-self:center; font-size:8px; color:${THEME.mutedForeground};`;
 const OverflowCount = styled.span`margin-left:69px; padding-bottom:3px; font-size:8px; color:${THEME.mutedForeground}; font-weight:800;`;
+const HeldCards = styled.div`position:relative; flex:0 0 20px; height:30px; margin-bottom:1px;`;
+const HeldCard = styled.div`width:19px; height:28px; border-radius:3px; background:${THEME.burgundyDeep}; border:1px solid ${THEME.goldAntique}; box-shadow:2px 2px 0 rgba(9,13,22,.15);`;
+const HeldCount = styled.span`position:absolute; right:-5px; bottom:-3px; min-width:11px; height:11px; display:grid; place-items:center; border-radius:6px; background:${THEME.primary}; color:white; font-size:7px; font-weight:900;`;
 const StateText = styled.div`font-size:8px; color:${THEME.burgundy}; font-weight:800; margin-top:2px;`;
 const DisabledText = styled.div`font-size:8px; color:${THEME.mutedForeground}; margin-top:2px;`;

@@ -120,6 +120,7 @@ export interface GameOutcome {
   previousScores?: Record<PlayerId, number>;
   nextStarterId?: PlayerId | null;
   advanceAt?: number | null;
+  canAdvanceAt?: number | null;
 }
 
 export interface GameState {

@@ -4,10 +4,10 @@ import { THEME } from '../../../shared/theme';
 
 interface DeckSlotProps {
   count: number;
-  setAsideCard?: any;
+  setAsideCount?: number;
 }
 
-export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCard }) => {
+export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) => {
   return (
     <DeckWrapper>
       <DeckStack id="deck-slot">
@@ -16,7 +16,6 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCard }) => {
             <BackCardLayer $offset={4} />
             <BackCardLayer $offset={2} />
             <TopDeckCard>
-              <DeckPattern>W</DeckPattern>
               <DeckCountBadge>{count}</DeckCountBadge>
             </TopDeckCard>
           </>
@@ -24,6 +23,7 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCard }) => {
           <EmptyDeckSlot>덱 소진</EmptyDeckSlot>
         )}
       </DeckStack>
+      {setAsideCount > 0 && <AsideStack aria-label={`이번 라운드 제외 카드 ${setAsideCount}장`}><AsideCard /><AsideLabel>제외 {setAsideCount}</AsideLabel></AsideStack>}
     </DeckWrapper>
   );
 };
@@ -68,14 +68,6 @@ const TopDeckCard = styled.div`
   cursor: default;
 `;
 
-const DeckPattern = styled.div`
-  font-family: ${THEME.font.serif};
-  font-size: 17px;
-  font-weight: 900;
-  line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
-`;
-
 const DeckCountBadge = styled.span`
   font-size: 14px;
   font-weight: 800;
@@ -84,6 +76,10 @@ const DeckCountBadge = styled.span`
   margin-top: 0;
   letter-spacing: 0.04em;
 `;
+
+const AsideStack = styled.div`display:flex; flex-direction:column; align-items:center; gap:3px; margin-left:20px;`;
+const AsideCard = styled.div`width:26px; height:39px; border-radius:5px; background:${THEME.burgundyDeep}; border:1px solid ${THEME.goldAntique}; box-shadow:2px 2px 0 rgba(9,13,22,.16);`;
+const AsideLabel = styled.span`font-size:8px; color:${THEME.mutedForeground}; font-weight:800; white-space:nowrap;`;
 
 const EmptyDeckSlot = styled.div`
   width: 100%;

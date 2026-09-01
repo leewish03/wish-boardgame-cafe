@@ -5,9 +5,9 @@ import { Clock3, Crown, Users } from 'lucide-react';
 import { CardInstance, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
 
-interface RoundResultModalProps { isOpen:boolean; roundNumber:number; winnerName:string; winnerReason?:string; winnerTokens?:number; targetTokens?:number; isHost:boolean; onNextRound:()=>void; players?:PlayerPublic[]; winnerIds?:string[]; advanceAt?:number|null; isRequesting?:boolean; requestError?:string|null; previousScores?:Record<string,number>; winnerCards?:Record<string,CardInstance>; }
+interface RoundResultModalProps { isOpen:boolean; roundNumber:number; winnerName:string; winnerReason?:string; winnerTokens?:number; targetTokens?:number; isHost:boolean; onNextRound:()=>void; players?:PlayerPublic[]; winnerIds?:string[]; advanceAt?:number|null; canAdvanceAt?:number|null; isRequesting?:boolean; requestError?:string|null; previousScores?:Record<string,number>; winnerCards?:Record<string,CardInstance>; }
 const reasonCopy: Record<string, string> = { LAST_SURVIVOR: '마지막까지 남은 플레이어가 라운드를 가져갔습니다.', DECK_EXHAUSTED: '덱이 소진되어 손패 숫자를 비교했습니다.', TIE_BREAK: '손패와 공개 패 합산으로 동점을 정리했습니다.', FORFEIT: '상대의 기권으로 라운드가 종료되었습니다.' };
-export const RoundResultModal: React.FC<RoundResultModalProps> = ({ isOpen, roundNumber, winnerReason, targetTokens=4, isHost, onNextRound, players=[], winnerIds=[], advanceAt, isRequesting=false, requestError, previousScores, winnerCards }) => {
+export const RoundResultModal: React.FC<RoundResultModalProps> = ({ isOpen, roundNumber, winnerReason, targetTokens=4, isHost, onNextRound, players=[], winnerIds=[], advanceAt, canAdvanceAt, isRequesting=false, requestError, previousScores, winnerCards }) => {
   const [seconds, setSeconds] = useState<number | null>(null);
   useEffect(() => { if (!advanceAt) return; const tick = () => setSeconds(Math.max(0, Math.ceil((advanceAt - Date.now()) / 1000))); tick(); const id = window.setInterval(tick, 250); return () => clearInterval(id); }, [advanceAt]);
   const winners = players.filter(p => winnerIds.includes(p.id));
@@ -17,7 +17,7 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({ isOpen, roun
     <Reason>{reasonCopy[winnerReason || ''] || winnerReason || '라운드가 종료되었습니다.'}</Reason>
     {winnerCards && winners.length > 0 ? <Reveal>공개 비교 카드 · {winners.map(p => `${p.nickname} ${winnerCards[p.id]?.value ?? '?'}`).join(' · ')}</Reveal> : null}
     <ScoreList>{players.map(p => <ScoreRow key={p.id} $winner={winnerIds.includes(p.id)}><span>{p.nickname}</span><strong>{previousScores ? `${previousScores[p.id] ?? p.tokens} → ` : ''}{p.tokens} / {targetTokens}</strong></ScoreRow>)}</ScoreList>
-    {isHost ? <PrimaryButton type="button" disabled={isRequesting || (seconds !== null && seconds > 7)} onClick={onNextRound}>{isRequesting ? '서버에 요청 중…' : seconds !== null && seconds > 7 ? `${seconds - 7}초 후 시작 가능` : '다음 라운드 시작'}</PrimaryButton> : <Waiting><Users size={15}/> 방장이 다음 라운드를 시작합니다{seconds !== null ? <><Clock3 size={14}/> {seconds}초 후 자동 진행</> : null}</Waiting>}
+    {isHost ? <PrimaryButton type="button" disabled={isRequesting || (!!canAdvanceAt && Date.now() < canAdvanceAt)} onClick={onNextRound}>{isRequesting ? '서버에 요청 중…' : !!canAdvanceAt && Date.now() < canAdvanceAt ? `${Math.max(1, Math.ceil((canAdvanceAt - Date.now()) / 1000))}초 후 시작 가능` : '다음 라운드 시작'}</PrimaryButton> : <Waiting><Users size={15}/> 방장이 다음 라운드를 시작합니다{seconds !== null ? <><Clock3 size={14}/> {seconds}초 후 자동 진행</> : null}</Waiting>}
     {requestError && <ErrorText role="alert">{requestError}</ErrorText>}
   </Sheet></Overlay>}</AnimatePresence>;
 };

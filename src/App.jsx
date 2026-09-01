@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled, { css } from 'styled-components';
 import { THEME } from './shared/theme';
 import {
@@ -352,8 +352,11 @@ export default function App() {
   const [editNickname, setEditNickname] = useState('');
   const [editAvatarSeed, setEditAvatarSeed] = useState('');
 
-  // Active Tab in Lobby: 'games' | 'join'
+  // Active Tab in Lobby: 'games' | 'rooms' | 'join'
   const [activeTab, setActiveTab] = useState('games');
+  const [openRooms, setOpenRooms] = useState([]);
+  const [roomsUpdatedAt, setRoomsUpdatedAt] = useState(0);
+  const reconnectInFlightRef = useRef(false);
 
   // Room State from Server
   const [roomState, setRoomState] = useState(null);
@@ -380,7 +383,8 @@ export default function App() {
   // Handle Automatic Session Reconnect
   const handleReconnectRequest = useCallback(
     (session) => {
-      if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken) return;
+      if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken || reconnectInFlightRef.current) return;
+      reconnectInFlightRef.current = true;
 
       socket.emit(
         'room:reconnect',
@@ -390,6 +394,7 @@ export default function App() {
           sessionToken: session.sessionToken,
         },
         (res) => {
+          reconnectInFlightRef.current = false;
           if (res?.success) {
             const restoredUser = {
               id: session.userId,
@@ -404,7 +409,7 @@ export default function App() {
             } else {
               setScreen('game');
             }
-            setToastMessage('이전 게임 세션에 자동으로 재접속되었습니다!');
+            if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 자동으로 재접속되었습니다!');
           } else {
             // Only clear room info, preserve nickname & avatar
             saveSession({
@@ -443,6 +448,23 @@ export default function App() {
       handleReconnectRequest(session);
     }
   }, [socket, connected, handleReconnectRequest]);
+
+  const refreshOpenRooms = useCallback(() => {
+    if (!socket?.connected) return;
+    socket.emit('room:list', {}, (result) => {
+      if (result?.success) {
+        setOpenRooms(Array.isArray(result.rooms) ? result.rooms : []);
+        setRoomsUpdatedAt(Date.now());
+      }
+    });
+  }, [socket]);
+
+  useEffect(() => {
+    if (screen !== 'lobby' || activeTab !== 'rooms') return undefined;
+    refreshOpenRooms();
+    const interval = window.setInterval(refreshOpenRooms, 5000);
+    return () => window.clearInterval(interval);
+  }, [screen, activeTab, refreshOpenRooms]);
 
   // Listen for room:state and room:resumed broadcast
   useEffect(() => {
@@ -733,7 +755,7 @@ export default function App() {
       return;
     }
 
-    socket.emit('room:leave', {
+    socket.emit(isPlaying ? 'room:forfeit' : 'room:leave', {
       roomCode: roomState?.code,
       userId: currentUser?.id,
     }, (result) => {
@@ -874,6 +896,12 @@ export default function App() {
                   SALON GAMES
                 </TabsTrigger>
                 <TabsTrigger
+                  $active={activeTab === 'rooms'}
+                  onClick={() => setActiveTab('rooms')}
+                >
+                  ROOM STATUS
+                </TabsTrigger>
+                <TabsTrigger
                   $active={activeTab === 'join'}
                   onClick={() => setActiveTab('join')}
                 >
@@ -995,6 +1023,24 @@ export default function App() {
                       </form>
                     </CardContent>
                   </Card>
+                </div>
+              )}
+
+              {activeTab === 'rooms' && (
+                <div style={{ width: '100%', maxWidth: '720px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div><CardTitle>열린 방 현황</CardTitle><CardDescription>방 코드는 숨겨지며 여기서 입장할 수 없습니다.</CardDescription></div>
+                    <Button $variant="secondary" $size="sm" onClick={refreshOpenRooms}>새로고침</Button>
+                  </div>
+                  {openRooms.length === 0 ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.mutedForeground }}>현재 표시할 활성 방이 없습니다.</CardContent></Card> : openRooms.map((room) => (
+                    <Card key={room.id} style={{ cursor: 'default' }}>
+                      <CardContent style={{ padding: '13px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 러브레터</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '4px' }}>라운드 {room.roundNumber} · 목표 {room.targetTokens} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
+                        <div style={{ textAlign: 'right', fontSize: '11px', fontWeight: 800 }}><Badge $variant={room.status === 'PLAYING' ? 'burgundy' : room.status === 'RECONNECTING' ? 'outline' : 'emerald'}>{room.status === 'RECONNECTING' ? '재접속 대기' : room.status}</Badge><div style={{ marginTop: '5px', color: THEME.mutedForeground }}>{room.connectedCount}/{room.playerCount} 연결 · 최대 {room.maxPlayers}</div></div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {roomsUpdatedAt ? <div style={{ textAlign: 'right', fontSize: '10px', color: THEME.mutedForeground }}>방 현황은 5초마다 갱신됩니다.</div> : null}
                 </div>
               )}
             </TabsContent>

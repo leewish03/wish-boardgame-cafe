@@ -27,11 +27,6 @@ function centerOf(element: Element | null, fallback: Point): Point {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
-function Avatar({ value, name }: { value?: string; name: string }) {
-  const isImage = !!value && (value.startsWith('https://') || value.startsWith('http://') || value.startsWith('/'));
-  return isImage ? <AvatarImage src={value} alt={name} /> : <AvatarGlyph>{name.slice(0, 1)}</AvatarGlyph>;
-}
-
 /**
  * Server state may already have advanced. This layer holds one visual action
  * until the card has visibly reached the table, target, and discard position.
@@ -72,34 +67,19 @@ export const SpatialMotionStage: React.FC<SpatialMotionStageProps> = ({
   if (!card?.value) return null;
 
   const cardValue = card.value as CardValue;
-  const actor = players.find((player) => player.id === event.actorId);
-  const target = players.find((player) => player.id === event.targetId);
-  const actorName = actor?.nickname || '플레이어';
-  const targetName = target?.nickname || '상대방';
   const towardsTarget = phase === 'TARGET_REVEAL' || phase === 'EFFECT' || phase === 'RESULT';
   const discarding = phase === 'DISCARDING' || phase === 'SETTLING';
   const destination = discarding
     ? anchors.table
     : towardsTarget && event.targetId
-    ? { x: anchors.target.x, y: anchors.target.y + 44 }
+    // Land just below the target seat: the card remains spatially connected
+    // without covering the name, hand count, or the central explanation.
+    ? { x: anchors.target.x, y: anchors.target.y + 72 }
     : anchors.table;
   const cardMeta = CARD_DEFINITIONS[cardValue];
 
   return (
     <MotionOverlay aria-live="polite">
-      <ActionLine
-        as={motion.div}
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-      >
-        <Avatar value={actor?.avatar} name={actorName} />
-        <strong>{actorName}</strong>
-        <span>·</span>
-        <CardLabel>{cardValue} {cardMeta?.name || card.name}</CardLabel>
-        {event.targetId && <><span>→</span><strong>{targetName}</strong></>}
-      </ActionLine>
-
       <AnimatePresence mode="wait">
         <FlyingCard
           key={currentAction.eventId}
@@ -128,50 +108,6 @@ const MotionOverlay = styled.div`
   z-index: 600;
   pointer-events: none;
   overflow: hidden;
-`;
-
-const ActionLine = styled.div`
-  position: absolute;
-  top: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100vw - 28px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid rgba(212, 175, 55, 0.78);
-  border-radius: 999px;
-  background: rgba(24, 24, 27, 0.93);
-  color: #f8fafc;
-  box-shadow: 0 6px 18px rgba(9, 13, 22, 0.28);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  strong { overflow: hidden; text-overflow: ellipsis; }
-
-  @media (max-width: 380px) { top: 46px; font-size: 10px; }
-`;
-
-const AvatarImage = styled.img`
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex: 0 0 auto;
-`;
-
-const AvatarGlyph = styled.span`
-  font-size: 16px;
-  line-height: 1;
-`;
-
-const CardLabel = styled.span`
-  color: #f6d881;
-  font-weight: 800;
 `;
 
 const FlyingCard = styled.div`
