@@ -719,15 +719,30 @@ export default function App() {
 
   // Leave Room
   const handleLeaveRoom = () => {
-    if (socket) {
-      socket.emit('room:leave', {
-        roomCode: roomState?.code,
-        userId: currentUser?.id,
-      }, () => {});
+    const isPlaying = roomState?.gameState === 'PLAYING';
+    if (isPlaying && !window.confirm('진행 중인 게임에서 나가면 기권 처리됩니다. 나갈까요?')) return;
+
+    const finishLeave = () => {
+      clearSession();
+      setRoomState(null);
+      setScreen('lobby');
+    };
+
+    if (!socket) {
+      finishLeave();
+      return;
     }
-    clearSession();
-    setRoomState(null);
-    setScreen('lobby');
+
+    socket.emit('room:leave', {
+      roomCode: roomState?.code,
+      userId: currentUser?.id,
+    }, (result) => {
+      if (!result?.success) {
+        setToastMessage(result?.error || '방을 나가지 못했습니다. 다시 시도해 주세요.');
+        return;
+      }
+      finishLeave();
+    });
   };
 
   const isHost = roomState?.hostId === currentUser?.id;

@@ -17,7 +17,7 @@ export const RoundResultModal: React.FC<RoundResultModalProps> = ({ isOpen, roun
     <Reason>{reasonCopy[winnerReason || ''] || winnerReason || '라운드가 종료되었습니다.'}</Reason>
     {winnerCards && winners.length > 0 ? <Reveal>공개 비교 카드 · {winners.map(p => `${p.nickname} ${winnerCards[p.id]?.value ?? '?'}`).join(' · ')}</Reveal> : null}
     <ScoreList>{players.map(p => <ScoreRow key={p.id} $winner={winnerIds.includes(p.id)}><span>{p.nickname}</span><strong>{previousScores ? `${previousScores[p.id] ?? p.tokens} → ` : ''}{p.tokens} / {targetTokens}</strong></ScoreRow>)}</ScoreList>
-    {isHost ? <PrimaryButton type="button" disabled={isRequesting} onClick={onNextRound}>{isRequesting ? '서버에 요청 중…' : '다음 라운드 시작'}</PrimaryButton> : <Waiting><Users size={15}/> 방장이 다음 라운드를 시작합니다{seconds !== null ? <><Clock3 size={14}/> {seconds}초 후 자동 진행</> : null}</Waiting>}
+    {isHost ? <PrimaryButton type="button" disabled={isRequesting || (seconds !== null && seconds > 7)} onClick={onNextRound}>{isRequesting ? '서버에 요청 중…' : seconds !== null && seconds > 7 ? `${seconds - 7}초 후 시작 가능` : '다음 라운드 시작'}</PrimaryButton> : <Waiting><Users size={15}/> 방장이 다음 라운드를 시작합니다{seconds !== null ? <><Clock3 size={14}/> {seconds}초 후 자동 진행</> : null}</Waiting>}
     {requestError && <ErrorText role="alert">{requestError}</ErrorText>}
   </Sheet></Overlay>}</AnimatePresence>;
 };

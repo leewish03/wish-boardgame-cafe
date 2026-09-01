@@ -26,6 +26,8 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   const [copied, setCopied] = useState(false);
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [musicOn, setMusicOn] = useState(sfx.getSettings().musicEnabled);
+  const [musicVolume, setMusicVolume] = useState(Math.round(sfx.getSettings().musicVolume * 100));
+  const [sfxVolume, setSfxVolume] = useState(Math.round(sfx.getSettings().sfxVolume * 100));
   const [activeTab, setActiveTab] = useState<'rules' | 'settings'>('rules');
 
   const handleCopyCode = () => {
@@ -45,6 +47,16 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
     const next = !musicOn;
     sfx.setMusicEnabled(next);
     setMusicOn(next);
+  };
+
+  const handleMusicVolume = (value: number) => {
+    sfx.setMusicVolume(value / 100);
+    setMusicVolume(value);
+  };
+
+  const handleSfxVolume = (value: number) => {
+    sfx.setSfxVolume(value / 100);
+    setSfxVolume(value);
   };
 
   const cardsList = [1, 2, 3, 4, 5, 6, 7, 8] as CardValue[];
@@ -135,6 +147,10 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
                       <span>{musicOn ? '켜짐' : '꺼짐'}</span>
                     </ToggleBtn>
                   </SettingRow>
+                  <VolumeRow>
+                    <label htmlFor="music-volume">음악 볼륨 <strong>{musicVolume}%</strong></label>
+                    <input id="music-volume" type="range" min="0" max="100" value={musicVolume} onChange={event => handleMusicVolume(Number(event.target.value))} disabled={!musicOn} />
+                  </VolumeRow>
                   <SettingRow>
                     <span>효과음 (SFX)</span>
                     <ToggleBtn $active={sfxOn} onClick={handleToggleSfx}>
@@ -142,6 +158,10 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
                       <span>{sfxOn ? '켜짐' : '꺼짐'}</span>
                     </ToggleBtn>
                   </SettingRow>
+                  <VolumeRow>
+                    <label htmlFor="sfx-volume">효과음 볼륨 <strong>{sfxVolume}%</strong></label>
+                    <input id="sfx-volume" type="range" min="0" max="100" value={sfxVolume} onChange={event => handleSfxVolume(Number(event.target.value))} disabled={!sfxOn} />
+                  </VolumeRow>
 
                   <SettingRow>
                     <span>목표 호감도 토큰</span>
@@ -393,6 +413,26 @@ const ToggleBtn = styled.button<{ $active: boolean }>`
   font-weight: 800;
   color: ${props => (props.$active ? THEME.primary : THEME.mutedForeground)};
   cursor: pointer;
+`;
+
+const VolumeRow = styled.div`
+  padding: 8px 12px 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+
+  label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 7px;
+    font-size: 11px;
+    color: ${THEME.foreground};
+  }
+
+  strong { color: ${THEME.burgundy}; }
+
+  input { width: 100%; accent-color: ${THEME.burgundy}; }
+  input:disabled { opacity: 0.45; }
 `;
 
 const ValueTag = styled.span`

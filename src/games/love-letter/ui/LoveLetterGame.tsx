@@ -333,7 +333,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     } else {
       setIsAdvancingRound(true);
       setResultRequestError(null);
-      gameSocket.startNextRound(gameState.stateVersion, result => {
+      const progress = gameState.matchState === 'GAME_OVER' ? gameSocket.startRematch : gameSocket.startNextRound;
+      progress(gameState.stateVersion, result => {
         setIsAdvancingRound(false);
         if (!result.success) setResultRequestError(result.error || '다음 라운드를 시작하지 못했습니다.');
       });
@@ -502,6 +503,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         players={gameState.players}
         isHost={me?.isHost || false}
         requestError={resultRequestError}
+        isRequesting={isAdvancingRound}
       />
 
       <PauseOverlay

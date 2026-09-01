@@ -47,8 +47,19 @@ export function registerLoveLetterController(io, service) {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
-        await service.advanceRound(roomCode, userId, payload?.expectedStateVersion);
-        if (typeof callback === 'function') callback({ success: true });
+        const result = await service.advanceRound(roomCode, userId, payload?.expectedStateVersion, payload?.requestId);
+        if (typeof callback === 'function') callback({ success: true, ...result });
+      } catch (error) {
+        callbackError(callback, error);
+      }
+    });
+
+    socket.on('game:rematch', async (payload, callback) => {
+      try {
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
+        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const result = await service.startRematch(roomCode, userId, payload?.expectedStateVersion, payload?.requestId);
+        if (typeof callback === 'function') callback({ success: true, ...result });
       } catch (error) {
         callbackError(callback, error);
       }

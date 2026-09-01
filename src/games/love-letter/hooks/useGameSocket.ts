@@ -26,6 +26,7 @@ export interface UseGameSocketReturn {
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number) => void;
   startNextRound: (expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
+  startRematch: (expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
   forfeit: () => void;
   leaveRoom: () => void;
   rawRoomState: any | null;
@@ -329,6 +330,7 @@ export function useGameSocket({
         roomCode: code,
         userId: myUserId,
         expectedStateVersion,
+        requestId: `advance_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       },
       (res: any) => {
         if (res && !res.success && res.error) {
@@ -337,6 +339,19 @@ export function useGameSocket({
         callback?.(res || { success: false, error: '서버 응답을 받지 못했습니다.' });
       }
     );
+  }, [socket, roomCode, rawRoomState?.code, myUserId]);
+
+  const startRematch = useCallback((expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => {
+    if (!socket) {
+      callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
+      return;
+    }
+    socket.emit(SOCKET_EVENTS.GAME_REMATCH, {
+      roomCode: roomCode || rawRoomState?.code,
+      userId: myUserId,
+      expectedStateVersion,
+      requestId: `rematch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    }, (res: any) => callback?.(res || { success: false, error: '서버 응답을 받지 못했습니다.' }));
   }, [socket, roomCode, rawRoomState?.code, myUserId]);
 
   const forfeit = useCallback(() => {
@@ -369,6 +384,7 @@ export function useGameSocket({
     pausedPlayerName: pausedPlayer || '플레이어',
     playCard,
     startNextRound,
+    startRematch,
     forfeit,
     leaveRoom,
     rawRoomState,

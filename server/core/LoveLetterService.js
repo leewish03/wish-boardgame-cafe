@@ -50,6 +50,7 @@ export class LoveLetterService {
     this.eventCounters = new Map();
     this.botTimers = new Map();
     this.roundAdvanceTimers = new Map();
+    this.progressRequests = new Map();
   }
 
   getNextEventId(roomCode) {
@@ -236,13 +237,43 @@ export class LoveLetterService {
     this.roundAdvanceTimers.set(roomCode, timer);
   }
 
-  async advanceRound(roomCode, hostId, expectedStateVersion) {
+  async runProgressRequest(roomCode, hostId, requestId, operation) {
+    if (!requestId || typeof requestId !== 'string') throw new Error('진행 요청 식별자가 필요합니다.');
+    const key = `${roomCode}:${hostId}:${requestId}`;
+    const existing = this.progressRequests.get(key);
+    if (existing) return existing;
+    const request = Promise.resolve().then(operation).then(() => ({ accepted: true }));
+    this.progressRequests.set(key, request);
+    const clearRequest = () => {
+      const expiry = setTimeout(() => this.progressRequests.delete(key), 60_000);
+      expiry.unref?.();
+    };
+    request.then(clearRequest, clearRequest);
+    return request;
+  }
+
+  async advanceRound(roomCode, hostId, expectedStateVersion, requestId) {
+    return this.runProgressRequest(roomCode, hostId, requestId, async () => {
     const room = await roomRepository.getRoom(roomCode);
     if (!room?.gameStateObject) throw new Error('방을 찾을 수 없습니다.');
     if (room.hostId !== hostId) throw new Error('방장만 다음 라운드를 시작할 수 있습니다.');
     if (room.gameStateObject.matchState !== 'ROUND_END') throw new Error('다음 라운드를 시작할 수 있는 상태가 아닙니다.');
     if (expectedStateVersion != null && expectedStateVersion !== room.gameStateObject.stateVersion) throw new Error('게임 상태가 변경되었습니다. 다시 확인해 주세요.');
+    const manualAdvanceAt = Number(room.gameStateObject.outcome?.advanceAt || 0) - 7_000;
+    if (manualAdvanceAt > Date.now()) throw new Error('결과를 확인할 시간을 잠시 더 주세요.');
     return this.startMatch(roomCode, hostId);
+    });
+  }
+
+  async startRematch(roomCode, hostId, expectedStateVersion, requestId) {
+    return this.runProgressRequest(roomCode, hostId, requestId, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      if (!room?.gameStateObject) throw new Error('방을 찾을 수 없습니다.');
+      if (room.hostId !== hostId) throw new Error('방장만 새 매치를 시작할 수 있습니다.');
+      if (room.gameStateObject.matchState !== 'GAME_OVER') throw new Error('새 매치를 시작할 수 있는 상태가 아닙니다.');
+      if (expectedStateVersion != null && expectedStateVersion !== room.gameStateObject.stateVersion) throw new Error('게임 상태가 변경되었습니다. 다시 확인해 주세요.');
+      return this.startMatch(roomCode, hostId);
+    });
   }
 
   scheduleTurnTimeout(roomCode, gameState) {

@@ -12,6 +12,7 @@ export const SOCKET_EVENTS = {
   // Game Engine Protocol
   GAME_COMMAND: 'game:command',
   GAME_ADVANCE: 'game:advance',
+  GAME_REMATCH: 'game:rematch',
   GAME_EVENT: 'game:event',
   GAME_SNAPSHOT: 'game:snapshot',
   SYNC_REQUEST: 'game:sync-request',

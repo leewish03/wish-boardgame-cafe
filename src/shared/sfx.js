@@ -9,6 +9,8 @@ class SFXEngine {
     this.musicEnabled = true;
     this.musicVolume = 0.15;
     this.sfxVolume = 1;
+    this.sfxMaster = null;
+    this.musicAudio = null;
     this.ambienceNode = null;
     try {
       const saved = JSON.parse(localStorage.getItem('wish_audio_v1') || '{}');
@@ -28,6 +30,9 @@ class SFXEngine {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
+        this.sfxMaster = this.ctx.createGain();
+        this.sfxMaster.gain.value = this.sfxVolume;
+        this.sfxMaster.connect(this.ctx.destination);
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
@@ -41,6 +46,18 @@ class SFXEngine {
     this.persist();
   }
 
+  setSfxVolume(value) {
+    this.sfxVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (this.sfxMaster && this.ctx) {
+      this.sfxMaster.gain.linearRampToValueAtTime(this.sfxVolume, this.ctx.currentTime + 0.1);
+    }
+    this.persist();
+  }
+
+  getSfxDestination(ctx) {
+    return this.sfxMaster || ctx.destination;
+  }
+
   setMusicEnabled(val) {
     this.musicEnabled = !!val;
     if (this.musicEnabled) this.startSalonAmbience(); else this.stopSalonAmbience();
@@ -49,6 +66,7 @@ class SFXEngine {
 
   setMusicVolume(value) {
     this.musicVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (this.musicAudio) this.musicAudio.volume = this.musicVolume;
     if (this.ambienceNode?.gain && this.ctx) this.ambienceNode.gain.gain.linearRampToValueAtTime(this.musicVolume * 0.12, this.ctx.currentTime + 0.15);
     this.persist();
   }
@@ -61,6 +79,14 @@ class SFXEngine {
   }
 
   duckMusic(durationMs = 220) {
+    if (this.musicAudio) {
+      const originalVolume = this.musicVolume;
+      this.musicAudio.volume = originalVolume * 0.4;
+      window.setTimeout(() => {
+        if (this.musicAudio && this.musicEnabled) this.musicAudio.volume = this.musicVolume;
+      }, durationMs);
+      return;
+    }
     if (!this.ambienceNode?.gain || !this.ctx) return;
     const now = this.ctx.currentTime;
     const target = this.musicVolume * 0.048;
@@ -104,7 +130,7 @@ class SFXEngine {
 
       noise.connect(filter);
       filter.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(this.getSfxDestination(ctx));
 
       noise.start(now);
       noise.stop(now + 0.15);
@@ -133,7 +159,7 @@ class SFXEngine {
       oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
 
       osc.connect(oscGain);
-      oscGain.connect(ctx.destination);
+      oscGain.connect(this.getSfxDestination(ctx));
 
       osc.start(now);
       osc.stop(now + 0.09);
@@ -158,7 +184,7 @@ class SFXEngine {
 
       noise.connect(noiseFilter);
       noiseFilter.connect(noiseGain);
-      noiseGain.connect(ctx.destination);
+      noiseGain.connect(this.getSfxDestination(ctx));
 
       noise.start(now);
       noise.stop(now + 0.04);
@@ -189,7 +215,7 @@ class SFXEngine {
         gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
 
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(this.getSfxDestination(ctx));
 
         osc.start(start);
         osc.stop(start + dur);
@@ -218,7 +244,7 @@ class SFXEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(this.getSfxDestination(ctx));
 
       osc.start(now);
       osc.stop(now + 0.35);
@@ -246,7 +272,7 @@ class SFXEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(this.getSfxDestination(ctx));
 
       osc.start(now);
       osc.stop(now + 0.035);
@@ -280,8 +306,32 @@ class SFXEngine {
     } catch (e) {}
   }
 
-  // 8. Procedural Salon Ambience BGM (Subtle low-pass drone & acoustic warmth)
+  // 8. CC0 loop, with a procedural fallback only for browsers that cannot play it.
   startSalonAmbience() {
+    if (!this.musicEnabled) return;
+    if (this.musicAudio) {
+      this.musicAudio.volume = this.musicVolume;
+      this.musicAudio.play().catch(() => {});
+      return;
+    }
+    if (this.ambienceNode) return;
+    if (typeof Audio !== 'undefined') {
+      const audio = new Audio('/assets/love-letter-salon-loop.mp3');
+      audio.loop = true;
+      audio.preload = 'auto';
+      audio.volume = this.musicVolume;
+      this.musicAudio = audio;
+      audio.play().catch(() => {
+        // A failed media decode should not block game feedback; retain a quiet fallback.
+        this.musicAudio = null;
+        this.startProceduralAmbience();
+      });
+      return;
+    }
+    this.startProceduralAmbience();
+  }
+
+  startProceduralAmbience() {
     if (this.ambienceNode || !this.musicEnabled) return;
     try {
       const ctx = this.getAudioContext();
@@ -320,6 +370,10 @@ class SFXEngine {
   }
 
   stopSalonAmbience() {
+    if (this.musicAudio) {
+      this.musicAudio.pause();
+      return;
+    }
     if (!this.ambienceNode) return;
     try {
       const ctx = this.getAudioContext();
