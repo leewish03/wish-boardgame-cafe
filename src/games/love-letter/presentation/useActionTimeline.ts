@@ -2,35 +2,104 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
 import { PresentationPhase } from '../machines/presentationMachine';
 
+export interface PresentationAction extends GameEventEnvelope {
+  /** Every visual beat produced by one authoritative card command. */
+  presentationEvents: GameEventEnvelope[];
+  presentationIndex: number;
+}
+
+const SKIPPED_BEATS = new Set([
+  'CARD_GUESSED', 'GUARD_SUCCEEDED', 'PRIEST_REVEALED', 'HANDMAID_PROTECTED', 'KING_SWAP',
+]);
+
+const isVisualBeat = (envelope: GameEventEnvelope) => !SKIPPED_BEATS.has((envelope.event as any).type);
+const actionKey = (envelope: GameEventEnvelope) => envelope.actionId || envelope.eventId;
+
+function createAction(envelope: GameEventEnvelope): PresentationAction {
+  return { ...envelope, presentationEvents: [envelope], presentationIndex: 0 };
+}
+
+/**
+ * Groups server events by actionId. The engine remains authoritative; this only
+ * keeps an actor → card → target → result story readable before the next action.
+ */
 export function useActionTimeline() {
-  const [currentAction, setCurrentAction] = useState<GameEventEnvelope | null>(null);
+  const [currentAction, setCurrentAction] = useState<PresentationAction | null>(null);
   const [phase, setPhase] = useState<PresentationPhase>('IDLE');
   const [isActionPlaying, setIsActionPlaying] = useState(false);
-  const queueRef = useRef<GameEventEnvelope[]>([]);
-  const currentRef = useRef<GameEventEnvelope | null>(null);
+  const queueRef = useRef<PresentationAction[]>([]);
+  const currentRef = useRef<PresentationAction | null>(null);
   const processedEventIdsRef = useRef<Set<string>>(new Set());
+  const scheduledStartRef = useRef(false);
 
-  const start = useCallback((action: GameEventEnvelope) => {
-    currentRef.current = action;
-    setCurrentAction(action);
-    setIsActionPlaying(true);
-    setPhase('CARD_PLAYING');
+  const startNext = useCallback(() => {
+    const next = queueRef.current.shift() || null;
+    currentRef.current = next;
+    setCurrentAction(next);
+    setIsActionPlaying(!!next);
+    setPhase(next ? 'CARD_PLAYING' : 'IDLE');
+  }, []);
+
+  const scheduleStart = useCallback(() => {
+    if (scheduledStartRef.current || currentRef.current) return;
+    scheduledStartRef.current = true;
+    Promise.resolve().then(() => {
+      scheduledStartRef.current = false;
+      if (!currentRef.current) startNext();
+    });
+  }, [startNext]);
+
+  const appendTo = useCallback((action: PresentationAction, envelope: GameEventEnvelope) => {
+    if (!isVisualBeat(envelope)) return action;
+    return { ...action, presentationEvents: [...action.presentationEvents, envelope] };
   }, []);
 
   const enqueueAction = useCallback((envelope: GameEventEnvelope) => {
-    if (!envelope?.eventId || processedEventIdsRef.current.has(envelope.eventId)) return;
+    if (!envelope?.eventId || processedEventIdsRef.current.has(envelope.eventId) || !isVisualBeat(envelope)) return;
     processedEventIdsRef.current.add(envelope.eventId);
-    if (currentRef.current) queueRef.current.push(envelope);
-    else start(envelope);
-  }, [start]);
+    const key = actionKey(envelope);
+
+    if (currentRef.current && actionKey(currentRef.current) === key) {
+      const updated = appendTo(currentRef.current, envelope);
+      currentRef.current = updated;
+      setCurrentAction(updated);
+      return;
+    }
+
+    const queuedIndex = queueRef.current.findIndex(action => actionKey(action) === key);
+    if (queuedIndex >= 0) {
+      queueRef.current[queuedIndex] = appendTo(queueRef.current[queuedIndex], envelope);
+    } else {
+      queueRef.current.push(createAction(envelope));
+    }
+    scheduleStart();
+  }, [appendTo, scheduleStart]);
 
   const advancePresentation = useCallback(() => {
-    const queued = queueRef.current.shift() || null;
-    currentRef.current = queued;
-    setCurrentAction(queued);
-    setIsActionPlaying(!!queued);
-    setPhase(queued ? 'CARD_PLAYING' : 'IDLE');
-  }, []);
+    const current = currentRef.current;
+    if (!current) return startNext();
+
+    const nextIndex = current.presentationIndex + 1;
+    if (nextIndex < current.presentationEvents.length) {
+      const nextEvent = current.presentationEvents[nextIndex];
+      const updated = { ...current, presentationIndex: nextIndex, event: nextEvent.event, eventId: nextEvent.eventId };
+      currentRef.current = updated;
+      setCurrentAction(updated);
+      setPhase('CARD_PLAYING');
+      return;
+    }
+
+    if (phase !== 'RESULT') {
+      setPhase('RESULT');
+      return;
+    }
+
+    currentRef.current = null;
+    setCurrentAction(null);
+    setIsActionPlaying(false);
+    setPhase('IDLE');
+    startNext();
+  }, [phase, startNext]);
 
   const resetTimeline = useCallback(() => {
     queueRef.current = [];

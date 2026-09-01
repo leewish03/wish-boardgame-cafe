@@ -64,12 +64,13 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
     return()=>window.removeEventListener('resize',measure);
   },[event,phase,registry]);
 
+  const isResultHold=phase==='RESULT';
   const card=event ? visibleCard(event,kind) : null;
-  const duration=reduceMotion ? .05 : kind==='swap' ? .55 : kind==='target' || kind==='reaction' ? .28 : .46;
+  const duration=reduceMotion ? .05 : isResultHold ? 1.2 : kind==='swap' ? .55 : kind==='target' || kind==='reaction' ? .28 : .46;
   const source=kind==='draw' ? points.deck : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
   const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
-  const canFly=kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard';
-  const showConnector=kind==='target' || kind==='swap';
+  const canFly=!isResultHold && (kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard');
+  const showConnector=!isResultHold && (kind==='target' || kind==='swap');
   const label=useMemo(()=>{
     if(!event) return '';
     if(kind==='draw') return '카드를 뽑았습니다';
@@ -85,7 +86,7 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
     <React.Fragment key={currentAction?.eventId}>
     <PhaseClock as={motion.div} initial={{opacity:.001}} animate={{opacity:.002}} transition={{duration}} onAnimationComplete={onPhaseComplete}/>
     {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.28,duration)}}/></Connector>}
-    {(kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
+    {!isResultHold && (kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
       <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
     )}
     {canFly && <FlyingCard as={motion.div} initial={{x:source.x-32,y:source.y-46,scale:.74,rotate:-5,opacity:0}} animate={{x:destination.x-32,y:destination.y-46,scale:.64,rotate:kind==='forcedDiscard'||kind==='revealDiscard'?5:0,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}>

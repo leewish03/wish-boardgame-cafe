@@ -96,7 +96,7 @@ const IdentityButton=styled.button<{$turn:boolean;$targetable:boolean;$selected:
 const Avatar=styled.div<{$turn:boolean;$speaking:boolean}>`position:relative; width:23px; height:23px; flex:0 0 23px; display:grid; place-items:center; overflow:visible; border-radius:50%; background:${THEME.primary}; color:${THEME.goldLight}; font:900 11px ${THEME.font.serif}; border:1px solid ${p=>p.$turn?THEME.gold:THEME.border}; ${p=>p.$speaking&&css`box-shadow:0 0 0 2px ${THEME.emerald};`} img{width:100%;height:100%;border-radius:inherit;object-fit:cover;} @media(max-height:650px){width:20px;height:20px;flex-basis:20px;}`;
 const Status=styled.span`position:absolute;right:-3px;bottom:-3px;width:13px;height:13px;display:grid;place-items:center;border-radius:50%;background:#fff;color:${THEME.burgundy};border:1px solid ${THEME.border};`;
 const IdentityCopy=styled.span`min-width:0;flex:1;display:flex;flex-direction:column;`;
-const Name=styled.strong`font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+const Name=styled.strong`font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@media(max-width:360px){font-size:8px;letter-spacing:-.35px;}`;
 const Meta=styled.span`display:flex;align-items:center;gap:2px;color:${THEME.burgundy};font-size:8px;font-weight:800;small{font-size:6.5px;color:${THEME.mutedForeground};border:1px solid ${THEME.border};border-radius:3px;padding:0 2px;}`;
 const Turn=styled.span`font-size:7px;font-weight:900;color:${THEME.burgundy};`;
 const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:46px; height:29px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.8);transform-origin:top center;height:24px;}`;

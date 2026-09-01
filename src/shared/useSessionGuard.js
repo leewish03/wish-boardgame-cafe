@@ -98,7 +98,8 @@ export function useSessionGuard({
             }
           }
         } catch (err) {
-          console.warn('Screen Wake Lock request failed:', err);
+          // Wake Lock is optional and commonly denied in embedded/mobile webviews.
+          // Keep the game usable without repeatedly polluting the error console.
         }
       }
     };
