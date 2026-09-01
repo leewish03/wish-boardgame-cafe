@@ -87,7 +87,17 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
 
   return <MotionOverlay aria-live="polite">
     <React.Fragment key={`${currentAction?.eventId}:${phase}:${(currentAction as any)?.presentationIndex || 0}`}>
-    <PhaseClock as={motion.div} initial={{opacity:0}} animate={{opacity:[0.001,0.002]}} transition={{duration}} onAnimationComplete={onPhaseComplete}/>
+    {/* This is the one sequencing driver. It is a real Framer Motion node,
+        keyed for every event/phase, so a RESULT hold cannot reuse a completed
+        animation and leave the presentation queue stuck. */}
+    <motion.div
+      key={`${currentAction?.eventId}:${phase}:${(currentAction as any)?.presentationIndex || 0}`}
+      style={{ position:'fixed', width:1, height:1, opacity:0, pointerEvents:'none' }}
+      initial={{ scale:.98 }}
+      animate={{ scale:1 }}
+      transition={{ duration, ease:'linear' }}
+      onAnimationComplete={onPhaseComplete}
+    />
     {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.28,duration)}}/></Connector>}
     {!isResultHold && (kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
       <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
@@ -105,7 +115,6 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
 };
 
 const MotionOverlay=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;`;
-const PhaseClock=styled.div`position:fixed;width:1px;height:1px;pointer-events:none;`;
 const Connector=styled.svg`position:fixed;inset:0;width:100%;height:100%;overflow:visible;`;
 const SeatReaction=styled.div<{$eliminated:boolean}>`position:fixed;width:54px;height:36px;border:2px solid ${p=>p.$eliminated?THEME.burgundy:THEME.gold};border-radius:12px;box-shadow:0 0 0 4px rgba(197,160,89,.12);`;
 const FlyingCard=styled.div`position:fixed;top:0;left:0;width:64px;height:96px;transform-origin:center;filter:drop-shadow(0 10px 16px rgba(9,13,22,.28));`;
