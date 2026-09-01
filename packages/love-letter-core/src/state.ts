@@ -67,6 +67,7 @@ export function createInitialGameState(
     stateVersion: 1,
     matchWinnerId: null,
     roundWinnerIds: [],
+    outcome: null,
   };
 }
 
@@ -99,6 +100,7 @@ export function getPublicGameState(state: GameState): PublicGameState {
     matchWinnerId: state.matchWinnerId,
     roundWinnerIds: state.roundWinnerIds,
     roundWinnerReason: state.roundWinnerReason,
+    outcome: state.outcome || null,
   };
 }
 

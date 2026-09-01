@@ -6,7 +6,7 @@ import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/card
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
 import { sfx } from '../../../shared/sfx';
-import { Copy, Check, BookOpen, Volume2, VolumeX, LogOut, X } from 'lucide-react';
+import { Copy, Check, BookOpen, Volume2, VolumeX, Music2, LogOut, X } from 'lucide-react';
 
 interface GameMenuDrawerProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
+  const [musicOn, setMusicOn] = useState(sfx.getSettings().musicEnabled);
   const [activeTab, setActiveTab] = useState<'rules' | 'settings'>('rules');
 
   const handleCopyCode = () => {
@@ -38,6 +39,12 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
     const next = !sfxOn;
     sfx.setEnabled(next);
     setSfxOn(next);
+  };
+
+  const handleToggleMusic = () => {
+    const next = !musicOn;
+    sfx.setMusicEnabled(next);
+    setMusicOn(next);
   };
 
   const cardsList = [1, 2, 3, 4, 5, 6, 7, 8] as CardValue[];
@@ -62,7 +69,7 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
           >
             <DrawerHeader>
               <HeaderTitle>
-                <span>💌</span> 러브레터 살롱 메뉴
+                러브레터 살롱 메뉴
               </HeaderTitle>
               <CloseBtn onClick={onClose}>
                 <X size={16} />
@@ -121,6 +128,13 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
                 </CardsGuideList>
               ) : (
                 <SettingsList>
+                  <SettingRow>
+                    <span>배경 음악</span>
+                    <ToggleBtn $active={musicOn} onClick={handleToggleMusic}>
+                      <Music2 size={14} />
+                      <span>{musicOn ? '켜짐' : '꺼짐'}</span>
+                    </ToggleBtn>
+                  </SettingRow>
                   <SettingRow>
                     <span>효과음 (SFX)</span>
                     <ToggleBtn $active={sfxOn} onClick={handleToggleSfx}>

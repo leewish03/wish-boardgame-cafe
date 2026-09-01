@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Eye } from 'lucide-react';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
@@ -40,7 +41,7 @@ export const PriestSecretModal: React.FC<PriestSecretModalProps> = ({
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}
             onClick={e => e.stopPropagation()}
           >
-            <HeaderTitle>🔮 사제의 은밀한 손패 투시</HeaderTitle>
+            <HeaderTitle><Eye size={18} aria-hidden="true" /> 사제의 은밀한 손패 투시</HeaderTitle>
             <Subtitle>
               <strong>[{targetPlayerName}]</strong> 님의 손패를 당신만 확인했습니다
             </Subtitle>
@@ -88,6 +89,9 @@ const HeaderTitle = styled.h3`
   margin: 0 0 4px;
   font-size: 15px;
   color: ${THEME.foreground};
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: ${THEME.font.serif};
   font-weight: 800;
 `;

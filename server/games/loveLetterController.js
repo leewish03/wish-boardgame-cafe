@@ -43,6 +43,17 @@ export function registerLoveLetterController(io, service) {
     socket.on('game:start', handleStart);
     socket.on('loveletter:start-game', handleStart);
 
+    socket.on('game:advance', async (payload, callback) => {
+      try {
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
+        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        await service.advanceRound(roomCode, userId, payload?.expectedStateVersion);
+        if (typeof callback === 'function') callback({ success: true });
+      } catch (error) {
+        callbackError(callback, error);
+      }
+    });
+
     socket.on(SOCKET_EVENTS.GAME_COMMAND, async (payload, callback) => {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);

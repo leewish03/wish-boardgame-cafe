@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Clock3 } from 'lucide-react';
 import { THEME } from '../../../shared/theme';
 
 interface PauseOverlayProps {
@@ -29,7 +30,7 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
             animate={{ scale: 1 }}
             exit={{ scale: 0.8 }}
           >
-            <ClockIcon>⏳</ClockIcon>
+            <ClockIcon><Clock3 size={32} strokeWidth={1.6} aria-hidden="true" /></ClockIcon>
             <PauseTitle>연결 복구 대기 중</PauseTitle>
             <PauseDesc>
               <strong>{pausedPlayerName}</strong> 님의 네트워크 연결을 복구하고 있습니다…
@@ -70,7 +71,8 @@ const PauseBox = styled.div`
 `;
 
 const ClockIcon = styled.div`
-  font-size: 34px;
+  color: ${THEME.gold};
+  line-height: 1;
   margin-bottom: 6px;
 `;
 

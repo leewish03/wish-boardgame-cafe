@@ -5,6 +5,7 @@ import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/card
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { Crosshair, X } from 'lucide-react';
 
 interface GuessSelectorProps {
   isOpen: boolean;
@@ -43,12 +44,12 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
           >
             <HeaderRow>
               <TitleCluster>
-                <TargetIcon>🎯</TargetIcon>
+                <TargetIcon><Crosshair size={16} /></TargetIcon>
                 <SheetTitle>
                   <strong>[{targetPlayerName}]</strong> 님의 카드 번호 추측
                 </SheetTitle>
               </TitleCluster>
-              <CloseButton onClick={onCancel}>✕</CloseButton>
+              <CloseButton onClick={onCancel} aria-label="추측 취소"><X size={16} /></CloseButton>
             </HeaderRow>
 
             <HelperNotice>

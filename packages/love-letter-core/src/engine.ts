@@ -24,6 +24,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       s.roundNumber = 0;
       s.matchWinnerId = null;
       s.roundWinnerIds = [];
+      s.outcome = null;
       for (const p of s.players) {
         p.tokens = 0;
       }
@@ -38,6 +39,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       s.matchState = 'PLAYING';
       s.playPhase = 'ROUND_START';
       s.lastAction = null;
+      s.outcome = null;
 
       // Reset round state for all players
       for (const p of s.players) {
@@ -168,7 +170,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                 target.cardCount = 0;
 
                 summaryResultType = 'GUARD_SUCCESS';
-                summaryDesc = `🎯 [${player.nickname}] 저격 성공! [${target.nickname}] 님의 카드는 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}]였습니다! 탈락!`;
+                summaryDesc = `[${player.nickname}] 지목 성공 · [${target.nickname}] 님의 카드는 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}] · 탈락`;
                 summaryEliminatedId = targetId;
                 summaryRevealed = targetCard;
 
@@ -177,7 +179,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                 events.push({ type: 'PLAYER_ELIMINATED', playerId: targetId, reason: '경비병 저격 성공', eliminatedBy: playerId });
               } else {
                 summaryResultType = 'GUARD_FAILED';
-                summaryDesc = `❌ [${player.nickname}] 저격 실패! [${target.nickname}] 님은 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}] 카드가 없습니다.`;
+                summaryDesc = `[${player.nickname}] 지목 실패 · [${target.nickname}] 님은 [${CARD_DEFINITIONS[guessValue!]?.name || guessValue}] 카드가 없습니다.`;
                 events.push({ type: 'GUARD_FAILED', actionId, actorId: playerId, targetId, guessValue: guessValue! });
               }
             }
@@ -197,7 +199,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
               const targetCard = targetSecret.hand[0];
               if (targetCard) {
                 summaryResultType = 'PRIEST_REVEAL';
-                summaryDesc = `👁️ [${player.nickname}] 님이 [${target.nickname}] 님의 손패를 은밀히 확인했습니다.`;
+                summaryDesc = `[${player.nickname}] 님이 [${target.nickname}] 님의 손패를 확인했습니다.`;
                 summaryRevealed = targetCard;
                 events.push({ type: 'PRIEST_USED', actionId, actorId: playerId, targetId, revealedCard: targetCard });
                 events.push({ type: 'PRIEST_REVEALED', actionId, actorId: playerId, targetId, revealedCard: targetCard });
@@ -230,7 +232,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   target.cardCount = 0;
 
                   summaryResultType = 'BARON_WIN';
-                  summaryDesc = `⚔️ 남작 결투! [${player.nickname}] 승리! [${target.nickname}] (${oppCard.name}) 탈락!`;
+                  summaryDesc = `남작 비교 · [${player.nickname}] 승리 · [${target.nickname}] (${oppCard.name}) 탈락`;
                   summaryEliminatedId = targetId;
                   summaryRevealed = oppCard;
 
@@ -265,7 +267,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   player.cardCount = 0;
 
                   summaryResultType = 'BARON_LOSS';
-                  summaryDesc = `⚔️ 남작 결투! [${target.nickname}] 승리! [${player.nickname}] (${myCard.name}) 탈락!`;
+                  summaryDesc = `남작 비교 · [${target.nickname}] 승리 · [${player.nickname}] (${myCard.name}) 탈락`;
                   summaryEliminatedId = playerId;
                   summaryRevealed = myCard;
 
@@ -293,7 +295,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   });
                 } else {
                   summaryResultType = 'BARON_TIE';
-                  summaryDesc = `⚔️ 남작 결투! [${player.nickname}] 와 [${target.nickname}] 의 카드 숫자가 같습니다. (무승부)`;
+                  summaryDesc = `남작 비교 · [${player.nickname}] 와 [${target.nickname}] 의 카드 숫자가 같습니다.`;
                   events.push({
                     type: 'BARON_DUEL_STARTED',
                     actionId,
@@ -321,7 +323,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         case 4: { // Handmaid
           player.isProtected = true;
           summaryResultType = 'HANDMAID_PROTECT';
-          summaryDesc = `🌸 [${player.nickname}] 님이 하녀를 소환하여 다음 턴까지 모든 공격에 면역됩니다.`;
+          summaryDesc = `[${player.nickname}] 님은 다음 내 차례까지 보호됩니다.`;
           events.push({ type: 'PLAYER_PROTECTED', actionId, actorId: playerId });
           events.push({ type: 'HANDMAID_PROTECTED', actionId, actorId: playerId });
           break;
@@ -346,13 +348,13 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
               target.eliminationReason = '왕자의 명령으로 공주를 버림';
               target.eliminatedBy = playerId;
               summaryResultType = 'PRINCE_PRINCESS_ELIMINATED';
-              summaryDesc = `👸 공주 카드가 버려졌습니다! [${target.nickname}] 즉시 탈락!`;
+              summaryDesc = `공주 카드가 버려져 [${target.nickname}] 님이 탈락했습니다.`;
               summaryEliminatedId = princeTargetId;
               summaryRevealed = discarded;
               events.push({ type: 'PLAYER_ELIMINATED', playerId: princeTargetId, reason: '왕자의 명령으로 공주 버림', eliminatedBy: playerId });
             } else {
               summaryResultType = 'PRINCE_DISCARD';
-              summaryDesc = `👑 왕자의 명령! [${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
+              summaryDesc = `[${target.nickname}] 님이 [${discarded.name}] 카드를 버리고 새로 뽑았습니다.`;
               summaryRevealed = discarded;
 
               // Draw new card (from deck or setAsideCard if deck empty)
@@ -394,7 +396,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                 targetSecret.hand = [myCard];
 
                 summaryResultType = 'KING_SWAP';
-                summaryDesc = `🤴 국왕의 칙령! [${player.nickname}] 와 [${target.nickname}] 의 손패가 맞교환되었습니다.`;
+                summaryDesc = `[${player.nickname}] 와 [${target.nickname}] 의 손패가 교환되었습니다.`;
                 summarySwapped = true;
 
                 events.push({ type: 'KING_SWAP', actionId, actorId: playerId, targetId });
@@ -410,7 +412,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         case 7: { // Countess
           summaryResultType = 'COUNTESS_PLAY';
-          summaryDesc = `🌹 [${player.nickname}] 님이 백작부인을 우아하게 내려놓았습니다.`;
+          summaryDesc = `[${player.nickname}] 님이 백작부인을 사용했습니다.`;
           break;
         }
 
@@ -419,7 +421,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           player.eliminationReason = '스스로 공주 카드를 플레이함';
           player.eliminatedBy = playerId;
           summaryResultType = 'PRINCESS_ELIMINATED';
-          summaryDesc = `👸 공주 카드를 플레이했습니다! [${player.nickname}] 즉시 탈락!`;
+          summaryDesc = `[${player.nickname}] 님이 공주 카드를 사용해 탈락했습니다.`;
           summaryEliminatedId = playerId;
           summaryRevealed = playedCard;
           events.push({ type: 'PLAYER_ELIMINATED', playerId, reason: '공주 카드 자진 제출', eliminatedBy: playerId });
@@ -450,6 +452,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         const winnerCards: Record<PlayerId, CardInstance> = {};
         const scores: Record<PlayerId, number> = {};
+        const previousScores: Record<PlayerId, number> = {};
+
+        for (const p of s.players) previousScores[p.id] = p.tokens || 0;
 
         for (const w of winners) {
           w.tokens = (w.tokens || 0) + 1;
@@ -471,6 +476,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
             : '덱 소진! 최고점 공동 승리!';
 
         s.roundWinnerReason = reason;
+        const normalizedReason = getActivePlayers(s).length <= 1 ? 'LAST_SURVIVOR' : winners.length === 1 ? 'DECK_EXHAUSTED' : 'TIE_BREAK';
+        s.outcome = { kind: 'ROUND', reason: normalizedReason, winnerIds: s.roundWinnerIds, winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
 
         events.push({
           type: 'ROUND_ENDED',
@@ -486,6 +493,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           s.matchState = 'GAME_OVER';
           s.playPhase = 'GAME_OVER';
           s.matchWinnerId = matchWinner.id;
+          s.outcome = { kind: 'MATCH', reason: normalizedReason, winnerIds: [matchWinner.id], winnerCards, scores, previousScores, nextStarterId: null, advanceAt: null };
 
           events.push({
             type: 'MATCH_ENDED',
@@ -578,6 +586,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         s.roundWinnerIds = winners.map(w => w.id);
         const winnerCards: Record<PlayerId, CardInstance> = {};
         const scores: Record<PlayerId, number> = {};
+        const previousScores: Record<PlayerId, number> = {};
+
+        for (const p of s.players) previousScores[p.id] = p.tokens || 0;
 
         for (const w of winners) {
           w.tokens = (w.tokens || 0) + 1;
@@ -591,6 +602,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           }
         }
 
+        s.roundWinnerReason = '상대 탈락으로 인한 라운드 승리';
+        s.outcome = { kind: 'ROUND', reason: 'FORFEIT', winnerIds: s.roundWinnerIds, winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
         events.push({
           type: 'ROUND_ENDED',
           winnerIds: s.roundWinnerIds,
@@ -604,6 +617,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           s.matchState = 'GAME_OVER';
           s.playPhase = 'GAME_OVER';
           s.matchWinnerId = matchWinner ? matchWinner.id : null;
+
+          if (s.matchWinnerId) s.outcome = { kind: 'MATCH', reason: 'FORFEIT', winnerIds: [s.matchWinnerId], winnerCards, scores, previousScores, nextStarterId: null, advanceAt: null };
 
           if (s.matchWinnerId) {
             events.push({

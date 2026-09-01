@@ -770,7 +770,35 @@ export function initRoomManager(io) {
     };
 
     socket.on('room:forfeit', handleForfeit);
-    socket.on('room:leave', handleForfeit);
+    socket.on('room:leave', async (payload, callback) => {
+      try {
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
+        if (!room) { if (typeof callback === 'function') callback({ success: true }); return; }
+        // Leaving a completed result screen must not run a forfeit command and
+        // mutate the already-finished outcome.
+        if (room.gameStateObject?.matchState === 'PLAYING' || room.gameState === 'PLAYING') {
+          await handleForfeit(payload, callback);
+          return;
+        }
+        delete socketToUser[socket.id];
+        socket.leave(roomCode);
+        room.players = room.players.filter((player) => player.id !== userId);
+        if (room.players.length === 0) {
+          delete rooms[roomCode];
+        } else {
+          if (room.hostId === userId) {
+            room.hostId = room.players[0].id;
+            room.players[0].isHost = true;
+            room.players[0].isReady = true;
+          }
+          room.stateVersion = (room.stateVersion || 0) + 1;
+          broadcastRoomState(io, roomCode);
+        }
+        if (typeof callback === 'function') callback({ success: true });
+      } catch (err) {
+        if (typeof callback === 'function') callback({ success: false, error: err.message || '방을 나가지 못했습니다.' });
+      }
+    });
 
     // 7. Socket Disconnect Handler
     socket.on('disconnect', async () => {

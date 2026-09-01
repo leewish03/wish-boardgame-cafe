@@ -1,204 +1,25 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Crown, LogOut, RotateCcw } from 'lucide-react';
+import { PlayerPublic } from '../../../..//packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
 
-interface MatchResultModalProps {
-  isOpen: boolean;
-  championName: string;
-  targetTokens?: number;
-  onPlayAgain?: () => void;
-  onReturnToLobby: () => void;
-}
-
-export const MatchResultModal: React.FC<MatchResultModalProps> = ({
-  isOpen,
-  championName,
-  targetTokens = 4,
-  onPlayAgain,
-  onReturnToLobby,
-}) => {
-  const renderTokens = () => {
-    return Array.from({ length: targetTokens }).map((_, i) => (
-      <FullHeartStamp key={i}>♥</FullHeartStamp>
-    ));
-  };
-
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <Overlay
-          as={motion.div}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <VictoryCard
-            as={motion.div}
-            initial={{ scale: 0.7, y: 30 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.7, y: 30 }}
-            transition={{ type: 'spring', stiffness: 250, damping: 20 }}
-          >
-            <TrophyIcon>🏆</TrophyIcon>
-            <VictoryTag>LOVE LETTER MATCH CHAMPION</VictoryTag>
-            <ChampionTitle>황실의 최종 승리자</ChampionTitle>
-            <ChampionName>👑 {championName}</ChampionName>
-
-            <StampContainer>
-              <StampRow>{renderTokens()}</StampRow>
-              <TokensCompleteText>목표 호감도 달성 ({targetTokens}/{targetTokens})</TokensCompleteText>
-            </StampContainer>
-
-            <VictoryDesc>공주의 마음을 온전히 얻어 살롱 최고의 명예를 거머쥐었습니다!</VictoryDesc>
-
-            <ButtonGroup>
-              {onPlayAgain && (
-                <PlayAgainBtn onClick={onPlayAgain}>
-                  다시 플레이 ↺
-                </PlayAgainBtn>
-              )}
-              <LobbyReturnBtn onClick={onReturnToLobby}>
-                살롱 로비로 ➔
-              </LobbyReturnBtn>
-            </ButtonGroup>
-          </VictoryCard>
-        </Overlay>
-      )}
-    </AnimatePresence>
-  );
-};
-
-const Overlay = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(9, 13, 22, 0.85);
-  backdrop-filter: blur(10px);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-`;
-
-const VictoryCard = styled.div`
-  width: 100%;
-  max-width: 360px;
-  background-color: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 2px solid ${THEME.gold};
-  border-radius: 20px;
-  padding: 26px 20px;
-  text-align: center;
-  box-shadow: 0 20px 50px rgba(9, 13, 22, 0.45), 0 0 35px rgba(197, 160, 89, 0.5);
-  box-sizing: border-box;
-`;
-
-const TrophyIcon = styled.div`
-  font-size: 44px;
-  margin-bottom: 6px;
-  filter: drop-shadow(0 4px 12px rgba(197, 160, 89, 0.6));
-`;
-
-const VictoryTag = styled.span`
-  font-family: ${THEME.font.serif};
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  color: ${THEME.goldAntique};
-  text-transform: uppercase;
-  display: block;
-  margin-bottom: 4px;
-`;
-
-const ChampionTitle = styled.h3`
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: ${THEME.mutedForeground};
-`;
-
-const ChampionName = styled.h2`
-  margin: 4px 0 14px;
-  font-family: ${THEME.font.serif};
-  font-size: 22px;
-  font-weight: 900;
-  color: ${THEME.burgundy};
-`;
-
-const StampContainer = styled.div`
-  background: #f8fafc;
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.lg};
-  padding: 10px 14px;
-  margin-bottom: 14px;
-`;
-
-const StampRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 4px;
-`;
-
-const FullHeartStamp = styled.span`
-  font-size: 20px;
-  color: ${THEME.burgundy};
-  filter: drop-shadow(0 2px 4px rgba(99, 19, 38, 0.4));
-`;
-
-const TokensCompleteText = styled.span`
-  font-size: 11px;
-  font-weight: 800;
-  color: ${THEME.goldAntique};
-`;
-
-const VictoryDesc = styled.p`
-  font-size: 12px;
-  color: ${THEME.mutedForeground};
-  margin: 0 0 20px;
-  line-height: 1.4;
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const PlayAgainBtn = styled.button`
-  height: 42px;
-  background: ${THEME.gradients.goldShimmer};
-  color: ${THEME.foreground};
-  font-family: ${THEME.font.serif};
-  font-weight: 900;
-  font-size: 13.5px;
-  border: 1px solid ${THEME.goldAntique};
-  border-radius: ${THEME.radius.md};
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(197, 160, 89, 0.4);
-  transition: all 0.15s ease;
-
-  &:hover {
-    filter: brightness(1.06);
-    box-shadow: 0 6px 18px rgba(197, 160, 89, 0.6);
-  }
-`;
-
-const LobbyReturnBtn = styled.button`
-  height: 38px;
-  background: #ffffff;
-  color: ${THEME.foreground};
-  font-family: ${THEME.font.serif};
-  font-weight: 800;
-  font-size: 12.5px;
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.md};
-  cursor: pointer;
-
-  &:hover {
-    background: ${THEME.secondary};
-    border-color: #cbd5e1;
-  }
-`;
+interface MatchResultModalProps { isOpen:boolean; championName:string; targetTokens?:number; onPlayAgain?:()=>void; onReturnToLobby:()=>void; players?:PlayerPublic[]; isHost?:boolean; requestError?:string|null; }
+export const MatchResultModal: React.FC<MatchResultModalProps> = ({ isOpen, championName, targetTokens=4, onPlayAgain, onReturnToLobby, players=[], isHost=false, requestError }) => <AnimatePresence>{isOpen && <Overlay as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><Sheet as={motion.section} initial={{scale:.96,y:20}} animate={{scale:1,y:0}} exit={{scale:.96,y:20}}>
+  <Eyebrow>매치 종료</Eyebrow><Title><Crown size={20}/>{championName} 최종 우승</Title><Description>목표 호감도 {targetTokens}점을 가장 먼저 달성했습니다.</Description>
+  <Ranking>{[...players].sort((a,b)=>b.tokens-a.tokens).map((p,index)=><RankRow key={p.id}><span>{index+1}. {p.nickname}</span><strong>{p.tokens}점</strong></RankRow>)}</Ranking>
+  <Buttons>{isHost && onPlayAgain && <Primary type="button" onClick={onPlayAgain}><RotateCcw size={15}/> 같은 멤버로 새 매치</Primary>}<Secondary type="button" onClick={onReturnToLobby}><LogOut size={15}/> 살롱 로비로</Secondary></Buttons>{!isHost && <Waiting>방장만 새 매치를 시작할 수 있습니다.</Waiting>}{requestError && <ErrorText>{requestError}</ErrorText>}
+</Sheet></Overlay>}</AnimatePresence>;
+const Overlay=styled.div`position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;background:rgba(9,13,22,.76);backdrop-filter:blur(7px);`;
+const Sheet=styled.div`width:min(440px,100%);max-height:90dvh;overflow:auto;padding:22px;box-sizing:border-box;text-align:center;border:1.5px solid ${THEME.gold};border-radius:16px;background:#fff;background-image:${THEME.gradients.marbleSlab};`;
+const Eyebrow=styled.div`font-size:10px;font-weight:900;letter-spacing:.1em;color:${THEME.goldAntique};`;
+const Title=styled.h2`margin:7px 0 4px;display:flex;justify-content:center;align-items:center;gap:6px;font:900 20px ${THEME.font.serif};color:${THEME.burgundy};`;
+const Description=styled.p`margin:0 0 14px;font-size:12px;color:${THEME.mutedForeground};`;
+const Ranking=styled.div`display:flex;flex-direction:column;gap:4px;margin-bottom:15px;`;
+const RankRow=styled.div`display:flex;justify-content:space-between;padding:8px 10px;border:1px solid ${THEME.border};border-radius:7px;background:rgba(255,255,255,.7);font-size:11px;`;
+const Buttons=styled.div`display:flex;flex-direction:column;gap:7px;`;
+const Primary=styled.button`height:41px;display:flex;gap:6px;align-items:center;justify-content:center;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.goldShimmer};font:900 13px ${THEME.font.serif};cursor:pointer;`;
+const Secondary=styled.button`height:38px;display:flex;gap:6px;align-items:center;justify-content:center;border:1px solid ${THEME.border};border-radius:8px;background:#fff;color:${THEME.foreground};font:800 12px ${THEME.font.sans};cursor:pointer;`;
+const Waiting=styled.p`margin:10px 0 0;font-size:11px;color:${THEME.mutedForeground};`;
+const ErrorText=styled.p`margin:8px 0 0;font-size:11px;color:${THEME.destructive};font-weight:700;`;

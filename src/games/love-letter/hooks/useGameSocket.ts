@@ -25,7 +25,7 @@ export interface UseGameSocketReturn {
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number) => void;
-  startNextRound: () => void;
+  startNextRound: (expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
   forfeit: () => void;
   leaveRoom: () => void;
   rawRoomState: any | null;
@@ -317,19 +317,24 @@ export function useGameSocket({
     [socket, roomCode, rawRoomState?.code, myUserId]
   );
 
-  const startNextRound = useCallback(() => {
-    if (!socket) return;
+  const startNextRound = useCallback((expectedStateVersion?: number, callback?: (result: { success: boolean; error?: string }) => void) => {
+    if (!socket) {
+      callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
+      return;
+    }
     const code = roomCode || rawRoomState?.code;
     socket.emit(
-      'game:start',
+      SOCKET_EVENTS.GAME_ADVANCE,
       {
         roomCode: code,
         userId: myUserId,
+        expectedStateVersion,
       },
       (res: any) => {
         if (res && !res.success && res.error) {
           console.error('Start next round error:', res.error);
         }
+        callback?.(res || { success: false, error: '서버 응답을 받지 못했습니다.' });
       }
     );
   }, [socket, roomCode, rawRoomState?.code, myUserId]);

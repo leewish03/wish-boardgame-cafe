@@ -720,7 +720,7 @@ export default function App() {
   // Leave Room
   const handleLeaveRoom = () => {
     if (socket) {
-      socket.emit('room:forfeit', {
+      socket.emit('room:leave', {
         roomCode: roomState?.code,
         userId: currentUser?.id,
       }, () => {});

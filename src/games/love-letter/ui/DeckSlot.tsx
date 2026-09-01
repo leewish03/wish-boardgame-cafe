@@ -1,6 +1,5 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
 import { THEME } from '../../../shared/theme';
 
 interface DeckSlotProps {
@@ -16,9 +15,9 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCard }) => {
           <>
             <BackCardLayer $offset={4} />
             <BackCardLayer $offset={2} />
-            <TopDeckCard as={motion.div} whileHover={{ y: -2 }}>
-              <DeckPattern>💌</DeckPattern>
-              <DeckCountBadge>{count}장 남음</DeckCountBadge>
+            <TopDeckCard>
+              <DeckPattern>W</DeckPattern>
+              <DeckCountBadge>{count}</DeckCountBadge>
             </TopDeckCard>
           </>
         ) : (
@@ -39,8 +38,8 @@ const DeckWrapper = styled.div`
 
 const DeckStack = styled.div`
   position: relative;
-  width: 54px;
-  height: 80px;
+  width: 48px;
+  height: 70px;
 `;
 
 const BackCardLayer = styled.div<{ $offset: number }>`
@@ -70,17 +69,19 @@ const TopDeckCard = styled.div`
 `;
 
 const DeckPattern = styled.div`
-  font-size: 18px;
+  font-family: ${THEME.font.serif};
+  font-size: 17px;
+  font-weight: 900;
   line-height: 1;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 `;
 
 const DeckCountBadge = styled.span`
-  font-size: 9px;
+  font-size: 14px;
   font-weight: 800;
   font-family: ${THEME.font.serif};
   color: ${THEME.goldLight};
-  margin-top: 3px;
+  margin-top: 0;
   letter-spacing: 0.04em;
 `;
 

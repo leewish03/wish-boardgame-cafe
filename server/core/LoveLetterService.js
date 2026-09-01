@@ -49,6 +49,7 @@ export class LoveLetterService {
     this.turnCoordinator = new TurnCoordinator(io, this);
     this.eventCounters = new Map();
     this.botTimers = new Map();
+    this.roundAdvanceTimers = new Map();
   }
 
   getNextEventId(roomCode) {
@@ -154,6 +155,7 @@ export class LoveLetterService {
 
     const { nextState, events } = core.executeCommand(room.gameStateObject, command);
     this.applyGameStateToRoom(room, nextState);
+    this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
     for (const ev of events) {
@@ -201,6 +203,7 @@ export class LoveLetterService {
         maxPlayers: room.maxPlayers,
       } };
     const { nextState, events } = core.executeCommand(baseState, command);
+    this.clearRoundAdvanceTimer(roomCode);
     this.applyGameStateToRoom(room, nextState);
     await roomRepository.saveRoom(room);
     for (const event of events) this.broadcastGameEvent(roomCode, nextState, event);
@@ -209,6 +212,37 @@ export class LoveLetterService {
     this.scheduleTurnTimeout(roomCode, nextState);
     this.scheduleNextTurnIfBot(roomCode);
     return { nextState, events };
+  }
+
+  clearRoundAdvanceTimer(roomCode) {
+    const timer = this.roundAdvanceTimers.get(roomCode);
+    if (timer) clearTimeout(timer);
+    this.roundAdvanceTimers.delete(roomCode);
+  }
+
+  scheduleRoundAdvance(roomCode, room, gameState) {
+    this.clearRoundAdvanceTimer(roomCode);
+    if (gameState.matchState !== 'ROUND_END') return;
+    const advanceAt = Date.now() + 10_000;
+    if (gameState.outcome) gameState.outcome.advanceAt = advanceAt;
+    room.gameStateObject = gameState;
+    const timer = setTimeout(async () => {
+      this.roundAdvanceTimers.delete(roomCode);
+      const latest = await roomRepository.getRoom(roomCode);
+      if (!latest?.gameStateObject || latest.gameStateObject.matchState !== 'ROUND_END') return;
+      try { await this.startMatch(roomCode, latest.hostId); } catch (error) { console.error('Automatic round advance failed:', error.message); }
+    }, 10_000);
+    timer.unref?.();
+    this.roundAdvanceTimers.set(roomCode, timer);
+  }
+
+  async advanceRound(roomCode, hostId, expectedStateVersion) {
+    const room = await roomRepository.getRoom(roomCode);
+    if (!room?.gameStateObject) throw new Error('방을 찾을 수 없습니다.');
+    if (room.hostId !== hostId) throw new Error('방장만 다음 라운드를 시작할 수 있습니다.');
+    if (room.gameStateObject.matchState !== 'ROUND_END') throw new Error('다음 라운드를 시작할 수 있는 상태가 아닙니다.');
+    if (expectedStateVersion != null && expectedStateVersion !== room.gameStateObject.stateVersion) throw new Error('게임 상태가 변경되었습니다. 다시 확인해 주세요.');
+    return this.startMatch(roomCode, hostId);
   }
 
   scheduleTurnTimeout(roomCode, gameState) {

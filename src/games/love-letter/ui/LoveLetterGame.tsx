@@ -4,6 +4,7 @@ import { GameHud } from './GameHud';
 import { OpponentRail } from './OpponentRail';
 import { ActionStage } from './ActionStage';
 import { PlayerHand } from './PlayerHand';
+import { PlayerSeat } from './PlayerSeat';
 import { GuessSelector } from './GuessSelector';
 import { DiscardHistoryModal } from './DiscardHistoryModal';
 import { PriestSecretModal } from './PriestSecretModal';
@@ -128,6 +129,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [isOverDropZone, setIsOverDropZone] = useState(false);
   const [interactionState, setInteractionState] = useState<string>('IDLE');
   const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
+  const [isAdvancingRound, setIsAdvancingRound] = useState(false);
+  const [resultRequestError, setResultRequestError] = useState<string | null>(null);
 
   // Modal States
   const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
@@ -179,6 +182,20 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       setInteractionState('IDLE');
     }
   }, [isMyTurn]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        sfx.stopSalonAmbience();
+      } else {
+        // The context is created only after a table interaction. This merely resumes
+        // the user's existing setting after returning to the tab.
+        sfx.unlockAndStart();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   useEffect(() => {
     if (interactionState !== 'SUBMITTING') return;
@@ -314,7 +331,12 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     if (propOnStartNextRound) {
       propOnStartNextRound();
     } else {
-      gameSocket.startNextRound();
+      setIsAdvancingRound(true);
+      setResultRequestError(null);
+      gameSocket.startNextRound(gameState.stateVersion, result => {
+        setIsAdvancingRound(false);
+        if (!result.success) setResultRequestError(result.error || '다음 라운드를 시작하지 못했습니다.');
+      });
     }
   };
 
@@ -338,7 +360,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const handleToggleSTT = propOnToggleSTT || stt?.toggleSTT;
 
   const turnPlayer = gameState.players.find(p => p.id === gameState.currentTurnPlayerId);
-  const roundWinner = gameState.players.find(p => gameState.roundWinnerIds?.includes(p.id));
+  const outcomeWinnerIds = gameState.roundWinnerIds?.length
+    ? gameState.roundWinnerIds
+    : gameState.outcome?.winnerIds || [];
+  const roundWinner = gameState.players.find(p => outcomeWinnerIds.includes(p.id));
   const matchWinner = gameState.players.find(p => p.id === gameState.matchWinnerId);
   const targetPlayer = opponents.find(p => p.id === selectedTargetId);
 
@@ -346,7 +371,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
 
   return (
-    <BoardSurface>
+    <BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
       {/* 1. TOP HUD (Section 3 Tier 1) */}
       <GameHud
         roundNumber={gameState.roundNumber}
@@ -398,7 +423,22 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onSelectSelfTarget={() => handleSelectTarget(activeUserId)}
       />
 
-      {/* 5. MY HAND (Section 3 Tier 5) */}
+      {/* My cards are played in front of me, not into the middle of the table. */}
+      {me && (
+        <MyPlayArea data-player-id={activeUserId}>
+          <PlayerSeat
+            player={me}
+            isCurrentTurn={isMyTurn}
+            isTargetable={targetablePlayerIds.includes(activeUserId)}
+            isSelectedTarget={selectedTargetId === activeUserId}
+            isSelf
+            isSpeaking={!!speakingUsers[activeUserId]}
+            subtitle={userSubtitles[activeUserId]}
+            onClickTarget={() => handleSelectTarget(activeUserId)}
+            onInspectDiscards={() => handleInspectDiscards(activeUserId)}
+          />
+        </MyPlayArea>
+      )}
       <PlayerHand
         hand={myHand}
         isMyTurn={canInteract}
@@ -406,10 +446,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         interactionState={interactionState}
         onSelectCard={handleSelectCard}
         onValidDrop={handleSelectCard}
-        onDragStateChange={(isDragging, isOver) => {
-          setIsDraggingCard(isDragging);
-          setIsOverDropZone(isOver);
-        }}
         onCancelSelection={handleCancelAction}
       />
 
@@ -430,7 +466,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       />
 
       <PriestSecretModal
-        isOpen={!!priestSecret}
+        isOpen={!!priestSecret && gameState.matchState === 'PLAYING'}
         targetPlayerName={priestSecret?.targetName || ''}
         secretCard={priestSecret?.card || null}
         onClose={() => {
@@ -440,21 +476,32 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       />
 
       <RoundResultModal
-        isOpen={gameState.matchState === 'ROUND_END'}
+        isOpen={gameState.matchState === 'ROUND_END' && !isActionPlaying}
         roundNumber={gameState.roundNumber}
         winnerName={roundWinner?.nickname || '승자'}
         winnerTokens={roundWinner?.tokens || 1}
         targetTokens={gameState.config?.targetTokens || 4}
         isHost={me?.isHost || false}
         onNextRound={handleStartNextRound}
+        players={gameState.players}
+        winnerIds={outcomeWinnerIds}
+        winnerReason={gameState.roundWinnerReason || gameState.outcome?.reason}
+        previousScores={gameState.outcome?.previousScores}
+        winnerCards={gameState.outcome?.winnerCards}
+        advanceAt={gameState.outcome?.advanceAt}
+        isRequesting={isAdvancingRound}
+        requestError={resultRequestError}
       />
 
       <MatchResultModal
-        isOpen={gameState.matchState === 'GAME_OVER'}
+        isOpen={gameState.matchState === 'GAME_OVER' && !isActionPlaying}
         championName={matchWinner?.nickname || '최종 우승자'}
         targetTokens={gameState.config?.targetTokens || 4}
-        onPlayAgain={handleStartNextRound}
+        onPlayAgain={me?.isHost ? handleStartNextRound : undefined}
         onReturnToLobby={handleLeaveCallback}
+        players={gameState.players}
+        isHost={me?.isHost || false}
+        requestError={resultRequestError}
       />
 
       <PauseOverlay
@@ -489,6 +536,13 @@ const BoardSurface = styled.div`
   box-sizing: border-box;
   font-family: ${THEME.font.sans};
   color: ${THEME.foreground};
+`;
+
+const MyPlayArea = styled.div`
+  width: min(240px, calc(100% - 16px));
+  align-self: center;
+  flex-shrink: 0;
+  margin-top: 2px;
 `;
 
 export default LoveLetterGame;

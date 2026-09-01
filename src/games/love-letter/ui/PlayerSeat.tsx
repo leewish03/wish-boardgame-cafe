@@ -1,8 +1,10 @@
 import React from 'react';
-import styled, { css, keyframes } from 'styled-components';
+import styled, { css } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { CircleSlash, Heart, ShieldCheck } from 'lucide-react';
 import { PlayerPublic } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
+import { getHeraldicIcon } from '../presentation/heraldicIcons';
 
 interface PlayerSeatProps {
   player: PlayerPublic;
@@ -18,364 +20,102 @@ interface PlayerSeatProps {
 }
 
 export const PlayerSeat: React.FC<PlayerSeatProps> = ({
-  player,
-  isCurrentTurn,
-  isTargetable,
-  isSelectedTarget,
-  isSelf,
-  isSpeaking = false,
-  subtitle,
-  targetDisabledReason,
-  onClickTarget,
-  onInspectDiscards,
+  player, isCurrentTurn, isTargetable, isSelectedTarget, isSelf, isSpeaking = false,
+  subtitle, targetDisabledReason, onClickTarget, onInspectDiscards,
 }) => {
-  const isImageAvatar = player.avatar && (player.avatar.startsWith('http') || player.avatar.startsWith('/'));
+  const imageAvatar = player.avatar && /^(https?:|\/)/.test(player.avatar);
+  const visibleDiscards = (player.discardPile || []).slice(-4);
+  const hiddenDiscardCount = Math.max(0, (player.discardPile || []).length - visibleDiscards.length);
 
   return (
     <SeatWrapper>
-      {/* Real-time STT Speech Bubble */}
       <AnimatePresence>
-        {subtitle && subtitle.text && (
-          <SpeechBubble
-            as={motion.div}
-            initial={{ opacity: 0, y: 6, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.9 }}
-            transition={{ duration: 0.2 }}
-          >
-            💬 {subtitle.text}
-          </SpeechBubble>
-        )}
+        {subtitle?.text && <SpeechBubble as={motion.div} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+          {subtitle.text}
+        </SpeechBubble>}
       </AnimatePresence>
-
       <SeatContainer
-        as={motion.div}
+        as={motion.button}
+        type="button"
         $isCurrentTurn={isCurrentTurn}
         $isTargetable={isTargetable}
         $isSelectedTarget={isSelectedTarget}
         $isEliminated={player.isEliminated}
         $isProtected={player.isProtected}
         onClick={isTargetable ? onClickTarget : undefined}
-        whileHover={isTargetable ? { scale: 1.04 } : undefined}
-        whileTap={isTargetable ? { scale: 0.96 } : undefined}
+        aria-disabled={!isTargetable}
+        whileTap={isTargetable ? { scale: 0.97 } : undefined}
         data-player-id={player.id}
+        aria-label={`${player.nickname}${isTargetable ? ' 선택 가능' : ''}`}
       >
-        <AvatarRing
-          $isCurrentTurn={isCurrentTurn}
-          $isProtected={player.isProtected}
-          $isSpeaking={isSpeaking}
-          $isTargetable={isTargetable}
-        >
-          {isImageAvatar ? (
-            <AvatarImage src={player.avatar} alt={player.nickname} />
-          ) : (
-            <AvatarIcon>{player.avatar || '👑'}</AvatarIcon>
-          )}
-          {player.isProtected && <ProtectionBadge title="하녀 면역 보호">🛡️</ProtectionBadge>}
-          {player.isEliminated && <EliminatedBadge title="탈락">☠️</EliminatedBadge>}
-        </AvatarRing>
+        <IdentityRow>
+          <AvatarRing $isCurrentTurn={isCurrentTurn} $isSpeaking={isSpeaking}>
+            {imageAvatar ? <AvatarImage src={player.avatar} alt="" /> : <AvatarInitial>{player.nickname.slice(0, 1)}</AvatarInitial>}
+            {player.isProtected && <StateIcon title="보호됨"><ShieldCheck size={11} /></StateIcon>}
+            {player.isEliminated && <StateIcon title="탈락"><CircleSlash size={11} /></StateIcon>}
+          </AvatarRing>
+          <IdentityText>
+            <NameRow><PlayerName>{player.nickname}</PlayerName>{player.isBot && <Tag>AI</Tag>}{isSelf && <Tag>나</Tag>}</NameRow>
+            <StatsRow><Heart size={10} fill="currentColor" /> {player.tokens}<HandBack aria-label={`손패 ${player.cardCount}장`}>{player.cardCount}</HandBack></StatsRow>
+          </IdentityText>
+          {isCurrentTurn && <TurnMark>차례</TurnMark>}
+        </IdentityRow>
 
-        <InfoBlock>
-          <NameRow>
-            <PlayerName>{player.nickname}</PlayerName>
-            {player.isBot && <BotTag>AI</BotTag>}
-            {isSelf && <SelfTag>ME</SelfTag>}
-          </NameRow>
+        <PublicPile onClick={event => { if (isTargetable) return; event.stopPropagation(); onInspectDiscards?.(); }} title={`${player.nickname} 공개 패 ${player.discardPile?.length || 0}장`}>
+          {visibleDiscards.length ? visibleDiscards.map((card, index) => (
+            <PublicCard key={`${card.id}_${index}`} $index={index} aria-label={`${card.value} ${card.name}`}>
+              <span>{card.value}</span>{getHeraldicIcon(card.value, 10)}
+            </PublicCard>
+          )) : <EmptyPile>공개 패 없음</EmptyPile>}
+          {hiddenDiscardCount > 0 && <OverflowCount>+{hiddenDiscardCount}</OverflowCount>}
+        </PublicPile>
 
-          <StatsRow>
-            <TokenScore title="호감도 토큰">♥ {player.tokens}</TokenScore>
-            <HandCount title="손패 수">🃏 {player.cardCount}</HandCount>
-          </StatsRow>
-        </InfoBlock>
-
-        {player.discardPile && player.discardPile.length > 0 && (
-          <DiscardStackButton onClick={onInspectDiscards} title="사용한 카드 확인">
-            <DiscardMiniCard>
-              {player.discardPile[player.discardPile.length - 1].value}
-            </DiscardMiniCard>
-            <DiscardCount>+{player.discardPile.length}</DiscardCount>
-          </DiscardStackButton>
-        )}
-
-        {/* In-place direct targeting prompt */}
-        {isTargetable && (
-          <TargetPromptBadge>🎯 선택</TargetPromptBadge>
-        )}
-
-        {!isTargetable && targetDisabledReason && (
-          <TargetDisabledBadge>{targetDisabledReason}</TargetDisabledBadge>
-        )}
+        {player.isProtected && <StateText>보호</StateText>}
+        {player.isEliminated && <StateText>탈락</StateText>}
+        {!isTargetable && targetDisabledReason && <DisabledText>{targetDisabledReason}</DisabledText>}
       </SeatContainer>
     </SeatWrapper>
   );
 };
 
-const pulseGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 4px rgba(197, 160, 89, 0.4); }
-  50% { box-shadow: 0 0 14px rgba(197, 160, 89, 0.85); }
-`;
-
-const SeatWrapper = styled.div`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
-`;
-
+const SeatWrapper = styled.div`position: relative; min-width: 0; width: 100%;`;
 const SpeechBubble = styled.div`
-  position: absolute;
-  top: -30px;
-  background: ${THEME.gradients.obsidianButton};
-  border: 1px solid ${THEME.gold};
-  color: ${THEME.goldLight};
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: ${THEME.radius.full};
-  white-space: nowrap;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  box-shadow: 0 3px 10px rgba(9, 13, 22, 0.35);
-  z-index: 200;
-  pointer-events: none;
+  position:absolute; z-index:8; top:-25px; left:50%; transform:translateX(-50%); max-width:120px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 7px; border-radius:999px;
+  background:${THEME.primary}; color:#fff; font-size:9px; font-weight:700;
 `;
-
-const SeatContainer = styled.div<{
-  $isCurrentTurn: boolean;
-  $isTargetable: boolean;
-  $isSelectedTarget: boolean;
-  $isEliminated: boolean;
-  $isProtected: boolean;
-}>`
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  min-height: 40px;
-  background: #ffffff;
-  background-image: ${THEME.gradients.marbleSlab};
-  border: 1.5px solid ${THEME.border};
-  border-radius: ${THEME.radius.lg};
-  box-shadow: 0 2px 8px rgba(9, 13, 22, 0.05);
-  transition: all 0.2s ease;
-  cursor: ${props => (props.$isTargetable ? 'pointer' : 'default')};
-
-  ${props =>
-    props.$isCurrentTurn &&
-    css`
-      border-color: ${THEME.gold};
-      background: linear-gradient(135deg, #ffffff 0%, #fefce8 100%);
-      box-shadow: 0 0 12px rgba(197, 160, 89, 0.4), 0 2px 8px rgba(9, 13, 22, 0.08);
-    `}
-
-  ${props =>
-    props.$isTargetable &&
-    css`
-      border-color: ${THEME.gold};
-      animation: ${pulseGlow} 1.6s infinite ease-in-out;
-      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-    `}
-
-  ${props =>
-    props.$isSelectedTarget &&
-    css`
-      border-color: ${THEME.burgundy};
-      background: #fff1f2;
-      box-shadow: 0 0 16px rgba(99, 19, 38, 0.4);
-    `}
-
-  ${props =>
-    props.$isEliminated &&
-    css`
-      opacity: 0.45;
-      filter: grayscale(90%);
-      background: #f1f5f9;
-      border-color: #cbd5e1;
-    `}
-
-  @media (max-width: 360px) {
-    padding: 3px 6px;
-    gap: 4px;
-  }
+const SeatContainer = styled.button<{ $isCurrentTurn:boolean; $isTargetable:boolean; $isSelectedTarget:boolean; $isEliminated:boolean; $isProtected:boolean }>`
+  width:100%; min-width:0; padding:5px; border-radius:10px; text-align:left; font:inherit;
+  background:rgba(255,255,255,.93); background-image:${THEME.gradients.marbleSlab}; border:1px solid ${THEME.border};
+  cursor:${p => p.$isTargetable ? 'pointer' : 'default'}; color:${THEME.foreground}; box-sizing:border-box;
+  transition:border-color .18s ease, background .18s ease, opacity .18s ease, transform .18s ease;
+  ${p => p.$isCurrentTurn && css`border:2px solid ${THEME.gold}; background:#fffdf4; box-shadow:0 2px 10px rgba(197,160,89,.22);`}
+  ${p => p.$isTargetable && css`border:2px solid ${THEME.burgundy}; background:#fff8f1;`}
+  ${p => p.$isSelectedTarget && css`background:#fff1f2; border-color:${THEME.burgundy};`}
+  ${p => p.$isEliminated && css`opacity:.54; filter:grayscale(1);`}
 `;
-
-const AvatarRing = styled.div<{
-  $isCurrentTurn: boolean;
-  $isProtected: boolean;
-  $isSpeaking: boolean;
-  $isTargetable: boolean;
-}>`
-  position: relative;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: ${THEME.primary};
-  border: 1.5px solid ${props => (props.$isCurrentTurn ? THEME.gold : THEME.border)};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
-  flex-shrink: 0;
-
-  ${props =>
-    props.$isSpeaking &&
-    css`
-      box-shadow: 0 0 0 2.5px ${THEME.emerald}, 0 0 8px ${THEME.emeraldGlow};
-      border-color: ${THEME.emerald};
-    `}
+const IdentityRow = styled.div`display:flex; min-width:0; align-items:center; gap:4px;`;
+const AvatarRing = styled.div<{ $isCurrentTurn:boolean; $isSpeaking:boolean }>`
+  position:relative; width:25px; height:25px; flex:0 0 25px; overflow:visible; border-radius:50%; background:${THEME.primary};
+  border:1px solid ${p => p.$isCurrentTurn ? THEME.gold : THEME.border}; display:grid; place-items:center;
+  ${p => p.$isSpeaking && css`box-shadow:0 0 0 2px ${THEME.emerald};`}
 `;
-
-const AvatarImage = styled.img`
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
+const AvatarImage = styled.img`width:100%; height:100%; border-radius:inherit; object-fit:cover;`;
+const AvatarInitial = styled.span`color:${THEME.goldLight}; font-family:${THEME.font.serif}; font-size:12px; font-weight:900;`;
+const StateIcon = styled.span`position:absolute; display:grid; place-items:center; right:-4px; bottom:-4px; width:15px; height:15px; border-radius:50%; background:#fff; color:${THEME.burgundy}; border:1px solid ${THEME.border};`;
+const IdentityText = styled.div`min-width:0; flex:1;`;
+const NameRow = styled.div`display:flex; min-width:0; gap:3px; align-items:center;`;
+const PlayerName = styled.span`font-size:10px; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+const Tag = styled.span`font-size:7px; color:${THEME.mutedForeground}; border:1px solid ${THEME.border}; padding:0 2px; border-radius:3px; flex:0 0 auto;`;
+const StatsRow = styled.div`display:flex; align-items:center; gap:2px; color:${THEME.burgundy}; font-size:9px; font-weight:800;`;
+const HandBack = styled.span`margin-left:3px; color:${THEME.mutedForeground}; font-size:8px; border:1px solid ${THEME.border}; border-radius:3px; padding:0 3px;`;
+const TurnMark = styled.span`font-size:8px; font-weight:900; color:${THEME.burgundy}; flex:0 0 auto;`;
+const PublicPile = styled.div`position:relative; display:flex; align-items:flex-end; width:100%; height:31px; margin-top:4px; padding:0; cursor:pointer;`;
+const PublicCard = styled.span<{ $index:number }>`
+  position:absolute; left:${p => p.$index * 16}px; bottom:0; width:22px; height:29px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
+  border-radius:3px; background:#fffdf7; border:1px solid ${THEME.gold}; color:${THEME.primary}; box-shadow:0 1px 3px rgba(9,13,22,.14); font-family:${THEME.font.serif}; font-size:11px; font-weight:900;
 `;
-
-const AvatarIcon = styled.span`
-  font-size: 15px;
-  line-height: 1;
-`;
-
-const ProtectionBadge = styled.span`
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  font-size: 11px;
-  line-height: 1;
-  background: #ffffff;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-`;
-
-const EliminatedBadge = styled.span`
-  position: absolute;
-  bottom: -4px;
-  right: -4px;
-  font-size: 11px;
-  line-height: 1;
-`;
-
-const InfoBlock = styled.div`
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 48px;
-  max-width: 80px;
-
-  @media (max-width: 360px) {
-    min-width: 40px;
-    max-width: 65px;
-  }
-`;
-
-const NameRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 3px;
-`;
-
-const PlayerName = styled.span`
-  font-size: 10.5px;
-  font-weight: 800;
-  color: ${THEME.foreground};
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const BotTag = styled.span`
-  font-size: 8px;
-  font-weight: 800;
-  background: #e2e8f0;
-  color: ${THEME.mutedForeground};
-  padding: 1px 3px;
-  border-radius: 3px;
-`;
-
-const SelfTag = styled.span`
-  font-size: 8px;
-  font-weight: 800;
-  background: ${THEME.goldLight};
-  color: ${THEME.primary};
-  padding: 1px 3px;
-  border-radius: 3px;
-`;
-
-const StatsRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 9.5px;
-  font-weight: 700;
-`;
-
-const TokenScore = styled.span`
-  color: ${THEME.burgundy};
-`;
-
-const HandCount = styled.span`
-  color: ${THEME.mutedForeground};
-`;
-
-const DiscardStackButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: #f8fafc;
-  border: 1px solid ${THEME.border};
-  border-radius: ${THEME.radius.sm};
-  padding: 1px 4px;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-
-  &:hover {
-    border-color: ${THEME.gold};
-    background: #ffffff;
-  }
-`;
-
-const DiscardMiniCard = styled.span`
-  width: 14px;
-  height: 18px;
-  border-radius: 2px;
-  background: ${THEME.gradients.obsidianButton};
-  color: ${THEME.goldLight};
-  font-family: ${THEME.font.serif};
-  font-weight: 800;
-  font-size: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0.5px solid ${THEME.gold};
-`;
-
-const DiscardCount = styled.span`
-  font-size: 9px;
-  font-weight: 700;
-  color: ${THEME.mutedForeground};
-`;
-
-const TargetPromptBadge = styled.span`
-  font-size: 9px;
-  font-weight: 800;
-  color: #ffffff;
-  background: ${THEME.gradients.obsidianButton};
-  border: 1px solid ${THEME.gold};
-  padding: 2px 5px;
-  border-radius: ${THEME.radius.full};
-  white-space: nowrap;
-`;
-
-const TargetDisabledBadge = styled.span`
-  font-size: 8.5px;
-  font-weight: 700;
-  color: ${THEME.mutedForeground};
-  background: #e2e8f0;
-  padding: 1px 4px;
-  border-radius: ${THEME.radius.sm};
-  white-space: nowrap;
-`;
+const EmptyPile = styled.span`align-self:center; font-size:8px; color:${THEME.mutedForeground};`;
+const OverflowCount = styled.span`margin-left:69px; padding-bottom:3px; font-size:8px; color:${THEME.mutedForeground}; font-weight:800;`;
+const StateText = styled.div`font-size:8px; color:${THEME.burgundy}; font-weight:800; margin-top:2px;`;
+const DisabledText = styled.div`font-size:8px; color:${THEME.mutedForeground}; margin-top:2px;`;

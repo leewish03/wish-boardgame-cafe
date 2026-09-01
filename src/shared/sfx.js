@@ -6,6 +6,21 @@ class SFXEngine {
   constructor() {
     this.ctx = null;
     this.enabled = true;
+    this.musicEnabled = true;
+    this.musicVolume = 0.15;
+    this.sfxVolume = 1;
+    this.ambienceNode = null;
+    try {
+      const saved = JSON.parse(localStorage.getItem('wish_audio_v1') || '{}');
+      if (typeof saved.musicEnabled === 'boolean') this.musicEnabled = saved.musicEnabled;
+      if (typeof saved.musicVolume === 'number') this.musicVolume = saved.musicVolume;
+      if (typeof saved.sfxEnabled === 'boolean') this.enabled = saved.sfxEnabled;
+      if (typeof saved.sfxVolume === 'number') this.sfxVolume = saved.sfxVolume;
+    } catch (_) {}
+  }
+
+  persist() {
+    try { localStorage.setItem('wish_audio_v1', JSON.stringify({ musicEnabled: this.musicEnabled, musicVolume: this.musicVolume, sfxEnabled: this.enabled, sfxVolume: this.sfxVolume })); } catch (_) {}
   }
 
   getAudioContext() {
@@ -23,6 +38,35 @@ class SFXEngine {
 
   setEnabled(val) {
     this.enabled = !!val;
+    this.persist();
+  }
+
+  setMusicEnabled(val) {
+    this.musicEnabled = !!val;
+    if (this.musicEnabled) this.startSalonAmbience(); else this.stopSalonAmbience();
+    this.persist();
+  }
+
+  setMusicVolume(value) {
+    this.musicVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (this.ambienceNode?.gain && this.ctx) this.ambienceNode.gain.gain.linearRampToValueAtTime(this.musicVolume * 0.12, this.ctx.currentTime + 0.15);
+    this.persist();
+  }
+
+  getSettings() { return { musicEnabled: this.musicEnabled, musicVolume: this.musicVolume, sfxEnabled: this.enabled, sfxVolume: this.sfxVolume }; }
+
+  unlockAndStart() {
+    this.getAudioContext();
+    if (this.musicEnabled) this.startSalonAmbience();
+  }
+
+  duckMusic(durationMs = 220) {
+    if (!this.ambienceNode?.gain || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const target = this.musicVolume * 0.048;
+    this.ambienceNode.gain.gain.cancelScheduledValues(now);
+    this.ambienceNode.gain.gain.linearRampToValueAtTime(target, now + 0.04);
+    this.ambienceNode.gain.gain.linearRampToValueAtTime(this.musicVolume * 0.12, now + durationMs / 1000);
   }
 
   isEnabled() {
@@ -238,7 +282,7 @@ class SFXEngine {
 
   // 8. Procedural Salon Ambience BGM (Subtle low-pass drone & acoustic warmth)
   startSalonAmbience() {
-    if (this.ambienceNode || !this.enabled) return;
+    if (this.ambienceNode || !this.musicEnabled) return;
     try {
       const ctx = this.getAudioContext();
       if (!ctx) return;
@@ -259,7 +303,7 @@ class SFXEngine {
       filter.frequency.setValueAtTime(320, now);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.03, now + 2.0); // Gentle fade-in
+      gain.gain.linearRampToValueAtTime(this.musicVolume * 0.12, now + 2.0); // Gentle fade-in
 
       osc1.connect(filter);
       osc2.connect(filter);

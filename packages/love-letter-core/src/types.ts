@@ -109,6 +109,19 @@ export interface GameEventSummary {
   swapped?: boolean;
 }
 
+export type OutcomeReason = 'LAST_SURVIVOR' | 'DECK_EXHAUSTED' | 'FORFEIT' | 'TIE_BREAK';
+
+export interface GameOutcome {
+  kind: 'ROUND' | 'MATCH';
+  reason: OutcomeReason;
+  winnerIds: PlayerId[];
+  winnerCards: Record<PlayerId, CardInstance>;
+  scores: Record<PlayerId, number>;
+  previousScores?: Record<PlayerId, number>;
+  nextStarterId?: PlayerId | null;
+  advanceAt?: number | null;
+}
+
 export interface GameState {
   matchState: MatchState;
   playPhase: PlayPhase;
@@ -127,6 +140,7 @@ export interface GameState {
   matchWinnerId: PlayerId | null;
   roundWinnerIds: PlayerId[];
   roundWinnerReason?: string;
+  outcome?: GameOutcome | null;
 }
 
 export type InternalGameState = GameState;
@@ -147,4 +161,5 @@ export interface PublicGameState {
   matchWinnerId: PlayerId | null;
   roundWinnerIds: PlayerId[];
   roundWinnerReason?: string;
+  outcome?: GameOutcome | null;
 }

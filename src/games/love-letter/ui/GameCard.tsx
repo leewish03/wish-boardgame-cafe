@@ -88,7 +88,7 @@ export const GameCard: React.FC<GameCardProps> = ({
 
         {isDisabled && disabledReason && (
           <DisabledBadge>
-            <LockIcon>🔒</LockIcon>
+            <LockIcon>잠금</LockIcon>
             <LockText>{disabledReason}</LockText>
           </DisabledBadge>
         )}
@@ -99,10 +99,10 @@ export const GameCard: React.FC<GameCardProps> = ({
 
 const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $compact: boolean }>`
   position: relative;
-  width: ${props => props.$compact ? '64px' : '118px'};
-  height: ${props => props.$compact ? '96px' : '172px'};
-  min-width: ${props => props.$compact ? '60px' : '104px'};
-  min-height: ${props => props.$compact ? '88px' : '156px'};
+  width: ${props => props.$compact ? '64px' : 'clamp(96px, 29vw, 126px)'};
+  height: ${props => props.$compact ? '96px' : 'clamp(142px, 43vw, 182px)'};
+  min-width: ${props => props.$compact ? '60px' : '92px'};
+  min-height: ${props => props.$compact ? '88px' : '138px'};
   background: #fdfbf7;
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(212, 175, 55, 0.4);
@@ -122,10 +122,7 @@ const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $
     filter: grayscale(80%);
   `}
 
-  @media (max-width: 380px) {
-    width: ${props => props.$compact ? '54px' : '108px'};
-    height: ${props => props.$compact ? '80px' : '158px'};
-  }
+  @media (max-height: 650px) { width: ${props => props.$compact ? '54px' : '96px'}; height: ${props => props.$compact ? '80px' : '142px'}; }
 `;
 
 const CardBorder = styled.div`
@@ -199,14 +196,10 @@ const DescriptionArea = styled.div`
 
 const DescText = styled.p`
   margin: 0;
-  font-size: 8.5px;
+  font-size: clamp(7.6px, 2vw, 8.5px);
   line-height: 1.25;
   color: #3f3f46;
   text-align: center;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 `;
 
 const DisabledBadge = styled.div`
@@ -225,7 +218,8 @@ const DisabledBadge = styled.div`
 `;
 
 const LockIcon = styled.span`
-  font-size: 14px;
+  font-size: 8px;
+  text-transform: uppercase;
 `;
 
 const LockText = styled.span`

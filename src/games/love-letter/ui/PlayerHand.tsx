@@ -1,164 +1,27 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-import { PanInfo } from 'framer-motion';
 import { GameCard } from './GameCard';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 
 interface PlayerHandProps {
-  hand: CardInstance[];
-  isMyTurn: boolean;
-  selectedCardId: string | null;
-  interactionState: string;
-  errorMessage?: string | null;
-  onSelectCard: (card: CardInstance) => void;
-  onValidDrop: (card: CardInstance) => void;
-  onDragStateChange?: (isDragging: boolean, isOverDropZone: boolean) => void;
-  onCancelSelection?: () => void;
+  hand: CardInstance[]; isMyTurn: boolean; selectedCardId: string | null; interactionState: string;
+  errorMessage?: string | null; onSelectCard:(card:CardInstance)=>void; onValidDrop:(card:CardInstance)=>void;
+  onDragStateChange?: (isDragging:boolean, isOverDropZone:boolean)=>void; onCancelSelection?:()=>void;
 }
-
-export const PlayerHand: React.FC<PlayerHandProps> = ({
-  hand,
-  isMyTurn,
-  selectedCardId,
-  interactionState,
-  errorMessage,
-  onSelectCard,
-  onValidDrop,
-  onDragStateChange,
-  onCancelSelection,
-}) => {
-  // Section 36: Countess Rule (Holding Countess 7 + Prince 5 / King 6)
+export const PlayerHand: React.FC<PlayerHandProps> = ({ hand, isMyTurn, selectedCardId, interactionState, errorMessage, onSelectCard, onCancelSelection }) => {
   const hasCountess = hand.some(c => c.value === 7);
   const hasPrinceOrKing = hand.some(c => c.value === 5 || c.value === 6);
-
-  const checkDropZoneCollision = useCallback((point: { x: number; y: number }) => {
-    const dropZoneEl = document.getElementById('action-stage-drop-zone');
-    if (!dropZoneEl) return false;
-    const rect = dropZoneEl.getBoundingClientRect();
-    // Generous bounding box (+12px threshold) for smooth mobile touch interaction
-    return (
-      point.x >= rect.left - 12 &&
-      point.x <= rect.right + 12 &&
-      point.y >= rect.top - 12 &&
-      point.y <= rect.bottom + 12
-    );
-  }, []);
-
-  const handleDragStart = useCallback(() => {
-    if (onDragStateChange) {
-      onDragStateChange(true, false);
-    }
-  }, [onDragStateChange]);
-
-  const handleDrag = useCallback((_: any, info: PanInfo) => {
-    if (onDragStateChange) {
-      const isOver = checkDropZoneCollision(info.point);
-      onDragStateChange(true, isOver);
-    }
-  }, [checkDropZoneCollision, onDragStateChange]);
-
-  const handleDragEnd = useCallback((card: CardInstance, _: any, info: PanInfo) => {
-    const isOver = checkDropZoneCollision(info.point);
-    if (onDragStateChange) {
-      onDragStateChange(false, false);
-    }
-
-    if (isOver && isMyTurn) {
-      onValidDrop(card);
-    }
-  }, [checkDropZoneCollision, isMyTurn, onDragStateChange, onValidDrop]);
-
-  return (
-    <HandContainer>
-      {/* Dynamic Turn & Action Guidance Ribbon */}
-      {errorMessage ? (
-        <ErrorRibbon>❌ {errorMessage}</ErrorRibbon>
-      ) : isMyTurn ? (
-        <GuidanceRibbon>
-          {interactionState === 'TARGETING'
-            ? '🎯 플레이어 자리를 터치해 대상을 지목하세요'
-            : interactionState === 'GUESSING'
-            ? '🔮 추측할 카드 번호를 선택하세요'
-            : interactionState === 'SUBMITTING'
-            ? '⏳ 카드를 제출하는 중입니다...'
-            : '✨ 카드를 위로 끌어올리거나 탭하여 사용하세요'}
-        </GuidanceRibbon>
-      ) : null}
-
-      <CardsRow>
-        {hand.map((card, idx) => {
-          const isSelected = selectedCardId === card.id;
-          const isCountessLocked = hasCountess && hasPrinceOrKing && card.value !== 7;
-          const isLockedOut = !isMyTurn || isCountessLocked || interactionState === 'SUBMITTING';
-
-          return (
-            <GameCard
-              key={card.id || `hand_${idx}`}
-              id={card.id}
-              value={card.value as CardValue}
-              name={card.name}
-              isSelected={isSelected}
-              isDisabled={isLockedOut}
-              disabledReason={isCountessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined}
-              enableDrag={isMyTurn && !isCountessLocked && interactionState === 'IDLE'}
-              onClick={() => {
-                if (!isLockedOut) {
-                  onSelectCard(card);
-                }
-              }}
-              onDragStart={handleDragStart}
-              onDrag={handleDrag}
-              onDragEnd={(_, info) => handleDragEnd(card, _, info)}
-            />
-          );
-        })}
-      </CardsRow>
-    </HandContainer>
-  );
+  const message = errorMessage || (isMyTurn ? interactionState === 'TARGETING' ? '상대 자리를 선택하세요' : interactionState === 'GUESSING' ? '카드 번호를 고르세요' : interactionState === 'SUBMITTING' ? '서버 확인 중' : '내 차례 · 카드를 선택하세요' : '상대의 차례');
+  return <HandContainer data-player-id="self-seat">
+    <HandHeader><span>{message}</span>{selectedCardId && <CancelButton type="button" onClick={onCancelSelection}>선택 취소</CancelButton>}</HandHeader>
+    <CardsRow>{hand.map((card, index) => {
+      const countessLocked = hasCountess && hasPrinceOrKing && card.value !== 7;
+      const locked = !isMyTurn || countessLocked || interactionState === 'SUBMITTING';
+      return <GameCard key={card.id || `hand_${index}`} id={card.id} value={card.value as CardValue} name={card.name} isSelected={selectedCardId===card.id} isDisabled={locked} disabledReason={countessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined} onClick={() => !locked && onSelectCard(card)} />;
+    })}</CardsRow>
+  </HandContainer>;
 };
-
-const HandContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding-bottom: 8px;
-  gap: 6px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-`;
-
-const GuidanceRibbon = styled.div`
-  font-size: 11px;
-  font-weight: 700;
-  color: #d4af37;
-  background: rgba(24, 24, 27, 0.88);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  padding: 3px 12px;
-  border-radius: 12px;
-  letter-spacing: 0.1px;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-`;
-
-const ErrorRibbon = styled.div`
-  font-size: 11px;
-  font-weight: 700;
-  color: #fca5a5;
-  background: rgba(127, 29, 29, 0.9);
-  border: 1px solid #ef4444;
-  padding: 3px 12px;
-  border-radius: 12px;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-`;
-
-const CardsRow = styled.div`
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  max-width: 360px;
-`;
+const HandContainer = styled.section`width:100%; padding:4px 8px max(8px, env(safe-area-inset-bottom)); box-sizing:border-box; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;`;
+const HandHeader = styled.div`display:flex; align-items:center; gap:7px; min-height:20px; color:#5f1d2c; font-size:11px; font-weight:850;`;
+const CancelButton = styled.button`background:transparent; border:0; padding:0; color:#7c2d12; font:inherit; font-size:9px; text-decoration:underline; cursor:pointer;`;
+const CardsRow = styled.div`display:flex; align-items:flex-end; justify-content:center; gap:10px; width:100%;`;

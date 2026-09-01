@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollText, X } from 'lucide-react';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
@@ -38,9 +39,9 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
           >
             <HeaderRow>
               <ModalTitle>
-                📜 <strong>[{playerName}]</strong> 사용한 카드 히스토리 ({discardPile.length}장)
+                <ScrollText size={16} aria-hidden="true" /> <strong>[{playerName}]</strong> 사용한 카드 히스토리 ({discardPile.length}장)
               </ModalTitle>
-              <CloseBtn onClick={onClose}>✕</CloseBtn>
+              <CloseBtn onClick={onClose} aria-label="히스토리 닫기"><X size={14} /></CloseBtn>
             </HeaderRow>
 
             {discardPile.length === 0 ? (
@@ -110,6 +111,9 @@ const ModalTitle = styled.h3`
   font-size: 13px;
   font-weight: 800;
   color: ${THEME.foreground};
+  display: flex;
+  align-items: center;
+  gap: 5px;
 
   strong {
     color: ${THEME.burgundy};
