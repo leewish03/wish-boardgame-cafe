@@ -734,9 +734,10 @@ export default function App() {
       (res) => {
         if (!res?.success) {
           setToastMessage(res?.error || 'AI 봇 추가 실패');
-        } else {
-          setToastMessage(`🤖 AI 봇 [${res.bot.nickname}] 이(가) 살롱에 입장했습니다!`);
         }
+        // Entry/exit is a shared, persistent system message. The server sends
+        // it through chat:message, so do not also cover the lower UI with a
+        // local toast that only one participant sees.
       }
     );
   };
@@ -755,8 +756,6 @@ export default function App() {
       (res) => {
         if (!res?.success) {
           setToastMessage(res?.error || 'AI 봇 제거 실패');
-        } else {
-          setToastMessage('AI 봇이 살롱에서 퇴장했습니다.');
         }
       }
     );
