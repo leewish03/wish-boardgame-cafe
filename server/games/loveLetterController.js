@@ -77,7 +77,7 @@ export function registerLoveLetterController(io, service) {
       }
     });
 
-    socket.on(SOCKET_EVENTS.SYNC_REQUEST, (payload, callback) => {
+    socket.on(SOCKET_EVENTS.SYNC_REQUEST, async (payload, callback) => {
       try {
         const code = String(payload?.roomCode || '').toUpperCase().trim();
         const playerId = payload?.playerId || payload?.userId;
@@ -91,6 +91,13 @@ export function registerLoveLetterController(io, service) {
         player.disconnectedAt = null;
         socketToUser[socket.id] = { roomCode: code, userId: player.id };
         socket.join(code);
+        // A sync request can be the first message after Socket.IO restored a
+        // transport.  Treat it as a verified reconnection, not merely a
+        // snapshot request; otherwise a paused table can remain frozen until
+        // the heartbeat notices an unrelated state mismatch.
+        if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
+          await service.resumeRoom(code);
+        }
         service.broadcastGameSnapshot(code, room);
         if (typeof callback === 'function') callback({ success: true, stateVersion: room.stateVersion });
       } catch (error) {
