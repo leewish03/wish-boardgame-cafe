@@ -42,6 +42,31 @@ const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts
 const BOT_PRESENTATION_GAP_MS = 3_500;
 export { SOCKET_EVENTS };
 
+const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
+
+/** Build a legal, deliberately random play for a timed-out human turn. */
+function createTimeoutPlayCommand(gameState, playerId) {
+  const hand = gameState.secrets?.[playerId]?.hand || [];
+  if (!hand.length) return null;
+
+  // The Countess rule is mandatory even when the card itself is selected at random.
+  const hasCountess = hand.some((card) => card.value === 7);
+  const hasPrinceOrKing = hand.some((card) => card.value === 5 || card.value === 6);
+  const candidates = hasCountess && hasPrinceOrKing ? hand.filter((card) => card.value === 7) : hand;
+  const card = randomItem(candidates);
+  const opponents = gameState.players.filter((player) => player.id !== playerId && !player.isEliminated && !player.isProtected);
+  const command = { type: 'PLAY_CARD', playerId, cardId: card.id };
+
+  if ([1, 2, 3, 6].includes(card.value) && opponents.length) {
+    command.targetId = randomItem(opponents).id;
+  } else if (card.value === 5) {
+    const princeTargets = gameState.players.filter((player) => !player.isEliminated && (!player.isProtected || player.id === playerId));
+    command.targetId = randomItem(princeTargets).id;
+  }
+  if (card.value === 1 && command.targetId) command.guessValue = randomItem([2, 3, 4, 5, 6, 7, 8]);
+  return command;
+}
+
 export class LoveLetterService {
   constructor(io, { broadcastRoomState } = {}) {
     this.io = io;
@@ -301,9 +326,13 @@ export class LoveLetterService {
     this.turnCoordinator.startTurnTimer(roomCode, gameState.turnExpiresAt, () => {
       roomRepository.getRoom(roomCode).then((room) => {
         if (room?.isPaused) return;
-        return this.handleCommand(roomCode, { type: 'TIMEOUT_FORFEIT', playerId });
+        const latestState = room?.gameStateObject;
+        if (!latestState || latestState.currentTurnPlayerId !== playerId || latestState.matchState !== 'PLAYING') return;
+        const timeoutPlay = createTimeoutPlayCommand(latestState, playerId);
+        if (!timeoutPlay) return;
+        return this.handleCommand(roomCode, timeoutPlay);
       }).catch((error) => {
-        console.error('Turn timeout command failed:', error.message);
+        console.error('Timed-out random play failed:', error.message);
       });
     });
   }
