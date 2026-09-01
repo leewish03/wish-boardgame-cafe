@@ -43,6 +43,10 @@ export function useWebRTC(socket, roomCode, userId) {
   const userRef = useRef(userId);
   const speakerRef = useRef(true);
   const voiceJoinInFlightRef = useRef(null);
+  const voiceJoinResolveRef = useRef(null);
+  const voiceJoinTimerRef = useRef(null);
+  const voiceEpochRef = useRef(0);
+  const voiceWantedRef = useRef(false);
 
   useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { roomRef.current = roomCode; }, [roomCode]);
@@ -68,7 +72,9 @@ export function useWebRTC(socket, roomCode, userId) {
       analyser.smoothingTimeConstant = 0.2;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
-      let frame = 0;
+      let timer = 0;
+      let lastPublished = 0;
+      let lastSpeaking = false;
       let active = true;
       const tick = () => {
         if (!active) return;
@@ -76,13 +82,18 @@ export function useWebRTC(socket, roomCode, userId) {
         let sum = 0;
         for (let index = 0; index < data.length; index += 1) sum += data[index];
         const speaking = sum / data.length > 18;
-        setSpeakingUsers((previous) => previous[id] === speaking ? previous : { ...previous, [id]: speaking });
-        frame = requestAnimationFrame(tick);
+        const now = Date.now();
+        if (speaking !== lastSpeaking && now - lastPublished >= 250) {
+          lastSpeaking = speaking;
+          lastPublished = now;
+          setSpeakingUsers((previous) => previous[id] === speaking ? previous : { ...previous, [id]: speaking });
+        }
+        timer = window.setTimeout(tick, 200);
       };
       tick();
       vadCleanupsRef.current[id] = () => {
         active = false;
-        cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
         source.disconnect();
         context.close?.();
       };
@@ -166,56 +177,77 @@ export function useWebRTC(socket, roomCode, userId) {
     } catch (error) { console.warn('Voice offer failed:', error); }
   }, [createPeer, emitSignal]);
 
-  const joinVoice = useCallback(() => {
-    if (voiceJoinInFlightRef.current) return voiceJoinInFlightRef.current;
+  const joinVoice = useCallback((force = false) => {
+    if (!force) voiceWantedRef.current = true;
+    if (joinedRef.current && !force) return Promise.resolve(true);
+    if (voiceJoinInFlightRef.current && !force) return voiceJoinInFlightRef.current;
     if (!socketRef.current || !roomRef.current || !userRef.current) {
       setVoiceError('방에 연결된 뒤 음성 채팅에 참여할 수 있습니다.');
       return Promise.resolve(false);
     }
+    // A reconnect replaces an in-flight request. Resolve the old caller rather
+    // than leaving a settings button awaiting an ACK that can no longer win.
+    if (force && voiceJoinInFlightRef.current) {
+      if (voiceJoinTimerRef.current) window.clearTimeout(voiceJoinTimerRef.current);
+      voiceJoinTimerRef.current = null;
+      voiceJoinResolveRef.current?.(false);
+      voiceJoinResolveRef.current = null;
+      voiceJoinInFlightRef.current = null;
+    }
     setVoiceError(null);
     setVoiceStatus('joining');
-    const request = new Promise((resolve) => {
-      let settled = false;
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        voiceJoinInFlightRef.current = null;
-        resolve(result);
-      };
-      const timeout = window.setTimeout(() => {
+    const epoch = ++voiceEpochRef.current;
+    let resolveRequest;
+    const request = new Promise((resolve) => { resolveRequest = resolve; });
+    voiceJoinInFlightRef.current = request;
+    voiceJoinResolveRef.current = resolveRequest;
+    const finish = (result) => {
+      if (epoch !== voiceEpochRef.current) return;
+      if (voiceJoinTimerRef.current) window.clearTimeout(voiceJoinTimerRef.current);
+      voiceJoinTimerRef.current = null;
+      voiceJoinInFlightRef.current = null;
+      if (voiceJoinResolveRef.current === resolveRequest) voiceJoinResolveRef.current = null;
+      resolveRequest(result);
+    };
+    voiceJoinTimerRef.current = window.setTimeout(() => {
+      if (epoch !== voiceEpochRef.current) return;
+      joinedRef.current = false;
+      setIsVoiceJoined(false);
+      setVoiceStatus('error');
+      setVoiceError('음성 서버 응답이 지연됩니다. 다시 시도해 주세요.');
+      finish(false);
+    }, 4000);
+    socketRef.current.emit('voice:join', { roomCode: roomRef.current }, (result) => {
+      if (epoch !== voiceEpochRef.current) return;
+      if (!result?.success) {
         joinedRef.current = false;
         setIsVoiceJoined(false);
         setVoiceStatus('error');
-        setVoiceError('음성 서버 응답이 지연됩니다. 다시 시도해 주세요.');
+        setVoiceError(result?.error || '음성 채팅 참여에 실패했습니다. 다시 시도해 주세요.');
         finish(false);
-      }, 4000);
-      socketRef.current.emit('voice:join', { roomCode: roomRef.current }, (result) => {
-        window.clearTimeout(timeout);
-        if (!result?.success) {
-          joinedRef.current = false;
-          setIsVoiceJoined(false);
-          setVoiceStatus('error');
-          setVoiceError(result?.error || '음성 채팅 참여에 실패했습니다. 다시 시도해 주세요.');
-          finish(false);
-          return;
-        }
-        joinedRef.current = true;
-        setIsVoiceJoined(true);
-        setVoiceStatus('connected');
-        setVoiceError(null);
-        (result.peers || []).forEach((peer) => {
-          const peerId = typeof peer === 'string' ? peer : peer?.userId || peer?.id;
-          if (peerId && !peer?.isBot) negotiatePeer(peerId);
-        });
-        socketRef.current?.emit('voice:presence', { roomCode: roomRef.current, listening: true, micEnabled: !!localStreamRef.current?.getAudioTracks?.()[0]?.enabled });
-        finish(true);
+        return;
+      }
+      joinedRef.current = true;
+      setIsVoiceJoined(true);
+      setVoiceStatus('connected');
+      setVoiceError(null);
+      (result.peers || []).forEach((peer) => {
+        const peerId = typeof peer === 'string' ? peer : peer?.userId || peer?.id;
+        if (peerId && !peer?.isBot && String(userRef.current) < String(peerId)) negotiatePeer(peerId);
       });
+      socketRef.current?.emit('voice:presence', { roomCode: roomRef.current, listening: true, micEnabled: !!localStreamRef.current?.getAudioTracks?.()[0]?.enabled });
+      finish(true);
     });
-    voiceJoinInFlightRef.current = request;
     return request;
   }, [negotiatePeer]);
 
   const leaveVoice = useCallback(() => {
+    voiceWantedRef.current = false;
+    voiceEpochRef.current += 1;
+    if (voiceJoinTimerRef.current) window.clearTimeout(voiceJoinTimerRef.current);
+    voiceJoinTimerRef.current = null;
+    voiceJoinResolveRef.current?.(false);
+    voiceJoinResolveRef.current = null;
     socketRef.current?.emit('voice:leave', { roomCode: roomRef.current });
     Object.keys(peersRef.current).forEach(removePeer);
     clearVAD(userRef.current);
@@ -279,10 +311,10 @@ export function useWebRTC(socket, roomCode, userId) {
       const peers = payload?.peers || payload?.peerUserIds || payload || [];
       (Array.isArray(peers) ? peers : []).forEach((peer) => {
         const id = typeof peer === 'string' ? peer : getId(peer);
-        if (id && id !== userId && !peer?.isBot) negotiatePeer(id);
+        if (id && id !== userId && !peer?.isBot && String(userRef.current) < String(id)) negotiatePeer(id);
       });
     };
-    const onPeerJoined = (payload) => { const id = getId(payload); if (joinedRef.current && id && id !== userId) negotiatePeer(id); };
+    const onPeerJoined = (payload) => { const id = getId(payload); if (joinedRef.current && id && id !== userId && String(userRef.current) < String(id)) negotiatePeer(id); };
     const onOffer = async ({ fromUserId, offer }) => {
       if (!joinedRef.current || !fromUserId || fromUserId === userId) return;
       const connection = createPeer(fromUserId); if (!connection) return;
@@ -314,7 +346,15 @@ export function useWebRTC(socket, roomCode, userId) {
     const onSocketConnect = () => {
       // The server deliberately clears voice membership on a transport close.
       // Re-register only people who explicitly joined before the reconnect.
-      if (joinedRef.current) joinVoice();
+      if (!voiceWantedRef.current) return;
+      // room:reconnect can arrive immediately after Socket.IO's connect event.
+      // Retry once after its socket-to-player mapping is restored.
+      joinVoice(true).then((joined) => {
+        if (joined || !voiceWantedRef.current) return;
+        window.setTimeout(() => {
+          if (voiceWantedRef.current && socketRef.current?.connected) joinVoice(true);
+        }, 350);
+      });
     };
     socket.on('voice:peers', onPeers); socket.on('voice:peer-joined', onPeerJoined); socket.on('voice:peer-reconnected', onPeerJoined); socket.on('voice:peer-left', onPeerLeft); socket.on('voice:presence', onPresence);
     socket.on('connect', onSocketConnect); socket.on('webrtc:peer-joined', onPeerJoined); socket.on('webrtc:peer-reconnected', onPeerJoined); socket.on('webrtc:peer-left', onPeerLeft); socket.on('webrtc:offer', onOffer); socket.on('webrtc:answer', onAnswer); socket.on('webrtc:ice-candidate', onIce);

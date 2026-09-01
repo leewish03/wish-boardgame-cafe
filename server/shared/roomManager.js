@@ -820,6 +820,10 @@ export function initRoomManager(io) {
           room.stateVersion = (room.stateVersion || 0) + 1;
         }
 
+        // Remove voice membership before an empty room is discarded as well.
+        // Otherwise a reconnect can inherit a stale voice member with no peer
+        // notification, which makes the next listen attempt appear frozen.
+        socket.data?.leaveVoiceRoom?.({ roomCode: code, userId: uId });
         await roomRepository.saveRoom(room);
         if (room.players.length === 0) {
           if (room.turnTimer) clearTimeout(room.turnTimer);
@@ -839,7 +843,6 @@ export function initRoomManager(io) {
         delete socketToUser[socket.id];
         socket.leave(code);
         socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
-        socket.to(code).emit('voice:peer-left', { userId: uId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         console.error('room:forfeit error:', err);
@@ -858,6 +861,7 @@ export function initRoomManager(io) {
           await handleForfeit(payload, callback);
           return;
         }
+        socket.data?.leaveVoiceRoom?.({ roomCode, userId });
         delete socketToUser[socket.id];
         socket.leave(roomCode);
         const departingPlayer = room.players.find((player) => player.id === userId);
@@ -875,7 +879,6 @@ export function initRoomManager(io) {
           broadcastRoomState(io, roomCode);
         }
         socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
-        socket.to(roomCode).emit('voice:peer-left', { userId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         if (typeof callback === 'function') callback({ success: false, error: err.message || '방을 나가지 못했습니다.' });
@@ -887,6 +890,7 @@ export function initRoomManager(io) {
       const mapping = socketToUser[socket.id];
       if (!mapping) return;
       const { roomCode, userId } = mapping;
+      socket.data?.leaveVoiceRoom?.(mapping);
       delete socketToUser[socket.id];
 
       const room = rooms[roomCode];
@@ -902,7 +906,6 @@ export function initRoomManager(io) {
 
       socket.leave(roomCode);
       socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
-      socket.to(roomCode).emit('voice:peer-left', { userId });
 
       // If in LOBBY, allow 30 seconds for refresh/reconnect before cleaning up
       if (room.gameState === 'LOBBY') {

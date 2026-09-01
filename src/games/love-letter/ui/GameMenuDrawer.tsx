@@ -38,6 +38,7 @@ export const RoomVoiceControls: React.FC<RoomVoiceControlsProps> = ({ voice, com
   const joined = Boolean(voice?.isVoiceJoined);
   const micOn = Boolean(voice?.isMicOn);
   const speakerOn = voice?.isSpeakerOn !== false;
+  const joining = voice?.voiceStatus === 'joining';
   const statusLabel = voice?.voiceStatus === 'requesting-mic' ? '권한 요청 중' : voice?.voiceStatus === 'joining' ? '연결 중' : joined ? '듣는 중' : '미참여';
 
   if (!voice) return null;
@@ -45,7 +46,7 @@ export const RoomVoiceControls: React.FC<RoomVoiceControlsProps> = ({ voice, com
     <VoiceBlock $compact={compact} aria-live="polite">
       {!compact && <VoiceHeading><Radio size={14} /> 음성 채팅 <VoiceState>{statusLabel}</VoiceState></VoiceHeading>}
       <VoiceControls>
-        <VoiceButton type="button" $active={joined} onClick={(event) => { event.preventDefault(); void (joined ? voice.leaveVoice?.() : voice.joinVoice?.()); }}>
+        <VoiceButton type="button" $active={joined} disabled={joining} onClick={(event) => { event.preventDefault(); void (joined ? voice.leaveVoice?.() : voice.joinVoice?.()); }}>
           <Headphones size={14} />{joined ? '나가기' : '듣기 참여'}
         </VoiceButton>
         <VoiceButton type="button" $active={micOn} disabled={!joined} onClick={(event) => { event.preventDefault(); void voice.toggleMic?.(); }}>

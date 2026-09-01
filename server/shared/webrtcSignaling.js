@@ -16,12 +16,13 @@ function isVoiceMember(roomCode, userId) {
   return !!voiceMembersByRoom.get(roomCode)?.has(userId);
 }
 
-function leaveVoiceRoom(io, socket) {
-  const mapping = socketToUser[socket.id];
+export function leaveVoiceRoom(io, socket, mappingOverride = null) {
+  const mapping = mappingOverride || socketToUser[socket.id] || socket.data?.voiceMapping;
   if (!mapping || !isVoiceMember(mapping.roomCode, mapping.userId)) return;
   const members = voiceMembersByRoom.get(mapping.roomCode);
   members.delete(mapping.userId);
   if (members.size === 0) voiceMembersByRoom.delete(mapping.roomCode);
+  if (socket.data?.voiceMapping?.roomCode === mapping.roomCode && socket.data?.voiceMapping?.userId === mapping.userId) delete socket.data.voiceMapping;
   socket.to(mapping.roomCode).emit('voice:peer-left', { userId: mapping.userId });
 }
 
@@ -57,25 +58,31 @@ function createRelay(io, socket, eventName, payloadKey) {
 
 export function initWebRTCSignaling(io) {
   io.on('connection', (socket) => {
+    socket.data.leaveVoiceRoom = (mapping) => leaveVoiceRoom(io, socket, mapping);
     socket.on('voice:join', (payload, callback) => {
-      const source = resolveVoiceMember(socket, payload?.roomCode);
-      if (!source) {
-        if (typeof callback === 'function') callback({ success: false, error: '음성 방 참여 정보를 확인할 수 없습니다.' });
-        return;
+      try {
+        const source = resolveVoiceMember(socket, payload?.roomCode);
+        if (!source) {
+          if (typeof callback === 'function') callback({ success: false, error: '음성 방 참여 정보를 확인할 수 없습니다.' });
+          return;
+        }
+        socket.data.voiceMapping = { roomCode: source.roomCode, userId: source.player.id };
+        const members = roomVoiceMembers(source.roomCode);
+        const wasJoined = members.has(source.player.id);
+        members.add(source.player.id);
+        const peers = source.room.players
+          .filter((player) => player.id !== source.player.id && !player.isBot && !player.isDisconnected && player.socketId && members.has(player.id))
+          .map((player) => ({ userId: player.id, nickname: player.nickname, avatarUrl: player.avatarUrl || null }));
+        socket.to(source.roomCode).emit(wasJoined ? 'voice:peer-reconnected' : 'voice:peer-joined', { userId: source.player.id });
+        if (typeof callback === 'function') callback({ success: true, peers });
+      } catch (error) {
+        if (typeof callback === 'function') callback({ success: false, error: '음성 참여 처리에 실패했습니다.' });
       }
-      const members = roomVoiceMembers(source.roomCode);
-      const wasJoined = members.has(source.player.id);
-      members.add(source.player.id);
-      const peers = source.room.players
-        .filter((player) => player.id !== source.player.id && !player.isBot && !player.isDisconnected && player.socketId && members.has(player.id))
-        .map((player) => ({ userId: player.id, nickname: player.nickname, avatarUrl: player.avatarUrl || null }));
-      if (!wasJoined) socket.to(source.roomCode).emit('voice:peer-joined', { userId: source.player.id });
-      if (typeof callback === 'function') callback({ success: true, peers });
     });
 
     socket.on('voice:leave', (payload, callback) => {
       const source = resolveVoiceMember(socket, payload?.roomCode);
-      if (source) leaveVoiceRoom(io, socket);
+      if (source) leaveVoiceRoom(io, socket, { roomCode: source.roomCode, userId: source.player.id });
       if (typeof callback === 'function') callback({ success: !!source });
     });
 
