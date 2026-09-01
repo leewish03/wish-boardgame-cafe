@@ -1,127 +1,110 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
-import { CardValue } from '../../../../packages/love-letter-core/src/types';
+import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { GameCard } from '../ui/GameCard';
 import { PresentationPhase } from '../machines/presentationMachine';
 import { useTableAnchorRegistry } from './TableAnchorRegistry';
 import { THEME } from '../../../shared/theme';
 
-interface Point {
-  x: number;
-  y: number;
+interface Point { x:number; y:number; }
+interface SpatialMotionStageProps { currentAction:GameEventEnvelope|null; phase?:PresentationPhase; onPhaseComplete?:()=>void; }
+type MotionKind = 'draw' | 'play' | 'forcedDiscard' | 'revealDiscard' | 'swap' | 'target' | 'reaction';
+
+const fallback = (x:number, y:number):Point => ({ x:window.innerWidth*x, y:window.innerHeight*y });
+const pointOf = (element:Element|null, otherwise:Point):Point => {
+  if (!element) return otherwise;
+  const rect=element.getBoundingClientRect();
+  return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+};
+
+function kindFor(event:any):MotionKind {
+  if (event.type === 'CARD_DRAWN') return 'draw';
+  if (event.type === 'CARD_PLAYED') return 'play';
+  if (event.type === 'PRINCE_DISCARDED') return 'forcedDiscard';
+  if (event.type === 'HANDS_SWAPPED') return 'swap';
+  if ((event.type === 'GUARD_SUCCESS' || event.type === 'GUARD_SUCCEEDED' || event.type === 'BARON_COMPARED') && (event.eliminatedId || event.presentation?.eliminatedPlayerId)) return 'revealDiscard';
+  if (event.targetId) return 'target';
+  return 'reaction';
 }
 
-interface SpatialMotionStageProps {
-  currentAction: GameEventEnvelope | null;
-  phase?: PresentationPhase;
-  myUserId?: string;
-  onPhaseComplete?: () => void;
+function visibleCard(event:any, kind:MotionKind):CardInstance|null {
+  if (kind === 'draw' || kind === 'swap') return null;
+  return event.discardedCard || event.guessedCard || event.revealedCard || event.presentation?.revealedCard || event.card || null;
 }
 
-const TABLE_FALLBACK: Point = { x: 0.5, y: 0.49 };
-
-function centerOf(element: Element | null, fallback: Point): Point {
-  if (!element) return { x: window.innerWidth * fallback.x, y: window.innerHeight * fallback.y };
-  const rect = element.getBoundingClientRect();
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-}
-
-/**
- * Server state may already have advanced. This layer holds one visual action
- * until the card has visibly reached the table, target, and discard position.
- */
-export const SpatialMotionStage: React.FC<SpatialMotionStageProps> = ({
-  currentAction,
-  phase = 'IDLE',
-  myUserId = '',
-  onPhaseComplete,
-}) => {
-  const registry = useTableAnchorRegistry();
-  const reduceMotion = useReducedMotion();
-  const [anchors, setAnchors] = useState<{ source: Point; table: Point; target: Point }>({
-    source: { x: window.innerWidth / 2, y: window.innerHeight - 92 },
-    table: { x: window.innerWidth / 2, y: window.innerHeight * TABLE_FALLBACK.y },
-    target: { x: window.innerWidth / 2, y: window.innerHeight * 0.22 },
+export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentAction,phase='IDLE',onPhaseComplete})=>{
+  const registry=useTableAnchorRegistry();
+  const reduceMotion=useReducedMotion();
+  const event:any=currentAction?.event;
+  const kind=event ? kindFor(event) : 'reaction';
+  const [points,setPoints]=useState<{deck:Point;actorHand:Point;actorDiscard:Point;targetHand:Point;targetDiscard:Point;targetIdentity:Point}>({
+    deck:fallback(.12,.5),actorHand:fallback(.5,.85),actorDiscard:fallback(.5,.72),targetHand:fallback(.5,.2),targetDiscard:fallback(.5,.3),targetIdentity:fallback(.5,.16),
   });
 
-  useLayoutEffect(() => {
-    if (!currentAction || phase === 'IDLE') return;
-    const event: any = currentAction.event;
-    const measure = () => {
-      const actorHand = event.actorId ? registry.get(event.actorId, 'hand') : null;
-      const actorDiscard = event.actorId ? registry.get(event.actorId, 'discard') : null;
-      const targetIdentity = event.targetId ? registry.get(event.targetId, 'identity') : null;
-      setAnchors({
-        source: centerOf(actorHand, event.actorId === myUserId ? { x: .5, y: .88 } : { x: .5, y: .18 }),
-        table: centerOf(actorDiscard, event.actorId === myUserId ? { x: .5, y: .68 } : { x: .5, y: .28 }),
-        target: centerOf(targetIdentity, { x: .5, y: .2 }),
+  useLayoutEffect(()=>{
+    if(!event || phase==='IDLE') return;
+    const measure=()=>{
+      const actorId=event.actorId || event.playerId;
+      const targetId=event.targetId || event.playerId || event.eliminatedId || event.presentation?.eliminatedPlayerId;
+      const eliminatedId=event.eliminatedId || event.presentation?.eliminatedPlayerId || event.playerId;
+      setPoints({
+        deck:pointOf(registry.get('deck','deck'),fallback(.12,.5)),
+        actorHand:pointOf(registry.get(actorId,'hand'),fallback(.5,.82)),
+        actorDiscard:pointOf(registry.get(actorId,'discard'),fallback(.5,.7)),
+        targetHand:pointOf(registry.get(targetId,'hand'),fallback(.5,.2)),
+        targetDiscard:pointOf(registry.get(targetId,'discard'),fallback(.5,.3)),
+        targetIdentity:pointOf(registry.get(eliminatedId || targetId,'identity'),fallback(.5,.17)),
       });
     };
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [currentAction, phase, myUserId, registry]);
+    window.addEventListener('resize',measure);
+    return()=>window.removeEventListener('resize',measure);
+  },[event,phase,registry]);
 
-  if (!currentAction?.event || phase === 'IDLE') return null;
+  const card=event ? visibleCard(event,kind) : null;
+  const duration=reduceMotion ? .05 : kind==='swap' ? .55 : kind==='target' || kind==='reaction' ? .28 : .46;
+  const source=kind==='draw' ? points.deck : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
+  const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
+  const canFly=kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard';
+  const showConnector=kind==='target' || kind==='swap';
+  const label=useMemo(()=>{
+    if(!event) return '';
+    if(kind==='draw') return '카드를 뽑았습니다';
+    if(kind==='swap') return '손패를 교환했습니다';
+    if(kind==='forcedDiscard') return '손패를 공개 버린 패에 놓습니다';
+    if(kind==='revealDiscard') return '손패를 공개하고 탈락합니다';
+    return '';
+  },[event,kind]);
 
-  const event: any = currentAction.event;
-  const card = event.card;
-  if (!card?.value) return null;
+  if(!event || phase==='IDLE') return null;
 
-  const cardValue = card.value as CardValue;
-  const showTarget = !!event.targetId && (phase === 'TARGET_REVEAL' || phase === 'EFFECT' || phase === 'RESULT');
-  const destination = anchors.table;
-  const cardMeta = CARD_DEFINITIONS[cardValue];
-  const phaseDuration: Record<PresentationPhase, number> = { IDLE:0, CARD_PLAYING:.4, TARGET_REVEAL:.32, EFFECT:.32, RESULT:1.3, DISCARDING:.22, SETTLING:.18 };
-
-  return (
-    <MotionOverlay aria-live="polite">
-      <PhaseClock as={motion.div} key={`${currentAction.eventId}_${phase}`} initial={{opacity:.001}} animate={{opacity:.002}} transition={{duration:reduceMotion ? .05 : phaseDuration[phase]}} onAnimationComplete={onPhaseComplete}/>
-      {showTarget && <TargetConnector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><motion.line x1={anchors.table.x} y1={anchors.table.y} x2={anchors.target.x} y2={anchors.target.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:reduceMotion ? .05 : .28}}/></TargetConnector>}
-      {showTarget && <TargetReaction as={motion.div} style={{left:anchors.target.x-26,top:anchors.target.y-18}} initial={{opacity:0,scale:.82}} animate={{opacity:[0,1,.45],scale:[.82,1.08,1]}} transition={{duration:reduceMotion ? .05 : .4}}/>}
-      <AnimatePresence mode="wait">
-        <FlyingCard
-          key={currentAction.eventId}
-          as={motion.div}
-          initial={{ x: anchors.source.x - 32, y: anchors.source.y - 48, rotate: -7, scale: 0.82, opacity: 0 }}
-          animate={{
-            x: destination.x - 32,
-            y: destination.y - 48,
-            rotate: phase === 'SETTLING' ? 5 : 0,
-            scale: phase === 'CARD_PLAYING' ? .78 : .64,
-            opacity: phase === 'SETTLING' ? 0 : 1,
-          }}
-          exit={{ opacity: 0, scale: 0.68 }}
-          transition={{ duration: reduceMotion ? .05 : phase === 'CARD_PLAYING' ? .4 : .2, ease: 'easeInOut' }}
-        >
-          <GameCard value={cardValue} name={card.name || cardMeta?.name || '카드'} compact />
-        </FlyingCard>
-      </AnimatePresence>
-    </MotionOverlay>
-  );
+  return <MotionOverlay aria-live="polite">
+    <React.Fragment key={currentAction?.eventId}>
+    <PhaseClock as={motion.div} initial={{opacity:.001}} animate={{opacity:.002}} transition={{duration}} onAnimationComplete={onPhaseComplete}/>
+    {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.28,duration)}}/></Connector>}
+    {(kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
+      <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
+    )}
+    {canFly && <FlyingCard as={motion.div} initial={{x:source.x-32,y:source.y-46,scale:.74,rotate:-5,opacity:0}} animate={{x:destination.x-32,y:destination.y-46,scale:.64,rotate:kind==='forcedDiscard'||kind==='revealDiscard'?5:0,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}>
+      {card ? <GameCard value={card.value as CardValue} name={card.name || CARD_DEFINITIONS[card.value as CardValue]?.name || '카드'} compact/> : <CardBack/>}
+    </FlyingCard>}
+    {kind==='swap' && <>
+      <FlyingBack as={motion.div} key={`${currentAction?.eventId}_a`} initial={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:0}} animate={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
+      <FlyingBack as={motion.div} key={`${currentAction?.eventId}_b`} initial={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:0}} animate={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
+    </>}
+    {label && <MotionLabel>{label}</MotionLabel>}
+    </React.Fragment>
+  </MotionOverlay>;
 };
 
-const MotionOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 600;
-  pointer-events: none;
-  overflow: hidden;
-`;
-
-const PhaseClock = styled.div`position:fixed;width:1px;height:1px;pointer-events:none;`;
-const TargetConnector = styled.svg`position:fixed;inset:0;width:100%;height:100%;overflow:visible;`;
-const TargetReaction = styled.div`position:fixed;width:52px;height:36px;border:2px solid ${THEME.gold};border-radius:12px;box-shadow:0 0 0 4px rgba(197,160,89,.12);`;
-
-const FlyingCard = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 64px;
-  height: 96px;
-  transform-origin: center;
-  filter: drop-shadow(0 10px 16px rgba(9, 13, 22, 0.28));
-`;
+const MotionOverlay=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;`;
+const PhaseClock=styled.div`position:fixed;width:1px;height:1px;pointer-events:none;`;
+const Connector=styled.svg`position:fixed;inset:0;width:100%;height:100%;overflow:visible;`;
+const SeatReaction=styled.div<{$eliminated:boolean}>`position:fixed;width:54px;height:36px;border:2px solid ${p=>p.$eliminated?THEME.burgundy:THEME.gold};border-radius:12px;box-shadow:0 0 0 4px rgba(197,160,89,.12);`;
+const FlyingCard=styled.div`position:fixed;top:0;left:0;width:64px;height:96px;transform-origin:center;filter:drop-shadow(0 10px 16px rgba(9,13,22,.28));`;
+const FlyingBack=styled.div`position:fixed;top:0;left:0;width:28px;height:40px;border:1px solid ${THEME.goldAntique};border-radius:5px;background:${THEME.burgundyDeep};box-shadow:2px 4px 8px rgba(9,13,22,.25);`;
+const CardBack=styled.div`width:64px;height:94px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.burgundyDeep};box-shadow:inset 0 0 0 2px rgba(255,255,255,.08);`;
+const MotionLabel=styled.span`position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:5px 8px;border-radius:7px;background:rgba(255,255,255,.9);color:${THEME.foreground};font-size:10px;font-weight:800;box-shadow:0 2px 8px rgba(9,13,22,.1);`;

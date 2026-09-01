@@ -3,10 +3,10 @@ import styled from 'styled-components';
 import { OpponentZone } from './PlayerZone';
 import { PlayerPublic, PlayerId } from '../../../../packages/love-letter-core/src/types';
 
-interface OpponentRailProps { opponents: PlayerPublic[]; currentTurnPlayerId: PlayerId | null; targetablePlayerIds: PlayerId[]; selectedTargetId: PlayerId | null; speakingUsers?: Record<string, boolean>; userSubtitles?: Record<string, { text:string; timestamp:number }>; onSelectTarget:(id:PlayerId)=>void; onInspectDiscards?:(id:PlayerId)=>void; }
-export const OpponentRail: React.FC<OpponentRailProps> = ({ opponents, currentTurnPlayerId, targetablePlayerIds, selectedTargetId, speakingUsers={}, userSubtitles={}, onSelectTarget, onInspectDiscards }) => (
+interface OpponentRailProps { opponents: PlayerPublic[]; currentTurnPlayerId: PlayerId | null; targetablePlayerIds: PlayerId[]; selectedTargetId: PlayerId | null; presentationAction?: { event?: any } | null; speakingUsers?: Record<string, boolean>; userSubtitles?: Record<string, { text:string; timestamp:number }>; onSelectTarget:(id:PlayerId)=>void; onInspectDiscards?:(id:PlayerId)=>void; }
+export const OpponentRail: React.FC<OpponentRailProps> = ({ opponents, currentTurnPlayerId, targetablePlayerIds, selectedTargetId, presentationAction, speakingUsers={}, userSubtitles={}, onSelectTarget, onInspectDiscards }) => (
   <OpponentGrid>
-    {opponents.map(opp => <OpponentZone key={opp.id} player={opp} isCurrentTurn={currentTurnPlayerId===opp.id} isTargetable={targetablePlayerIds.includes(opp.id)} isSelectedTarget={selectedTargetId===opp.id} isSpeaking={!!speakingUsers[opp.id]} onSelect={() => onSelectTarget(opp.id)} onInspect={() => onInspectDiscards?.(opp.id)} />)}
+    {opponents.map(opp => <OpponentZone key={opp.id} player={opp} isCurrentTurn={currentTurnPlayerId===opp.id} isTargetable={targetablePlayerIds.includes(opp.id)} isSelectedTarget={selectedTargetId===opp.id} isSpeaking={!!speakingUsers[opp.id]} presentationAction={presentationAction} onSelect={() => onSelectTarget(opp.id)} onInspect={() => onInspectDiscards?.(opp.id)} />)}
   </OpponentGrid>
 );
 const OpponentGrid = styled.div`

@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { THEME } from '../../../shared/theme';
+import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 
 interface DeckSlotProps {
   count: number;
@@ -8,9 +9,10 @@ interface DeckSlotProps {
 }
 
 export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) => {
+  const deckAnchor = useTableAnchor('deck', 'deck');
   return (
     <DeckWrapper>
-      <DeckStack id="deck-slot">
+      <DeckStack ref={deckAnchor} id="deck-slot">
         {count > 0 ? (
           <>
             <BackCardLayer $offset={4} />

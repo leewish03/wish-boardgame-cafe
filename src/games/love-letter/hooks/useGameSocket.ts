@@ -247,10 +247,17 @@ export function useGameSocket({
           const target = rawRoomState?.players?.find((player: any) => player.id === event.targetId);
           setPriestSecret({ targetName: target?.nickname || '상대방', card: event.revealedCard });
         }
-        if (event.type === 'CARD_PLAYED' && onGameEvent) {
+        if (onGameEvent && [
+          'CARD_DRAWN', 'CARD_PLAYED', 'PLAYER_TARGETED', 'GUARD_GUESSED', 'CARD_GUESSED',
+          'GUARD_SUCCESS', 'GUARD_SUCCEEDED', 'GUARD_FAILED', 'PRIEST_USED', 'PRIEST_REVEALED',
+          'BARON_DUEL_STARTED', 'BARON_COMPARED', 'PLAYER_PROTECTED', 'HANDMAID_PROTECTED',
+          'PRINCE_DISCARDED', 'KING_SWAP', 'HANDS_SWAPPED', 'PLAYER_ELIMINATED',
+        ].includes(event.type)) {
           onGameEvent({
             ...envelope,
-            event: envelope.presentation ? { ...event, ...envelope.presentation } : event,
+            // Keep the wire event as the source of truth. Presentation metadata is
+            // attached without overwriting its type or public/private fields.
+            event: { ...event, presentation: envelope.presentation || null },
           } as GameEventEnvelope);
         }
       }

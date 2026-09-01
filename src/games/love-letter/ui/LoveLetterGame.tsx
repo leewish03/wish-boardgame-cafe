@@ -412,7 +412,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       <SpatialMotionStage
         currentAction={currentAction}
         phase={phase}
-        myUserId={activeUserId}
         onPhaseComplete={advancePresentation}
       />
 
@@ -422,6 +421,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         currentTurnPlayerId={gameState.currentTurnPlayerId}
         targetablePlayerIds={targetablePlayerIds}
         selectedTargetId={selectedTargetId}
+        presentationAction={currentAction}
         speakingUsers={speakingUsers}
         userSubtitles={userSubtitles}
         onSelectTarget={handleSelectTarget}
@@ -455,6 +455,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             isSpeaking={!!speakingUsers[activeUserId]}
             onSelect={() => handleSelectTarget(activeUserId)}
             onInspect={() => handleInspectDiscards(activeUserId)}
+            presentationAction={currentAction}
             hand={myHand}
             isMyTurn={canInteract}
             selectedCardId={selectedCardId}
