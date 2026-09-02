@@ -15,6 +15,7 @@ export const SOCKET_EVENTS = {
   GAME_REMATCH: 'game:rematch',
   GAME_EVENT: 'game:event',
   GAME_SNAPSHOT: 'game:snapshot',
+  GAME_PRESENTATION_ACK: 'game:presentation-ack',
   SYNC_REQUEST: 'game:sync-request',
   PRIEST_RESULT: 'game:priest-result',
   ACTION_RESULT: 'game:action-result',
@@ -27,3 +28,4 @@ export const SOCKET_EVENTS = {
 } as const;
 
 export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS];
+
