@@ -69,7 +69,10 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
   const isResultHold=phase==='RESULT';
   const priorRevealEvent = (currentAction as any)?.presentationEvents?.slice(0, (currentAction as any)?.presentationIndex || 0).reverse().map((envelope:any) => envelope.event).find((candidate:any) => candidate?.discardedCard || candidate?.guessedCard || candidate?.revealedCard || candidate?.card);
   const card=event ? visibleCard(event,kind,priorRevealEvent) : null;
-  const duration=reduceMotion ? .05 : isResultHold ? .5 : kind==='swap' ? .42 : kind==='target' || kind==='reaction' ? .2 : .38;
+  // A card table is read in cause-and-effect order. These are deliberately
+  // slower than generic UI transitions so the next server action cannot look
+  // like it happened at the same time.
+  const duration=reduceMotion ? .05 : isResultHold ? 1.75 : kind==='swap' ? .9 : kind==='target' || kind==='reaction' ? .85 : kind==='draw' ? .65 : .72;
   const source=kind==='draw' ? (event?.drawSource === 'SET_ASIDE' ? points.aside : points.deck) : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
   const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
   const canFly=!isResultHold && (kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard');
@@ -89,7 +92,7 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
       transition={{ duration, ease:'linear' }}
       onAnimationComplete={onPhaseComplete}
     />
-    {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.28,duration)}}/></Connector>}
+    {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.75,duration)}}/></Connector>}
     {!isResultHold && (kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
       <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
     )}
@@ -110,3 +113,4 @@ const SeatReaction=styled.div<{$eliminated:boolean}>`position:fixed;width:54px;h
 const FlyingCard=styled.div`position:fixed;top:0;left:0;width:64px;height:96px;transform-origin:center;filter:drop-shadow(0 10px 16px rgba(9,13,22,.28));`;
 const FlyingBack=styled.div`position:fixed;top:0;left:0;width:28px;height:40px;border:1px solid ${THEME.goldAntique};border-radius:5px;background:${THEME.burgundyDeep};box-shadow:2px 4px 8px rgba(9,13,22,.25);`;
 const CardBack=styled.div`width:64px;height:94px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.burgundyDeep};box-shadow:inset 0 0 0 2px rgba(255,255,255,.08);`;
+
