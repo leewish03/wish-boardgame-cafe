@@ -98,15 +98,21 @@ function applyEvent(table: VisualTableState, event: any, localUserId: string, la
   return next;
 }
 
-export function useVisualTableState(gameState: GameState, myHand: CardInstance[], localUserId: string, isActionPlaying: boolean) {
+export function useVisualTableState(
+  gameState: GameState,
+  myHand: CardInstance[],
+  localUserId: string,
+  isActionPlaying: boolean,
+  hasPendingPresentation?: () => boolean,
+) {
   const latestRef = useRef<VisualTableState>(fromSnapshot(gameState, myHand));
   const [visualTable, setVisualTable] = useState<VisualTableState>(() => latestRef.current);
 
   useEffect(() => {
     const latest = fromSnapshot(gameState, myHand);
     latestRef.current = latest;
-    if (!isActionPlaying) setVisualTable(latest);
-  }, [gameState, myHand, isActionPlaying]);
+    if (!isActionPlaying && !hasPendingPresentation?.()) setVisualTable(latest);
+  }, [gameState, myHand, isActionPlaying, hasPendingPresentation]);
 
   const applyCompletedEvent = useCallback((event: any) => {
     setVisualTable((previous) => applyEvent(previous, event, localUserId, latestRef.current));
@@ -118,3 +124,4 @@ export function useVisualTableState(gameState: GameState, myHand: CardInstance[]
 
   return { visualTable, applyCompletedEvent, settleToSnapshot };
 }
+
