@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import styled from 'styled-components';
 import { motion, useReducedMotion } from 'framer-motion';
 import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
@@ -74,15 +74,6 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
   const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
   const canFly=!isResultHold && (kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard');
   const showConnector=!isResultHold && (kind==='target' || kind==='swap');
-  const label=useMemo(()=>{
-    if(!event) return '';
-    if(kind==='draw') return '카드를 뽑았습니다';
-    if(kind==='swap') return '손패를 교환했습니다';
-    if(kind==='forcedDiscard') return '손패를 공개 버린 패에 놓습니다';
-    if(kind==='revealDiscard') return '손패를 공개하고 탈락합니다';
-    return '';
-  },[event,kind]);
-
   if(!event || phase==='IDLE') return null;
 
   return <MotionOverlay aria-live="polite">
@@ -109,7 +100,6 @@ export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentActio
       <FlyingBack as={motion.div} key={`${currentAction?.eventId}_a`} initial={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:0}} animate={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
       <FlyingBack as={motion.div} key={`${currentAction?.eventId}_b`} initial={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:0}} animate={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
     </>}
-    {label && <MotionLabel>{label}</MotionLabel>}
     </React.Fragment>
   </MotionOverlay>;
 };
@@ -120,4 +110,3 @@ const SeatReaction=styled.div<{$eliminated:boolean}>`position:fixed;width:54px;h
 const FlyingCard=styled.div`position:fixed;top:0;left:0;width:64px;height:96px;transform-origin:center;filter:drop-shadow(0 10px 16px rgba(9,13,22,.28));`;
 const FlyingBack=styled.div`position:fixed;top:0;left:0;width:28px;height:40px;border:1px solid ${THEME.goldAntique};border-radius:5px;background:${THEME.burgundyDeep};box-shadow:2px 4px 8px rgba(9,13,22,.25);`;
 const CardBack=styled.div`width:64px;height:94px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.burgundyDeep};box-shadow:inset 0 0 0 2px rgba(255,255,255,.08);`;
-const MotionLabel=styled.span`position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:5px 8px;border-radius:7px;background:rgba(255,255,255,.9);color:${THEME.foreground};font-size:10px;font-weight:800;box-shadow:0 2px 8px rgba(9,13,22,.1);`;
