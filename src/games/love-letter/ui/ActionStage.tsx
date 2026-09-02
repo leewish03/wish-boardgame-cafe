@@ -27,16 +27,20 @@ export const ActionStage: React.FC<ActionStageProps> = ({ deckCount, setAsideCou
   const result = (resultEvent as any)?.presentation?.description || (event as any)?.presentation?.description || (presentationPhase === 'RESULT' ? (event?.reason || event?.resultDescription || event?.description) : null);
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name} 사용 대상 선택` : interactionState === 'GUESSING' ? '경비병이 지목할 숫자를 선택하세요' : null;
   const hasTarget = Boolean(targetEvent?.targetId || actionEvent?.targetId);
-  return <StageContainer aria-label={`덱 ${deckCount}장 남음`}><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock><Narration aria-live="polite">{actionError ? <em>{actionError}</em> : selection || (event ? <><strong>{actor || '플레이어'} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>현재 행동을 기다리는 중</span>)}</Narration></StageContainer>;
+  return <StageContainer aria-label={`덱 ${deckCount}장 남음`}>
+    <DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock>
+    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : selection || (event ? <><strong>{actor || '플레이어'} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>현재 행동을 기다리는 중</span>)}</Narration>
+  </StageContainer>;
 };
 
 const StageContainer = styled.section`
-  position:relative; width:100%; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center; padding:4px 74px; box-sizing:border-box;
-  @media (max-height:650px){padding:2px 58px;}
+  width:100%; min-width:0; min-height:0; display:grid; grid-template-columns:58px minmax(0, 1fr); align-items:center; gap:10px; padding:5px 12px; box-sizing:border-box;
+  @media (max-width:360px){grid-template-columns:50px minmax(0,1fr);gap:7px;padding-inline:8px;}
+  @media (max-height:650px){grid-template-columns:48px minmax(0,1fr);gap:7px;padding-block:2px;}
 `;
-const DeckDock = styled.div`position:absolute;left:14px;top:50%;transform:translateY(-50%);@media(max-width:360px){left:8px;}@media(max-height:650px){left:10px;}`;
+const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
 const Narration = styled.div`
-  min-width:0; min-height:58px; max-width:390px; padding:10px 13px; box-sizing:border-box;
+  width:100%; min-width:0; min-height:58px; max-width:390px; padding:10px 13px; box-sizing:border-box;
   text-align:left; display:flex; flex-direction:column; justify-content:center; gap:4px;
   border:1px solid ${THEME.gold}; border-radius:12px; background:rgba(255,253,247,.95);
   box-shadow:0 8px 22px rgba(9,13,22,.10); color:${THEME.foreground}; font-size:11px; line-height:1.35;
