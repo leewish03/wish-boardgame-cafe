@@ -117,6 +117,13 @@ export function useActionTimeline() {
     setPresentationPhase('IDLE');
   }, [setPresentationPhase]);
 
+  // Socket events from one command can arrive back-to-back. Keep this
+  // synchronous ref-based signal so a final snapshot cannot replace the table
+  // in the small gap before React commits `isActionPlaying`.
+  const hasPendingPresentation = useCallback(() => Boolean(
+    currentRef.current || queueRef.current.length || scheduledStartRef.current
+  ), []);
+
   useEffect(() => {
     const settle = () => resetTimeline();
     window.addEventListener('resize', settle);
@@ -127,5 +134,6 @@ export function useActionTimeline() {
     };
   }, [resetTimeline]);
 
-  return { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying };
+  return { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying, hasPendingPresentation };
 }
+
