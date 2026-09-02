@@ -44,7 +44,10 @@ const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts
 // A bot may act only after the longest normal client causal sequence has had
 // time to settle. This keeps two adjacent bot turns legible without returning
 // to the old multi-second artificial stall.
-const BOT_PRESENTATION_GAP_MS = 2000;
+const BOT_THINK_MIN_MS = 1800;
+const BOT_THINK_MAX_MS = 2600;
+const ACTION_MAX_WAIT_MS = 8_000;
+const PRIEST_MAX_WAIT_MS = 12_000;
 export { SOCKET_EVENTS };
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -80,6 +83,7 @@ export class LoveLetterService {
     this.eventCounters = new Map();
     this.commandQueues = new Map();
     this.botTimers = new Map();
+    this.resolutionTimers = new Map();
     this.pauseExpiryTimers = new Map();
     this.roundAdvanceTimers = new Map();
     this.progressRequests = new Map();
@@ -92,10 +96,100 @@ export class LoveLetterService {
   }
 
   getActionId(gameState, event) {
-    // A replacement/next-turn draw is the final physical beat of the command
-    // that caused it. Initial dealing has no last action and stays separate.
-    if (event.type === 'CARD_DRAWN') return event.actionId || gameState.lastAction?.actionId || `draw_${gameState.stateVersion}_${event.playerId}_${event.remainingDeckCount}`;
+    // Turn draws are intentionally a fresh physical action. The preceding
+    // card action must have settled before a new card leaves the deck.
+    if (event.type === 'CARD_DRAWN') return event.actionId || `draw_${gameState.stateVersion}_${event.playerId}_${event.remainingDeckCount}`;
     return event.actionId || gameState.lastAction?.actionId || `transition_${gameState.stateVersion}`;
+  }
+
+  getResolutionTiming(gameState, actorId) {
+    const action = gameState.lastAction || {};
+    const actor = gameState.players.find((player) => player.id === actorId);
+    const value = action.card?.value;
+    const result = action.resultType || '';
+    const isPriest = value === 2 && result === 'PRIEST_REVEAL';
+    const isLongEffect = value === 5 || value === 6 || result.includes('BARON') || result.includes('GUARD_SUCCESS') || result.includes('PRINCESS');
+    const minDurationMs = isPriest ? 3_500 : isLongEffect ? 5_000 : value === 1 || value === 3 ? 4_500 : 3_000;
+    return {
+      minDurationMs,
+      maxDurationMs: isPriest ? PRIEST_MAX_WAIT_MS : ACTION_MAX_WAIT_MS,
+      requiresActorAck: !actor?.isBot,
+      requiresPrivateReview: isPriest,
+    };
+  }
+
+  clearResolutionTimer(roomCode) {
+    const timer = this.resolutionTimers.get(roomCode);
+    if (timer) clearTimeout(timer);
+    this.resolutionTimers.delete(roomCode);
+  }
+
+  splitResolutionEvents(events) {
+    const transitionIndex = events.findIndex((event) => ['TURN_ENDED', 'ROUND_ENDED', 'MATCH_ENDED'].includes(event.type));
+    if (transitionIndex < 0) return { actionEvents: events, transitionEvents: [] };
+    return { actionEvents: events.slice(0, transitionIndex), transitionEvents: events.slice(transitionIndex) };
+  }
+
+  async schedulePendingResolution(roomCode) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingResolution;
+    if (!room || !pending || room.isPaused) return;
+    this.clearResolutionTimer(roomCode);
+    const now = Date.now();
+    const canSettle = !pending.requiresActorAck || pending.acknowledgedAt;
+    const dueAt = canSettle ? Math.max(now, pending.minAdvanceAt) : Math.max(now, pending.maxAdvanceAt);
+    const timer = setTimeout(async () => {
+      this.resolutionTimers.delete(roomCode);
+      const latest = await roomRepository.getRoom(roomCode);
+      const current = latest?.pendingResolution;
+      if (!latest || !current || current.actionId !== pending.actionId || latest.isPaused) return;
+      if (!current.requiresActorAck || current.acknowledgedAt || Date.now() >= current.maxAdvanceAt) {
+        await this.finalizePendingResolution(roomCode, current.actionId);
+        return;
+      }
+      await this.schedulePendingResolution(roomCode);
+    }, Math.max(25, dueAt - now));
+    timer.unref?.();
+    this.resolutionTimers.set(roomCode, timer);
+  }
+
+  async acknowledgePresentation(roomCode, playerId, actionId, expectedStateVersion, completedPhase) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingResolution;
+    if (!room || !pending) return { success: false, stale: true, error: '이미 정착한 행동입니다.' };
+    if (pending.actionId !== actionId || (expectedStateVersion != null && pending.stateVersion !== expectedStateVersion)) {
+      return { success: false, stale: true, error: '이전 행동의 확인입니다.' };
+    }
+    if (pending.requiresActorAck && pending.actorId !== playerId) {
+      return { success: false, error: '행동자만 현재 행동을 완료할 수 있습니다.' };
+    }
+    if (pending.requiresPrivateReview && completedPhase !== 'PRIVATE_REVIEW') {
+      return { success: false, error: '사제 확인을 완료한 뒤 진행할 수 있습니다.' };
+    }
+    pending.acknowledgedAt = Date.now();
+    pending.completedPhase = completedPhase;
+    await roomRepository.saveRoom(room);
+    await this.schedulePendingResolution(roomCode);
+    return { success: true, pending: true };
+  }
+
+  async finalizePendingResolution(roomCode, actionId) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingResolution;
+    if (!room || !pending || pending.actionId !== actionId || room.isPaused) return;
+    this.clearResolutionTimer(roomCode);
+    room.pendingResolution = null;
+    const gameState = room.gameStateObject;
+    const transitionEvents = pending.transitionEvents || [];
+    await roomRepository.saveRoom(room);
+    for (const [sequence, event] of transitionEvents.entries()) {
+      this.broadcastGameEvent(roomCode, gameState, { ...event, sequence: event.sequence ?? sequence });
+    }
+    this.broadcastGameSnapshot(roomCode, room);
+    this.broadcastRoomState(this.io, roomCode);
+    this.scheduleRoundAdvance(roomCode, room, gameState);
+    this.scheduleTurnTimeout(roomCode, gameState);
+    this.scheduleNextTurnIfBot(roomCode);
   }
 
   projectEventForPlayer(event, gameState, recipientPlayerId) {
@@ -212,8 +306,13 @@ export class LoveLetterService {
     if (room.isPaused && command.type !== 'FORFEIT') {
       throw new Error('재접속을 기다리는 동안 게임이 일시 정지되었습니다.');
     }
+    if (room.pendingResolution && command.type !== 'FORFEIT') {
+      throw new Error('이전 카드 행동을 확인하는 중입니다.');
+    }
     if (command.type === 'FORFEIT') {
       this.clearPauseExpiryTimer(roomCode);
+      this.clearResolutionTimer(roomCode);
+      room.pendingResolution = null;
     }
 
     const { nextState, events } = core.executeCommand(room.gameStateObject, command);
@@ -227,17 +326,41 @@ export class LoveLetterService {
       // their sessions out of the room immediately so no bot turn can resume.
       room.players = room.players.filter((player) => !player.isBot);
     }
-    this.scheduleRoundAdvance(roomCode, room, nextState);
+    const isCardAction = command.type === 'PLAY_CARD';
+    const { actionEvents, transitionEvents } = isCardAction ? this.splitResolutionEvents(events) : { actionEvents: events, transitionEvents: [] };
+    if (isCardAction) {
+      const actionId = nextState.lastAction?.actionId;
+      const timing = this.getResolutionTiming(nextState, command.playerId);
+      room.pendingResolution = {
+        actionId,
+        actorId: command.playerId,
+        stateVersion: nextState.stateVersion,
+        transitionEvents,
+        minAdvanceAt: Date.now() + timing.minDurationMs,
+        maxAdvanceAt: Date.now() + timing.maxDurationMs,
+        requiresActorAck: timing.requiresActorAck,
+        requiresPrivateReview: timing.requiresPrivateReview,
+      };
+    }
+    if (!isCardAction) this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
-    for (const [sequence, ev] of events.entries()) {
+    for (const [sequence, ev] of actionEvents.entries()) {
       this.broadcastGameEvent(roomCode, nextState, { ...ev, sequence: ev.sequence ?? sequence });
     }
 
-    this.broadcastGameSnapshot(roomCode, room);
-    this.broadcastRoomState(this.io, roomCode);
-    this.scheduleTurnTimeout(roomCode, nextState);
-    this.scheduleNextTurnIfBot(roomCode);
+    // Do not publish the next-turn snapshot until the current card has been
+    // physically explained. This is the authoritative presentation gate.
+    if (isCardAction) {
+      this.turnCoordinator.clearTurnTimer(roomCode);
+      this.clearBotTimer(roomCode);
+      await this.schedulePendingResolution(roomCode);
+    } else {
+      this.broadcastGameSnapshot(roomCode, room);
+      this.broadcastRoomState(this.io, roomCode);
+      this.scheduleTurnTimeout(roomCode, nextState);
+      this.scheduleNextTurnIfBot(roomCode);
+    }
 
     return { nextState, events };
   }
@@ -453,6 +576,7 @@ export class LoveLetterService {
     room.pausedTurnRemainingMs = Math.max(0, room.gameStateObject.turnExpiresAt - Date.now());
     this.turnCoordinator.clearTurnTimer(roomCode);
     this.clearBotTimer(roomCode);
+    this.clearResolutionTimer(roomCode);
     this.clearPauseExpiryTimer(roomCode);
     const pauseExpiry = room.pauseExpiresAt;
     const timer = setTimeout(() => {
@@ -486,10 +610,14 @@ export class LoveLetterService {
     delete room.pausedTurnRemainingMs;
     this.applyGameStateToRoom(room, nextState);
     await roomRepository.saveRoom(room);
-    this.broadcastGameSnapshot(roomCode, room);
-    this.broadcastRoomState(this.io, roomCode);
-    this.scheduleTurnTimeout(roomCode, nextState);
-    this.scheduleNextTurnIfBot(roomCode);
+    if (room.pendingResolution) {
+      await this.schedulePendingResolution(roomCode);
+    } else {
+      this.broadcastGameSnapshot(roomCode, room);
+      this.broadcastRoomState(this.io, roomCode);
+      this.scheduleTurnTimeout(roomCode, nextState);
+      this.scheduleNextTurnIfBot(roomCode);
+    }
   }
 
   async scheduleNextTurnIfBot(roomCode) {
@@ -529,7 +657,7 @@ export class LoveLetterService {
             console.error('Bot action error:', e.message);
           }
         }
-      }, BOT_PRESENTATION_GAP_MS);
+      }, BOT_THINK_MIN_MS + Math.floor(Math.random() * (BOT_THINK_MAX_MS - BOT_THINK_MIN_MS + 1)));
       botTimer.unref?.();
       this.botTimers.set(roomCode, botTimer);
     }
@@ -537,3 +665,4 @@ export class LoveLetterService {
 }
 
 export const createLoveLetterService = (io, options) => new LoveLetterService(io, options);
+
