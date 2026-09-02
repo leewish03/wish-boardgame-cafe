@@ -86,7 +86,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
 
   // Presentation timeline
-  const { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying } = useActionTimeline();
+  const { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying, hasPendingPresentation } = useActionTimeline();
 
   // Socket adapter hook
   const gameSocket = useGameSocket({
@@ -118,7 +118,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   };
 
   const myHand: CardInstance[] = propMyHand || gameSocket.myHand || [];
-  const visual = useVisualTableState(gameState, myHand, activeUserId, isActionPlaying);
+  const visual = useVisualTableState(gameState, myHand, activeUserId, isActionPlaying, hasPendingPresentation);
 
   // Interactive UI States
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -136,6 +136,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   // Modal States
   const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
   const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
+  const [pendingPriestAck, setPendingPriestAck] = useState<{ actionId: string; stateVersion: number } | null>(null);
 
   // Sync priest peek from socket hook
   useEffect(() => {
@@ -385,8 +386,35 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   const handlePresentationComplete = useCallback(() => {
     if (currentAction && phase !== 'RESULT') visual.applyCompletedEvent((currentAction as any).event);
+    // The final visible beat may be an elimination or a forced discard, which
+    // has no actorId of its own. The action summary remains the authority for
+    // deciding who is allowed to release the server-side presentation gate.
+    const actionActorId = currentAction?.presentation?.actorId || (currentAction?.event as any)?.actorId;
+    if (currentAction && phase === 'RESULT' && actionActorId === activeUserId) {
+      const isPriestReview = currentAction.presentation?.resultType === 'PRIEST_REVEAL';
+      if (isPriestReview) {
+        setPendingPriestAck({ actionId: currentAction.actionId, stateVersion: currentAction.stateVersion });
+      } else {
+        gameSocket.acknowledgePresentation(currentAction.actionId, currentAction.stateVersion, 'PUBLIC_SEQUENCE');
+      }
+    }
     advancePresentation();
-  }, [advancePresentation, currentAction, phase, visual]);
+  }, [activeUserId, advancePresentation, currentAction, gameSocket, phase, visual]);
+
+  const handlePriestReviewComplete = useCallback(() => {
+    const pending = pendingPriestAck;
+    if (!pending) {
+      setPriestSecret(null);
+      gameSocket.clearPriestSecret();
+      return;
+    }
+    gameSocket.acknowledgePresentation(pending.actionId, pending.stateVersion, 'PRIVATE_REVIEW', (result) => {
+      if (!result.success) return;
+      setPendingPriestAck(null);
+      setPriestSecret(null);
+      gameSocket.clearPriestSecret();
+    });
+  }, [gameSocket, pendingPriestAck]);
 
   // Media controls resolution
   const isMicOn = propIsMicOn ?? webrtc?.isMicOn ?? false;
@@ -506,10 +534,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         isOpen={!!priestSecret && gameState.matchState === 'PLAYING'}
         targetPlayerName={priestSecret?.targetName || ''}
         secretCard={priestSecret?.card || null}
-        onClose={() => {
-          setPriestSecret(null);
-          gameSocket.clearPriestSecret();
-        }}
+        onClose={handlePriestReviewComplete}
       />
 
       <RoundResultModal
@@ -581,3 +606,4 @@ const BoardSurface = styled.div`
 `;
 
 export default LoveLetterGame;
+
