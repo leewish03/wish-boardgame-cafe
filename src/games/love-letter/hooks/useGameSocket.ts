@@ -22,6 +22,7 @@ export interface UseGameSocketReturn {
   lastAction: any | null;
   priestSecret: { targetName: string; card: CardInstance } | null;
   clearPriestSecret: () => void;
+  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW', callback?: (result: { success: boolean; error?: string }) => void) => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
@@ -332,6 +333,20 @@ export function useGameSocket({
     setPriestSecret(null);
   }, []);
 
+  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW', callback?: (result: { success: boolean; error?: string }) => void) => {
+    if (!socket?.connected) {
+      callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
+      return;
+    }
+    socket.emit(SOCKET_EVENTS.GAME_PRESENTATION_ACK, {
+      roomCode: roomCode || rawRoomState?.code,
+      userId: myUserId,
+      actionId,
+      expectedStateVersion,
+      completedPhase,
+    }, (result: any) => callback?.(result || { success: false, error: '서버 응답을 받지 못했습니다.' }));
+  }, [socket, roomCode, rawRoomState?.code, myUserId]);
+
   const playCard = useCallback(
     (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => {
       if (!socket?.connected) {
@@ -421,6 +436,7 @@ export function useGameSocket({
     lastAction,
     priestSecret,
     clearPriestSecret,
+    acknowledgePresentation,
     isPaused: !!rawRoomState?.isPaused,
     pausedPlayerName: pausedPlayer || '플레이어',
     playCard,
@@ -431,3 +447,4 @@ export function useGameSocket({
     rawRoomState,
   };
 }
+
