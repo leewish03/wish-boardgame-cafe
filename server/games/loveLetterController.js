@@ -77,6 +77,23 @@ export function registerLoveLetterController(io, service) {
       }
     });
 
+    socket.on(SOCKET_EVENTS.GAME_PRESENTATION_ACK, async (payload, callback) => {
+      try {
+        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
+        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const result = await service.acknowledgePresentation(
+          roomCode,
+          userId,
+          payload?.actionId,
+          payload?.expectedStateVersion,
+          payload?.completedPhase,
+        );
+        if (typeof callback === 'function') callback(result);
+      } catch (error) {
+        callbackError(callback, error);
+      }
+    });
+
     socket.on(SOCKET_EVENTS.SYNC_REQUEST, async (payload, callback) => {
       try {
         const code = String(payload?.roomCode || '').toUpperCase().trim();
@@ -106,3 +123,4 @@ export function registerLoveLetterController(io, service) {
     });
   });
 }
+
