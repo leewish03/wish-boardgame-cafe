@@ -102,8 +102,10 @@ async function main() {
     const card = turnSecret.hand.find((candidate) => candidate.value !== 8) || turnSecret.hand[0];
     const target = state.players.find((player) => player.id !== turnId && !player.isEliminated && !player.isProtected);
     const targetId = [1, 2, 3, 5, 6].includes(card.value) ? target?.id : undefined;
-    const nextA = once(a, 'game:snapshot');
-    const nextB = once(b, 'game:snapshot');
+    // The public action must remain readable before the server advances the
+    // authoritative turn, so this transition can take up to the action gate.
+    const nextA = once(a, 'game:snapshot', 7_000);
+    const nextB = once(b, 'game:snapshot', 7_000);
     const eventA = once(a, 'game:event');
     const command = await emit(turnSocket, 'game:command', {
       roomCode: created.roomCode,
@@ -117,7 +119,17 @@ async function main() {
       },
     });
     assert.equal(command.success, true, command.error);
-    const [afterA, afterB, actionEvent] = await Promise.all([nextA, nextB, eventA]);
+    const actionEvent = await eventA;
+    // The presentation gate deliberately withholds the next-turn snapshot until the
+    // acting client has completed the public card sequence.
+    const presentationAck = await emit(turnSocket, 'game:presentation-ack', {
+      roomCode: created.roomCode,
+      actionId: actionEvent.actionId,
+      expectedStateVersion: actionEvent.stateVersion,
+      completedPhase: 'PUBLIC_SEQUENCE',
+    });
+    assert.equal(presentationAck.success, true, presentationAck.error);
+    const [afterA, afterB] = await Promise.all([nextA, nextB]);
     assert.ok(afterA.stateVersion > initialA.stateVersion, 'state version must advance after a command');
     assertNoSecrets(afterA, created.userId);
     assertNoSecrets(afterB, joined.userId);
@@ -137,3 +149,4 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
