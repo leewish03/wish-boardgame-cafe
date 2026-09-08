@@ -63,15 +63,18 @@ function applyEvent(table: VisualTableState, event: any, localUserId: string, la
       }
       break;
     }
-    case 'CARD_PLAYED': {
+    case 'HAND_TO_PLAY': {
       const actorId = event.actorId;
       next = {
         ...next,
-        players: updatePlayer(next.players, actorId, (player) => appendDiscard({ ...player, cardCount: Math.max(0, player.cardCount - 1) }, event.card)),
+        players: updatePlayer(next.players, actorId, (player) => ({ ...player, cardCount: Math.max(0, player.cardCount - 1) })),
       };
       if (actorId === localUserId && event.card?.id) next = { ...next, myHand: next.myHand.filter((item) => item.id !== event.card.id) };
       break;
     }
+    case 'PLAY_TO_DISCARD':
+      next = { ...next, players: updatePlayer(next.players, event.actorId, player => appendDiscard(player, event.card)) };
+      break;
     case 'PRINCE_DISCARDED': {
       next = {
         ...next,
@@ -104,9 +107,19 @@ export function useVisualTableState(
   localUserId: string,
   isActionPlaying: boolean,
   hasPendingPresentation?: () => boolean,
+  baseline?: GameState | null,
+  actionId?: string | null,
 ) {
   const latestRef = useRef<VisualTableState>(fromSnapshot(gameState, myHand));
   const [visualTable, setVisualTable] = useState<VisualTableState>(() => latestRef.current);
+  const baselineId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!actionId) baselineId.current = null;
+    if (baseline && actionId && baselineId.current !== actionId) {
+      baselineId.current = actionId;
+      setVisualTable(fromSnapshot(baseline, (baseline as any).mySecretHand || []));
+    }
+  }, [actionId, baseline]);
 
   useEffect(() => {
     const latest = fromSnapshot(gameState, myHand);

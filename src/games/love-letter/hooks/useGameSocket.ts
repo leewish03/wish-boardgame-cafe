@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
 import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
 import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
@@ -13,16 +13,16 @@ export interface UseGameSocketOptions {
   initialRoomState?: any;
   onLeaveRoom?: () => void;
   onGameEvent?: (envelope: GameEventEnvelope) => void;
+  onPresentationCancel?: () => void;
 }
 
 export interface UseGameSocketReturn {
+  returnedActionId: string | null;
   isConnected: boolean;
   gameState: GameState | null;
   myHand: CardInstance[];
   lastAction: any | null;
-  priestSecret: { targetName: string; card: CardInstance } | null;
-  clearPriestSecret: () => void;
-  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW', callback?: (result: { success: boolean; error?: string }) => void) => void;
+  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST', callback?: (result: { success: boolean; error?: string }) => void) => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
@@ -139,7 +139,7 @@ export function adaptRoomStateToGameState(roomState: any, myUserId: string): { g
     roundNumber: roomState.roundNumber || 1,
     config: {
       targetTokens: roomState.targetTokens || 4,
-      turnTimeoutSeconds: roomState.turnTimeLimit || 60,
+      turnTimeoutSeconds: roomState.turnTimeLimit ?? 60,
       maxPlayers: roomState.maxPlayers || 4,
       minPlayers: 2,
     },
@@ -151,7 +151,7 @@ export function adaptRoomStateToGameState(roomState: any, myUserId: string): { g
     setAsideCard: roomState.setAsideSecretCard || null,
     currentTurnPlayerId: roomState.turnPlayerId || null,
     turnStartedAt: Date.now(),
-    turnExpiresAt: Date.now() + ((roomState.turnTimeLimit || 60) * 1000),
+    turnExpiresAt: roomState.turnTimeLimit === 0 ? 0 : Date.now() + ((roomState.turnTimeLimit ?? 60) * 1000),
     lastAction,
     stateVersion: roomState.stateVersion || 1,
     matchWinnerId: roomState.gameWinner?.id || roomState.matchWinnerId || null,
@@ -168,13 +168,17 @@ export function useGameSocket({
   initialRoomState,
   onLeaveRoom,
   onGameEvent,
+  onPresentationCancel,
 }: UseGameSocketOptions): UseGameSocketReturn {
   const [isConnected, setIsConnected] = useState<boolean>(socket?.connected ?? false);
   const [rawRoomState, setRawRoomState] = useState<any>(initialRoomState || null);
-  const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
   const [lastAction, setLastAction] = useState<any | null>(null);
   const latestStateVersionRef = useRef(0);
   const latestSnapshotRef = useRef<any>(null);
+  const seenRound = useRef<number | null>(null);
+  const pendingDraws = useRef<GameEventEnvelope[]>([]);
+  const outcomeVersion = useRef<number | null>(null);
+  const [returnedActionId, setReturnedActionId] = useState<string | null>(null);
 
   const myUserId = currentUser?.id || '';
 
@@ -202,7 +206,7 @@ export function useGameSocket({
     if (!socket) return;
 
     const handleConnect = () => setIsConnected(true);
-    const handleDisconnect = () => setIsConnected(false);
+    const handleDisconnect = () => { setIsConnected(false); pendingDraws.current = []; };
 
     const handleRoomState = (state: any) => {
       if (state) {
@@ -229,6 +233,33 @@ export function useGameSocket({
     const handleGameSnapshot = (snapshot: GameSnapshot) => {
       if (!snapshot?.publicState || snapshot.stateVersion < latestStateVersionRef.current) return;
       latestStateVersionRef.current = snapshot.stateVersion;
+      if (!snapshot.presentation && !snapshot.publicState.lastAction && snapshot.publicState.matchState === 'PLAYING' && seenRound.current !== snapshot.publicState.roundNumber) {
+        const state = snapshot.publicState;
+        const total = state.players.reduce((sum, p) => sum + p.cardCount, 0);
+        const id = `deal_${snapshot.stateVersion}`;
+        const before = { ...state, players: state.players.map(p => ({ ...p, cardCount: 0 })), deckCount: state.deckCount + total, mySecretHand: [] };
+        let remaining = state.deckCount + total;
+        for (let slot = 0; slot < 2; slot++) for (const p of state.players) {
+          if (p.cardCount <= slot) continue;
+          onGameEvent?.({ eventId: `${id}:${p.id}:${slot}`, actionId: `${id}:${p.id}:${slot}`, before: slot === 0 && p.id === state.players[0].id ? before : undefined, stateVersion: snapshot.stateVersion,
+            timestamp: snapshot.serverTime, event: { type: 'CARD_DRAWN', playerId: p.id, card: p.id === myUserId ? snapshot.privateState?.hand[slot] : undefined, remainingDeckCount: --remaining } } as any);
+        }
+      } else if (!snapshot.presentation && seenRound.current === snapshot.publicState.roundNumber) {
+        pendingDraws.current.forEach(envelope => onGameEvent?.(envelope));
+      }
+      pendingDraws.current = [];
+      if (!snapshot.presentation && snapshot.publicState.outcome?.winnerCards && outcomeVersion.current !== snapshot.stateVersion && ['ROUND_END','GAME_OVER'].includes(snapshot.publicState.matchState)) {
+        outcomeVersion.current = snapshot.stateVersion;
+        onGameEvent?.({ eventId: `outcome_${snapshot.stateVersion}`, actionId: `outcome_${snapshot.stateVersion}`, stateVersion: snapshot.stateVersion, timestamp: snapshot.serverTime,
+          event: { type: 'ROUND_ENDED', winnerCards: snapshot.publicState.outcome.winnerCards } } as any);
+      }
+      seenRound.current = snapshot.publicState.roundNumber;
+      if (snapshot.presentation) {
+        const pending = snapshot.presentation;
+        if (pending.returnRequested) setReturnedActionId(pending.actionId);
+        const before = { ...pending.before.publicState, mySecretHand: pending.before.privateState.hand };
+        pending.events.forEach(envelope => onGameEvent?.({ ...envelope, before, event: { ...envelope.event, presentation: envelope.presentation } } as any));
+      }
       setLastAction(snapshot.publicState.lastAction || null);
       const nextState = {
         ...snapshot.publicState,
@@ -241,74 +272,10 @@ export function useGameSocket({
     };
 
     const handleGameEvent = (envelope: GameEventEnvelope) => {
-      if (envelope && envelope.event) {
-        const event: any = envelope.event;
-        if ((event.type === 'PRIEST_USED' || event.type === 'PRIEST_REVEALED') && event.revealedCard) {
-          const target = rawRoomState?.players?.find((player: any) => player.id === event.targetId);
-          setPriestSecret({ targetName: target?.nickname || '상대방', card: event.revealedCard });
-        }
-        if (onGameEvent && [
-          'CARD_DRAWN', 'CARD_PLAYED', 'PLAYER_TARGETED', 'GUARD_GUESSED', 'CARD_GUESSED',
-          'GUARD_SUCCESS', 'GUARD_SUCCEEDED', 'GUARD_FAILED', 'PRIEST_USED', 'PRIEST_REVEALED',
-          'BARON_DUEL_STARTED', 'BARON_COMPARED', 'PLAYER_PROTECTED', 'HANDMAID_PROTECTED',
-          'PRINCE_DISCARDED', 'KING_SWAP', 'HANDS_SWAPPED', 'PLAYER_ELIMINATED',
-        ].includes(event.type)) {
-          onGameEvent({
-            ...envelope,
-            // Keep the wire event as the source of truth. Presentation metadata is
-            // attached without overwriting its type or public/private fields.
-            event: { ...event, presentation: envelope.presentation || null },
-          } as GameEventEnvelope);
-        }
-      }
-    };
-
-    const handleActionResult = (actionData: any) => {
-      setLastAction(actionData);
-      sfx.playCardPlay();
-
-      if (onGameEvent && actionData) {
-        const envelope: GameEventEnvelope = {
-          eventId: actionData.actionId || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-          actionId: actionData.actionId,
-          stateVersion: 1,
-          timestamp: actionData.timestamp || Date.now(),
-          event: {
-            type: actionData.resultType === 'GUARD_SUCCESS' ? 'GUARD_SUCCEEDED' :
-                  actionData.resultType === 'GUARD_FAIL' ? 'GUARD_FAILED' :
-                  actionData.resultType === 'BARON_WIN' || actionData.resultType === 'BARON_LOSE' || actionData.resultType === 'BARON_TIE' ? 'BARON_COMPARED' :
-                  actionData.resultType === 'HANDMAID_PROTECT' ? 'HANDMAID_PROTECTED' :
-                  actionData.resultType === 'PRINCE_DISCARD' || actionData.resultType === 'PRINCE_PRINCESS_ELIMINATED' ? 'PRINCE_DISCARDED' :
-                  actionData.resultType === 'KING_SWAP' ? 'HANDS_SWAPPED' :
-                  actionData.resultType === 'PRINCESS_SELF_ELIMINATED' ? 'PLAYER_ELIMINATED' :
-                  'CARD_PLAYED',
-            actorId: actionData.actorId,
-            playerId: actionData.actorId,
-            targetId: actionData.targetId,
-            card: actionData.playedCard,
-            guessValue: actionData.guessedCard?.value,
-            guessedCard: actionData.guessedCard,
-            revealedCard: actionData.revealedCard,
-            discardedCard: actionData.revealedCard,
-            reason: actionData.resultDescription,
-          } as any,
-        };
-        onGameEvent(envelope);
-      }
-    };
-
-    const handlePriestResult = (data: any) => {
-      if (data && data.card) {
-        setPriestSecret({
-          targetName: data.targetName || data.targetPlayerName || '상대방',
-          card: {
-            id: data.card.id || `priest_card_${data.card.value}`,
-            value: data.card.value || data.card.cardNumber || 1,
-            name: data.card.name || '알 수 없음',
-          },
-        });
-        sfx.playCardDraw();
-      }
+      // Card actions arrive atomically in snapshot.presentation. Only standalone
+      // turn draws use the event stream, so aliases cannot create extra motions.
+      if (!envelope?.actionId?.startsWith('draw_') || seenRound.current === null) return;
+      pendingDraws.current.push(envelope);
     };
 
     socket.on('connect', handleConnect);
@@ -316,6 +283,10 @@ export function useGameSocket({
     socket.on('room:state', handleRoomState);
     socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
     socket.on(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
+    const handleReturn = (data: { actionId: string }) => setReturnedActionId(data.actionId);
+    socket.on('game:presentation-return', handleReturn);
+    if (onPresentationCancel) socket.on('game:presentation-cancel', onPresentationCancel);
+    if (socket.connected) socket.emit(SOCKET_EVENTS.GAME_VIEW_READY);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -323,17 +294,15 @@ export function useGameSocket({
       socket.off('room:state', handleRoomState);
       socket.off(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
       socket.off(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
+      socket.off('game:presentation-return', handleReturn);
+      if (onPresentationCancel) socket.off('game:presentation-cancel', onPresentationCancel);
     };
-  }, [socket, onGameEvent, roomCode]);
+  }, [socket, onGameEvent, onPresentationCancel, roomCode]);
 
   // Derive GameState & Hand
-  const { gameState, myHand } = adaptRoomStateToGameState(rawRoomState, myUserId);
+  const { gameState, myHand } = useMemo(() => adaptRoomStateToGameState(rawRoomState, myUserId), [rawRoomState, myUserId]);
 
-  const clearPriestSecret = useCallback(() => {
-    setPriestSecret(null);
-  }, []);
-
-  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW', callback?: (result: { success: boolean; error?: string }) => void) => {
+  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST', callback?: (result: { success: boolean; error?: string }) => void) => {
     if (!socket?.connected) {
       callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
       return;
@@ -431,11 +400,10 @@ export function useGameSocket({
 
   return {
     isConnected,
+    returnedActionId,
     gameState,
     myHand,
     lastAction,
-    priestSecret,
-    clearPriestSecret,
     acknowledgePresentation,
     isPaused: !!rawRoomState?.isPaused,
     pausedPlayerName: pausedPlayer || '플레이어',

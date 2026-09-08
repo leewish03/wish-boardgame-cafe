@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
 import { PresentationPhase } from '../machines/presentationMachine';
+import { buildPhysicalSequence } from './physicalSequence';
 
 export interface PresentationAction extends GameEventEnvelope {
   /** Every visual beat produced by one authoritative card command. */
@@ -39,7 +40,8 @@ export function useActionTimeline() {
   }, []);
 
   const startNext = useCallback(() => {
-    const next = queueRef.current.shift() || null;
+    let next = queueRef.current.shift() || null;
+    while (next && buildPhysicalSequence(next.presentationEvents).length === 0) next = queueRef.current.shift() || null;
     currentRef.current = next;
     setCurrentAction(next);
     setIsActionPlaying(!!next);
@@ -88,17 +90,12 @@ export function useActionTimeline() {
     // Each entry is one causal beat. Do not collapse a Prince discard, an
     // elimination, a King swap or a replacement draw into a generic result.
     const nextIndex = current.presentationIndex + 1;
-    if (nextIndex < current.presentationEvents.length) {
-      const nextEvent = current.presentationEvents[nextIndex];
-      const updated = { ...current, presentationIndex: nextIndex, event: nextEvent.event, eventId: nextEvent.eventId };
+    const steps = buildPhysicalSequence(current.presentationEvents);
+    if (nextIndex < steps.length) {
+      const updated = { ...current, presentationIndex: nextIndex };
       currentRef.current = updated;
       setCurrentAction(updated);
-      setPhase('CARD_PLAYING');
-      return;
-    }
-
-    if (phaseRef.current !== 'RESULT') {
-      setPresentationPhase('RESULT');
+      setPresentationPhase(nextIndex === steps.length - 1 ? 'RESULT' : 'CARD_PLAYING');
       return;
     }
 
@@ -110,6 +107,7 @@ export function useActionTimeline() {
   }, [setPresentationPhase, startNext]);
 
   const resetTimeline = useCallback(() => {
+    processedEventIdsRef.current.clear();
     queueRef.current = [];
     currentRef.current = null;
     setCurrentAction(null);
@@ -123,16 +121,6 @@ export function useActionTimeline() {
   const hasPendingPresentation = useCallback(() => Boolean(
     currentRef.current || queueRef.current.length || scheduledStartRef.current
   ), []);
-
-  useEffect(() => {
-    const settle = () => resetTimeline();
-    window.addEventListener('resize', settle);
-    window.addEventListener('orientationchange', settle);
-    return () => {
-      window.removeEventListener('resize', settle);
-      window.removeEventListener('orientationchange', settle);
-    };
-  }, [resetTimeline]);
 
   return { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying, hasPendingPresentation };
 }

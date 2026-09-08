@@ -1133,7 +1133,7 @@ export default function App() {
                 <div>
                   <CardTitle>러브레터 살롱</CardTitle>
                   <CardDescription>
-                    목표 토큰 {roomState?.targetTokens || 4}개 · 턴 제한시간 {roomState?.turnTimeLimit || 60}초
+                    목표 토큰 {roomState?.targetTokens || 4}개 · 턴 제한시간 {roomState?.turnTimeLimit === 0 ? '무제한' : `${roomState?.turnTimeLimit ?? 60}초`}
                   </CardDescription>
                 </div>
 

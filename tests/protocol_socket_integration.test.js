@@ -64,6 +64,9 @@ async function main() {
     const [initialA, initialB] = await Promise.all([snapA, snapB]);
     assertNoSecrets(initialA, created.userId);
     assertNoSecrets(initialB, joined.userId);
+    const mountedTable = once(a, 'game:snapshot');
+    a.emit('game:view-ready');
+    assertNoSecrets(await mountedTable, created.userId);
 
     const room = rooms[created.roomCode];
     let state = room.gameStateObject;
@@ -122,11 +125,19 @@ async function main() {
     const actionEvent = await eventA;
     // The presentation gate deliberately withholds the next-turn snapshot until the
     // acting client has completed the public card sequence.
+    if (card.value === 2) {
+      assert.equal((await emit(turnSocket, 'game:presentation-ack', {
+        roomCode: created.roomCode, actionId: actionEvent.actionId,
+        expectedStateVersion: actionEvent.stateVersion, completedPhase: 'RETURN_REQUEST',
+      })).success, true);
+    }
     const presentationAck = await emit(turnSocket, 'game:presentation-ack', {
       roomCode: created.roomCode,
       actionId: actionEvent.actionId,
       expectedStateVersion: actionEvent.stateVersion,
-      completedPhase: 'PUBLIC_SEQUENCE',
+      // The deck is intentionally shuffled. A Priest action requires the
+      // actor's private review acknowledgement instead of a public-only one.
+      completedPhase: card.value === 2 ? 'PRIVATE_REVIEW' : 'PUBLIC_SEQUENCE',
     });
     assert.equal(presentationAck.success, true, presentationAck.error);
     const [afterA, afterB] = await Promise.all([nextA, nextB]);

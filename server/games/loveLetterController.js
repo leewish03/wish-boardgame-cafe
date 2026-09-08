@@ -29,6 +29,15 @@ function normalizeCommand(payload, playerId) {
 
 export function registerLoveLetterController(io, service) {
   io.on('connection', (socket) => {
+    // The table mounts after the lobby receives room:state. Its first snapshot
+    // may already have been emitted, so let the authenticated socket request it.
+    socket.on(SOCKET_EVENTS.GAME_VIEW_READY, () => {
+      const mapping = socketToUser[socket.id];
+      const room = mapping && rooms[mapping.roomCode];
+      if (room?.players.some(player => player.id === mapping.userId && player.socketId === socket.id)) {
+        service.broadcastGameSnapshot(mapping.roomCode, room);
+      }
+    });
     const handleStart = async (payload, callback) => {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);

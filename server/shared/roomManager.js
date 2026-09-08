@@ -156,7 +156,9 @@ export function getPublicRoomState(room, requestUserId = null) {
       roundWinnerIds: game.roundWinnerIds || [],
       roundWinnerReason: game.roundWinnerReason || game.outcome?.reason || null,
       matchWinnerId: game.matchWinnerId || null,
-      lastAction: game.lastAction || null,
+      lastAction: game.lastAction?.resultType === 'PRIEST_REVEAL'
+        ? { ...game.lastAction, revealedCard: undefined }
+        : game.lastAction || null,
       chatMessages: (room.chatMessages || []).slice(-30),
       isPaused: !!room.isPaused,
       pausedPlayerId: room.pausedPlayerId || null,
@@ -190,7 +192,7 @@ export function getPublicRoomState(room, requestUserId = null) {
     serverTime: Date.now(),
     targetTokens: room.targetTokens || 4,
     maxPlayers: room.maxPlayers || 4,
-    turnTimeLimit: room.turnTimeLimit || 60,
+    turnTimeLimit: room.turnTimeLimit ?? 60,
     deckCount: room.deck ? room.deck.length : 0,
     setAsideOpenCards: room.setAsideOpenCards || [],
     turnPlayerId: room.turnPlayerId,
@@ -387,7 +389,10 @@ export function initRoomManager(io) {
           stateVersion: 1,
           targetTokens: Number(targetTokens) || 4,
           maxPlayers: Number(maxPlayers) || 4,
-          turnTimeLimit: Number(turnTimeLimit) || 60,
+          // Zero is an intentional setting for an untimed table. Do not use a
+          // truthy fallback here or the waiting room and authoritative engine
+          // silently disagree about the rule the host selected.
+          turnTimeLimit: Number.isFinite(Number(turnTimeLimit)) ? Number(turnTimeLimit) : 60,
           players: [player],
           deck: [],
           setAsideSecretCard: null,

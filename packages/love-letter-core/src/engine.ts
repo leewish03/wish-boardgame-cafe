@@ -420,6 +420,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         }
 
         case 8: { // Princess
+          player.discardPile.push(...secret.hand);
+          secret.hand = [];
+          player.cardCount = 0;
           player.isEliminated = true;
           player.eliminationReason = '스스로 공주 카드를 플레이함';
           player.eliminatedBy = playerId;
@@ -445,7 +448,17 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         swapped: summarySwapped,
       };
 
-      // Check round end condition
+      s.playPhase = 'ACTION_RESOLVING';
+      s.turnExpiresAt = 0;
+      if (command.deferTransition) return { nextState: s, events };
+      const completed = resolveCommand(s, { type: 'FINALIZE_ACTION' });
+      return { nextState: completed.nextState, events: [...events, ...completed.events] };
+    }
+
+    case 'FINALIZE_ACTION': {
+      if (s.playPhase !== 'ACTION_RESOLVING' || !s.currentTurnPlayerId) throw new Error('완료할 카드 행동이 없습니다.');
+      const playerId = s.currentTurnPlayerId;
+      // Only the server opens the next turn after the physical action settles.
       if (isRoundOver(s)) {
         s.playPhase = 'ROUND_END';
         s.matchState = 'ROUND_END';

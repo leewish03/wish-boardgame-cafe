@@ -11,6 +11,7 @@ export interface GameCardProps {
   id?: string;
   isSelected?: boolean;
   isDisabled?: boolean;
+  isInteractive?: boolean;
   isDragging?: boolean;
   disabledReason?: string;
   onClick?: () => void;
@@ -27,6 +28,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   id,
   isSelected = false,
   isDisabled = false,
+  isInteractive = !isDisabled,
   disabledReason,
   onClick,
   onDragStart,
@@ -48,8 +50,8 @@ export const GameCard: React.FC<GameCardProps> = ({
       $isSelected={isSelected}
       $isDisabled={isDisabled}
       $compact={compact}
-      onClick={!isDisabled ? onClick : undefined}
-      drag={enableDrag && !isDisabled ? true : false}
+      onClick={isInteractive && !isDisabled ? onClick : undefined}
+      drag={enableDrag && isInteractive && !isDisabled ? true : false}
       dragSnapToOrigin
       dragElastic={0.25}
       onDragStart={onDragStart}
@@ -61,8 +63,9 @@ export const GameCard: React.FC<GameCardProps> = ({
         boxShadow: '0 20px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(212, 175, 55, 0.7)',
         zIndex: 100,
       }}
-      whileHover={!isDisabled ? { y: -5, scale: 1.02 } : undefined}
-      whileTap={!isDisabled ? { scale: 0.98 } : undefined}
+      whileHover={isInteractive && !isDisabled ? { y: -5, scale: 1.02 } : undefined}
+      whileTap={isInteractive && !isDisabled ? { scale: 0.98 } : undefined}
+      aria-disabled={!isInteractive || isDisabled}
       layout
       data-card-id={id}
       data-card-value={value}
@@ -99,8 +102,8 @@ export const GameCard: React.FC<GameCardProps> = ({
 
 const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $compact: boolean }>`
   position: relative;
-  width: ${props => props.$compact ? '64px' : 'clamp(96px, 29vw, 126px)'};
-  height: ${props => props.$compact ? '96px' : 'clamp(142px, 43vw, 182px)'};
+  width: ${props => props.$compact ? '64px' : 'clamp(106px, 29vw, 154px)'};
+  height: ${props => props.$compact ? '96px' : 'clamp(158px, 43vw, 220px)'};
   min-width: ${props => props.$compact ? '60px' : '92px'};
   min-height: ${props => props.$compact ? '88px' : '138px'};
   background: #fdfbf7;
@@ -201,7 +204,7 @@ const DescriptionArea = styled.div`
 
 const DescText = styled.p`
   margin: 0;
-  font-size: clamp(7.6px, 2vw, 8.5px);
+  font-size: clamp(10px, 2.5vw, 12px);
   line-height: 1.25;
   color: #3f3f46;
   text-align: center;

@@ -37,6 +37,7 @@ function loadTs(filePath) {
 const root = path.resolve(__dirname, '../../');
 const core = loadTs(path.join(root, 'packages/love-letter-core/src/index.ts'));
 const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts'));
+const { buildPhysicalSequence } = loadTs(path.join(root, 'packages/protocol/src/physicalSequence.ts'));
 // Leave time for the client-side causal sequence (card → target → result → discard)
 // before an automated opponent creates the next authoritative action.
 // The client has its own short causal presentation. Keeping a second 3.5s
@@ -47,7 +48,6 @@ const { SOCKET_EVENTS } = loadTs(path.join(root, 'packages/protocol/src/index.ts
 const BOT_THINK_MIN_MS = 1800;
 const BOT_THINK_MAX_MS = 2600;
 const ACTION_MAX_WAIT_MS = 8_000;
-const PRIEST_MAX_WAIT_MS = 12_000;
 export { SOCKET_EVENTS };
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -108,11 +108,7 @@ export class LoveLetterService {
     const value = action.card?.value;
     const result = action.resultType || '';
     const isPriest = value === 2 && result === 'PRIEST_REVEAL';
-    const isLongEffect = value === 5 || value === 6 || result.includes('BARON') || result.includes('GUARD_SUCCESS') || result.includes('PRINCESS');
-    const minDurationMs = isPriest ? 3_500 : isLongEffect ? 5_000 : value === 1 || value === 3 ? 4_500 : 3_000;
     return {
-      minDurationMs,
-      maxDurationMs: isPriest ? PRIEST_MAX_WAIT_MS : ACTION_MAX_WAIT_MS,
       requiresActorAck: !actor?.isBot,
       requiresPrivateReview: isPriest,
     };
@@ -135,6 +131,8 @@ export class LoveLetterService {
     const pending = room?.pendingResolution;
     if (!room || !pending || room.isPaused) return;
     this.clearResolutionTimer(roomCode);
+    // A connected human's private review is not an animation timeout.
+    if (pending.requiresPrivateReview && pending.requiresActorAck && !pending.returnRequestedAt && !pending.acknowledgedAt) return;
     const now = Date.now();
     const canSettle = !pending.requiresActorAck || pending.acknowledgedAt;
     const dueAt = canSettle ? Math.max(now, pending.minAdvanceAt) : Math.max(now, pending.maxAdvanceAt);
@@ -154,18 +152,35 @@ export class LoveLetterService {
   }
 
   async acknowledgePresentation(roomCode, playerId, actionId, expectedStateVersion, completedPhase) {
+    return this.runRoomOperation(roomCode, () => this.applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase));
+  }
+
+  async applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase) {
     const room = await roomRepository.getRoom(roomCode);
     const pending = room?.pendingResolution;
     if (!room || !pending) return { success: false, stale: true, error: '이미 정착한 행동입니다.' };
     if (pending.actionId !== actionId || (expectedStateVersion != null && pending.stateVersion !== expectedStateVersion)) {
       return { success: false, stale: true, error: '이전 행동의 확인입니다.' };
     }
-    if (pending.requiresActorAck && pending.actorId !== playerId) {
+    if (pending.actorId !== playerId) {
       return { success: false, error: '행동자만 현재 행동을 완료할 수 있습니다.' };
     }
-    if (pending.requiresPrivateReview && completedPhase !== 'PRIVATE_REVIEW') {
+    if (completedPhase === 'RETURN_REQUEST' && pending.requiresPrivateReview) {
+      if (pending.actorId !== playerId) return { success: false, error: '행동자만 카드를 돌려줄 수 있습니다.' };
+      if (!pending.returnRequestedAt) {
+        pending.returnRequestedAt = Date.now();
+        pending.minAdvanceAt = Date.now() + 1_500;
+        pending.maxAdvanceAt = Date.now() + 10_000;
+        await roomRepository.saveRoom(room);
+        this.io.to(roomCode).emit('game:presentation-return', { actionId, stateVersion: pending.stateVersion });
+        await this.schedulePendingResolution(roomCode);
+      }
+      return { success: true, pending: true };
+    }
+    if (pending.requiresPrivateReview && (completedPhase !== 'PRIVATE_REVIEW' || (pending.requiresActorAck && !pending.returnRequestedAt))) {
       return { success: false, error: '사제 확인을 완료한 뒤 진행할 수 있습니다.' };
     }
+    if (!pending.requiresPrivateReview && completedPhase !== 'PUBLIC_SEQUENCE') return { success: false, error: '잘못된 완료 단계입니다.' };
     pending.acknowledgedAt = Date.now();
     pending.completedPhase = completedPhase;
     await roomRepository.saveRoom(room);
@@ -174,13 +189,17 @@ export class LoveLetterService {
   }
 
   async finalizePendingResolution(roomCode, actionId) {
+    return this.runRoomOperation(roomCode, () => this.applyPendingResolution(roomCode, actionId));
+  }
+
+  async applyPendingResolution(roomCode, actionId) {
     const room = await roomRepository.getRoom(roomCode);
     const pending = room?.pendingResolution;
     if (!room || !pending || pending.actionId !== actionId || room.isPaused) return;
     this.clearResolutionTimer(roomCode);
     room.pendingResolution = null;
-    const gameState = room.gameStateObject;
-    const transitionEvents = pending.transitionEvents || [];
+    const { nextState: gameState, events: transitionEvents } = core.executeCommand(room.gameStateObject, { type: 'FINALIZE_ACTION' });
+    this.applyGameStateToRoom(room, gameState);
     await roomRepository.saveRoom(room);
     for (const [sequence, event] of transitionEvents.entries()) {
       this.broadcastGameEvent(roomCode, gameState, { ...event, sequence: event.sequence ?? sequence });
@@ -194,6 +213,7 @@ export class LoveLetterService {
 
   projectEventForPlayer(event, gameState, recipientPlayerId) {
     const projected = { ...event };
+    if (projected.comparisonHands && recipientPlayerId !== projected.actorId && recipientPlayerId !== projected.targetId) delete projected.comparisonHands;
     if (projected.type === 'CARD_DRAWN' && projected.playerId !== recipientPlayerId) {
       delete projected.card;
     }
@@ -279,6 +299,7 @@ export class LoveLetterService {
           serverTime: Date.now(),
           publicState,
           privateState: secret,
+          presentation: room.pendingResolution ? this.presentationForPlayer(room, player.id) : null,
         };
         this.io.to(player.socketId).emit(SOCKET_EVENTS.GAME_SNAPSHOT, snapshot);
       }
@@ -286,16 +307,43 @@ export class LoveLetterService {
   }
 
   async handleCommand(roomCode, command) {
+    return this.runRoomOperation(roomCode, () => this.applyCommand(roomCode, command));
+  }
+
+  runRoomOperation(roomCode, apply) {
     // Socket.IO can deliver two clicks or a timeout and a click in the same
     // tick. Serialize authoritative mutations per room so a stale command
     // cannot apply against the same snapshot twice.
     const previous = this.commandQueues.get(roomCode) || Promise.resolve();
-    const operation = previous.catch(() => {}).then(() => this.applyCommand(roomCode, command));
+    const operation = previous.catch(() => {}).then(apply);
     this.commandQueues.set(roomCode, operation);
     operation.finally(() => {
       if (this.commandQueues.get(roomCode) === operation) this.commandQueues.delete(roomCode);
     }).catch(() => {});
     return operation;
+  }
+
+  presentationForPlayer(room, playerId) {
+    const pending = room.pendingResolution;
+    if (!pending) return null;
+    return {
+      actionId: pending.actionId,
+      stateVersion: pending.stateVersion,
+      returnRequested: !!pending.returnRequestedAt,
+      before: {
+        publicState: core.getPublicGameState(pending.beforeState),
+        privateState: core.getPrivatePlayerState(pending.beforeState, playerId),
+      },
+      events: pending.events.map((event, sequence) => ({
+        eventId: `${pending.actionId}:${sequence}:${playerId}`,
+        actionId: pending.actionId,
+        stateVersion: pending.stateVersion,
+        timestamp: pending.minAdvanceAt,
+        recipientPlayerId: playerId,
+        event: this.projectEventForPlayer(event, room.gameStateObject, playerId),
+        presentation: this.projectPresentationForPlayer(room.gameStateObject.lastAction, playerId),
+      })),
+    };
   }
 
   async applyCommand(roomCode, command) {
@@ -312,10 +360,17 @@ export class LoveLetterService {
     if (command.type === 'FORFEIT') {
       this.clearPauseExpiryTimer(roomCode);
       this.clearResolutionTimer(roomCode);
+      if (room.pendingResolution) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingResolution.actionId });
       room.pendingResolution = null;
     }
 
-    const { nextState, events } = core.executeCommand(room.gameStateObject, command);
+    const beforeState = room.gameStateObject;
+    let { nextState, events } = core.executeCommand(beforeState, command.type === 'PLAY_CARD' ? { ...command, deferTransition: true } : command);
+    if (command.type === 'FORFEIT' && nextState.playPhase === 'ACTION_RESOLVING') {
+      const transition = core.executeCommand(nextState, { type: 'FINALIZE_ACTION' });
+      nextState = transition.nextState;
+      events = [...events, ...transition.events];
+    }
     this.applyGameStateToRoom(room, nextState);
     if (nextState.outcome?.reason === 'INSUFFICIENT_HUMANS') {
       this.clearBotTimer(roomCode);
@@ -330,23 +385,40 @@ export class LoveLetterService {
     const { actionEvents, transitionEvents } = isCardAction ? this.splitResolutionEvents(events) : { actionEvents: events, transitionEvents: [] };
     if (isCardAction) {
       const actionId = nextState.lastAction?.actionId;
-      const timing = this.getResolutionTiming(nextState, command.playerId);
+        const timing = this.getResolutionTiming(nextState, command.playerId);
       room.pendingResolution = {
         actionId,
         actorId: command.playerId,
         stateVersion: nextState.stateVersion,
         transitionEvents,
-        minAdvanceAt: Date.now() + timing.minDurationMs,
-        maxAdvanceAt: Date.now() + timing.maxDurationMs,
+        minAdvanceAt: 0,
+        maxAdvanceAt: 0,
         requiresActorAck: timing.requiresActorAck,
         requiresPrivateReview: timing.requiresPrivateReview,
+        beforeState,
+          events: actionEvents.map((event, sequence) => ({
+          ...event, actionId, sequence,
+          ...(event.type === 'PLAYER_ELIMINATED' ? {
+            discardedCards: (nextState.players.find(p => p.id === event.playerId)?.discardPile || []).filter(card =>
+              card.id !== nextState.lastAction.card.id &&
+              !(beforeState.players.find(p => p.id === event.playerId)?.discardPile || []).some(old => old.id === card.id) &&
+              !actionEvents.some(e => e.type === 'PRINCE_DISCARDED' && e.discardedCard.id === card.id)),
+          } : {}),
+          ...(event.type === 'BARON_COMPARED' ? { comparisonHands: {
+            [event.actorId]: beforeState.secrets[event.actorId].hand.find(c => c.id !== nextState.lastAction.card.id),
+            [event.targetId]: beforeState.secrets[event.targetId].hand[0],
+          } } : {}),
+        })),
       };
+      const duration = buildPhysicalSequence(room.pendingResolution.events.map(event => ({ event, actionId, presentation: nextState.lastAction }))).reduce((sum, step) => sum + step.duration * 1000, 0);
+      room.pendingResolution.minAdvanceAt = Date.now() + duration + 250;
+      room.pendingResolution.maxAdvanceAt = Date.now() + Math.max(duration + 5_000, ACTION_MAX_WAIT_MS);
     }
     if (!isCardAction) this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
     for (const [sequence, ev] of actionEvents.entries()) {
-      this.broadcastGameEvent(roomCode, nextState, { ...ev, sequence: ev.sequence ?? sequence });
+      this.broadcastGameEvent(roomCode, nextState, { ...ev, actionId: isCardAction ? nextState.lastAction.actionId : ev.actionId, sequence: ev.sequence ?? sequence });
     }
 
     // Do not publish the next-turn snapshot until the current card has been
@@ -355,6 +427,7 @@ export class LoveLetterService {
       this.turnCoordinator.clearTurnTimer(roomCode);
       this.clearBotTimer(roomCode);
       await this.schedulePendingResolution(roomCode);
+      this.broadcastGameSnapshot(roomCode, room);
     } else {
       this.broadcastGameSnapshot(roomCode, room);
       this.broadcastRoomState(this.io, roomCode);
@@ -612,6 +685,7 @@ export class LoveLetterService {
     await roomRepository.saveRoom(room);
     if (room.pendingResolution) {
       await this.schedulePendingResolution(roomCode);
+      this.broadcastGameSnapshot(roomCode, room);
     } else {
       this.broadcastGameSnapshot(roomCode, room);
       this.broadcastRoomState(this.io, roomCode);

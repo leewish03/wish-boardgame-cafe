@@ -15,6 +15,7 @@ export const SOCKET_EVENTS = {
   GAME_REMATCH: 'game:rematch',
   GAME_EVENT: 'game:event',
   GAME_SNAPSHOT: 'game:snapshot',
+  GAME_VIEW_READY: 'game:view-ready',
   GAME_PRESENTATION_ACK: 'game:presentation-ack',
   SYNC_REQUEST: 'game:sync-request',
   PRIEST_RESULT: 'game:priest-result',

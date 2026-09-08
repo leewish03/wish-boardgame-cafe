@@ -54,6 +54,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     service: 'Wish Boardgame Cafe',
     version: '2.0.0-ts-core',
+    commit: process.env.RENDER_GIT_COMMIT || null,
     time: new Date().toISOString(),
   });
 });

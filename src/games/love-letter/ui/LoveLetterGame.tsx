@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { GameHud } from './GameHud';
 import { OpponentRail } from './OpponentRail';
@@ -6,7 +6,6 @@ import { ActionStage } from './ActionStage';
 import { LocalPlayerZone } from './PlayerZone';
 import { GuessSelector } from './GuessSelector';
 import { DiscardHistoryModal } from './DiscardHistoryModal';
-import { PriestSecretModal } from './PriestSecretModal';
 import { RoundResultModal } from './RoundResultModal';
 import { MatchResultModal } from './MatchResultModal';
 import { PauseOverlay } from './PauseOverlay';
@@ -22,6 +21,8 @@ import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packag
 import { calculateRemainingCards } from '../../../../packages/love-letter-core/src/selectors';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { RoomChat } from '../../../shared/RoomChat';
+import { buildPhysicalSequence } from '../presentation/physicalSequence';
+import { PhysicalTableContext } from '../presentation/PhysicalTableContext';
 
 export interface LoveLetterGameProps {
   // Support both direct legacy props from App.jsx and pure GameState
@@ -40,14 +41,8 @@ export interface LoveLetterGameProps {
   myHand?: CardInstance[];
   speakingUsers?: Record<string, boolean>;
   userSubtitles?: Record<string, { text: string; timestamp: number }>;
-  isMicOn?: boolean;
-  isSpeakerOn?: boolean;
-  isSTTActive?: boolean;
   isPaused?: boolean;
   pausedPlayerName?: string;
-  onToggleMic?: () => void;
-  onToggleSpeaker?: () => void;
-  onToggleSTT?: () => void;
   onPlayCard?: (cardId: string, targetId?: string, guessValue?: number) => void;
   onStartNextRound?: () => void;
   onForfeit?: () => void;
@@ -69,14 +64,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   myHand: propMyHand,
   speakingUsers: propSpeakingUsers,
   userSubtitles: propUserSubtitles,
-  isMicOn: propIsMicOn,
-  isSpeakerOn: propIsSpeakerOn,
-  isSTTActive: propIsSTTActive,
   isPaused: propIsPaused,
   pausedPlayerName: propPausedPlayerName,
-  onToggleMic: propOnToggleMic,
-  onToggleSpeaker: propOnToggleSpeaker,
-  onToggleSTT: propOnToggleSTT,
   onPlayCard: propOnPlayCard,
   onStartNextRound: propOnStartNextRound,
   onForfeit: propOnForfeit,
@@ -96,6 +85,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     initialRoomState: propRoomState,
     onLeaveRoom: handleLeaveCallback,
     onGameEvent: enqueueAction,
+    onPresentationCancel: resetTimeline,
   });
 
   // Resolved Game State & Hand
@@ -118,11 +108,14 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   };
 
   const myHand: CardInstance[] = propMyHand || gameSocket.myHand || [];
-  const visual = useVisualTableState(gameState, myHand, activeUserId, isActionPlaying, hasPendingPresentation);
+  const visual = useVisualTableState(gameState, myHand, activeUserId, isActionPlaying, hasPendingPresentation, (currentAction as any)?.before, currentAction?.actionId);
+  const physicalSteps = buildPhysicalSequence(currentAction?.presentationEvents || []);
+  const physicalStep = physicalSteps[currentAction?.presentationIndex || 0] || null;
 
   // Interactive UI States
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedGuessValue, setSelectedGuessValue] = useState<CardValue | null>(null);
   const [isGuessOpen, setIsGuessOpen] = useState(false);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
   const [isOverDropZone, setIsOverDropZone] = useState(false);
@@ -132,33 +125,22 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [advanceRequestedVersion, setAdvanceRequestedVersion] = useState<number | null>(null);
   const [resultRequestError, setResultRequestError] = useState<string | null>(null);
   const [actionRequestError, setActionRequestError] = useState<string | null>(null);
+  const submissionInFlightRef = useRef(false);
 
   // Modal States
   const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
-  const [priestSecret, setPriestSecret] = useState<{ targetName: string; card: CardInstance } | null>(null);
-  const [pendingPriestAck, setPendingPriestAck] = useState<{ actionId: string; stateVersion: number } | null>(null);
-
-  // Sync priest peek from socket hook
-  useEffect(() => {
-    // The reveal is already private in the socket payload. Delay only its
-    // presentation so it does not cover the card → target → discard sequence.
-    if (gameSocket.priestSecret && !isActionPlaying) {
-      setPriestSecret(gameSocket.priestSecret);
-    }
-  }, [gameSocket.priestSecret, isActionPlaying]);
-
   const me = gameState.players.find(p => p.id === activeUserId);
   const opponents = gameState.players.filter(p => p.id !== activeUserId);
   const isMyTurn = gameState.currentTurnPlayerId === activeUserId && !me?.isEliminated;
   // The server snapshot decides when input is legal.  Presentation remains on
   // screen to explain the previous action, but must never make the next human
   // turn feel stalled.
-  const canInteract = isMyTurn && !isActionPlaying && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
+  const canInteract = !gameSocket.isPaused && isMyTurn && gameState.playPhase === 'TURN_INPUT' && !isActionPlaying && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
 
   // A transport restoration invalidates DOM coordinates and any in-flight
   // projection. The next server snapshot is the only safe settled table.
   useEffect(() => {
-    if (gameSocket.isConnected) resetTimeline();
+    if (!gameSocket.isConnected) resetTimeline();
   }, [gameSocket.isConnected, resetTimeline]);
 
   // Sound effects on state transitions
@@ -173,12 +155,14 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       sfx.playSnipeSuccess();
       setSelectedCardId(null);
       setSelectedTargetId(null);
+      setSelectedGuessValue(null);
       setIsGuessOpen(false);
       setInteractionState('IDLE');
     } else if (gameState.matchState === 'GAME_OVER') {
       sfx.playSnipeSuccess();
       setSelectedCardId(null);
       setSelectedTargetId(null);
+      setSelectedGuessValue(null);
       setIsGuessOpen(false);
       setInteractionState('IDLE');
     }
@@ -200,6 +184,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     if (!isMyTurn) {
       setSelectedCardId(null);
       setSelectedTargetId(null);
+      setSelectedGuessValue(null);
       setIsGuessOpen(false);
       setInteractionState('IDLE');
     }
@@ -222,8 +207,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   useEffect(() => {
     if (interactionState !== 'SUBMITTING') return;
     if (gameState.lastAction?.actorId !== activeUserId) return;
+    submissionInFlightRef.current = false;
     setSelectedCardId(null);
     setSelectedTargetId(null);
+    setSelectedGuessValue(null);
     setIsGuessOpen(false);
     setInteractionState('IDLE');
   }, [interactionState, gameState.stateVersion, gameState.lastAction?.actorId, activeUserId]);
@@ -248,6 +235,18 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       .map(p => p.id);
   }, [canInteract, selectedCard, opponents, gameState.players, activeUserId]);
 
+  const selectedCardMeta = selectedCard ? CARD_DEFINITIONS[selectedCard.value as CardValue] : null;
+  const needsTarget = Boolean(selectedCardMeta?.needsTarget);
+  const needsGuess = selectedCard?.value === 1;
+  const requiresChosenTarget = needsTarget && targetablePlayerIds.length > 0;
+  const canConfirmAction = Boolean(
+    canInteract &&
+    selectedCard &&
+    interactionState !== 'SUBMITTING' &&
+    (!requiresChosenTarget || selectedTargetId) &&
+    (!needsGuess || !requiresChosenTarget || selectedGuessValue)
+  );
+
   const allDiscards = useMemo(() => {
     return gameState.players.flatMap(p => p.discardPile || []);
   }, [gameState.players]);
@@ -259,6 +258,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   // Execution dispatch wrapper
   const executePlayCard = useCallback(
     (cardId: string, targetId?: string, guessValue?: number) => {
+      if (submissionInFlightRef.current) return;
+      submissionInFlightRef.current = true;
       setInteractionState('SUBMITTING');
       setActionRequestError(null);
       if (propOnPlayCard) {
@@ -268,8 +269,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
           if (result.success) return;
           setSelectedCardId(null);
           setSelectedTargetId(null);
+          setSelectedGuessValue(null);
           setIsGuessOpen(false);
           setInteractionState('IDLE');
+          submissionInFlightRef.current = false;
           setActionRequestError(result.error || '카드를 사용하지 못했습니다. 다시 시도하세요.');
         });
       }
@@ -277,7 +280,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     [propOnPlayCard, gameSocket]
   );
 
-  // Card Selection & Auto Execution
+  // Card selection remains local until the player explicitly confirms it.
   const handleSelectCard = (card: CardInstance) => {
     if (!canInteract || me?.isEliminated) return;
 
@@ -293,19 +296,25 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       // Toggle unselect
       setSelectedCardId(null);
       setSelectedTargetId(null);
+      setSelectedGuessValue(null);
+      setIsGuessOpen(false);
       setInteractionState('IDLE');
       return;
     }
 
     setSelectedCardId(card.id);
+    setSelectedTargetId(null);
+    setSelectedGuessValue(null);
+    setIsGuessOpen(false);
     setActionRequestError(null);
     sfx.playCardDraw();
 
     const meta = CARD_DEFINITIONS[card.value as CardValue];
 
-    // Case 1: Untargeted cards (Handmaid 4, Countess 7, Princess 8)
+    // Untargeted cards use the same review-and-confirm step as every targeted
+    // card. This prevents accidental Princess plays on touch screens.
     if (!meta || !meta.needsTarget) {
-      executePlayCard(card.id);
+      setInteractionState('READY');
       return;
     }
 
@@ -315,8 +324,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       : opponents.filter(p => !p.isEliminated && !p.isProtected);
 
     if (eligible.length === 0) {
-      // No valid targets (all opponents protected by Handmaid) -> discard without effect
-      executePlayCard(card.id);
+      // The rules allow this card to be discarded without an effect, but the
+      // player still gets a chance to review that consequence.
+      setInteractionState('READY');
     } else {
       setInteractionState('TARGETING');
     }
@@ -331,19 +341,26 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       setInteractionState('GUESSING');
       setIsGuessOpen(true);
     } else {
-      executePlayCard(selectedCardId, targetId);
+      setInteractionState('READY');
     }
   };
 
   const handleConfirmGuess = (guessVal: CardValue) => {
     if (!selectedCardId || !selectedTargetId) return;
-    executePlayCard(selectedCardId, selectedTargetId, guessVal);
+    setSelectedGuessValue(guessVal);
     setIsGuessOpen(false);
+    setInteractionState('READY');
+  };
+
+  const handleConfirmAction = () => {
+    if (!selectedCard || !canConfirmAction) return;
+    executePlayCard(selectedCard.id, selectedTargetId || undefined, selectedGuessValue || undefined);
   };
 
   const handleCancelAction = () => {
     setSelectedCardId(null);
     setSelectedTargetId(null);
+    setSelectedGuessValue(null);
     setIsGuessOpen(false);
     setInteractionState('IDLE');
   };
@@ -385,47 +402,25 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   };
 
   const handlePresentationComplete = useCallback(() => {
-    if (currentAction && phase !== 'RESULT') visual.applyCompletedEvent((currentAction as any).event);
+    if (physicalStep?.apply) visual.applyCompletedEvent(physicalStep.apply);
     // The final visible beat may be an elimination or a forced discard, which
     // has no actorId of its own. The action summary remains the authority for
     // deciding who is allowed to release the server-side presentation gate.
     const actionActorId = currentAction?.presentation?.actorId || (currentAction?.event as any)?.actorId;
-    if (currentAction && phase === 'RESULT' && actionActorId === activeUserId) {
+    if (currentAction && physicalStep?.kind === 'CLEANUP' && actionActorId === activeUserId) {
       const isPriestReview = currentAction.presentation?.resultType === 'PRIEST_REVEAL';
       if (isPriestReview) {
-        setPendingPriestAck({ actionId: currentAction.actionId, stateVersion: currentAction.stateVersion });
+        gameSocket.acknowledgePresentation(currentAction.actionId, currentAction.stateVersion, 'PRIVATE_REVIEW');
       } else {
         gameSocket.acknowledgePresentation(currentAction.actionId, currentAction.stateVersion, 'PUBLIC_SEQUENCE');
       }
     }
     advancePresentation();
-  }, [activeUserId, advancePresentation, currentAction, gameSocket, phase, visual]);
-
-  const handlePriestReviewComplete = useCallback(() => {
-    const pending = pendingPriestAck;
-    if (!pending) {
-      setPriestSecret(null);
-      gameSocket.clearPriestSecret();
-      return;
-    }
-    gameSocket.acknowledgePresentation(pending.actionId, pending.stateVersion, 'PRIVATE_REVIEW', (result) => {
-      if (!result.success) return;
-      setPendingPriestAck(null);
-      setPriestSecret(null);
-      gameSocket.clearPriestSecret();
-    });
-  }, [gameSocket, pendingPriestAck]);
+  }, [activeUserId, advancePresentation, currentAction, gameSocket, phase, visual, physicalStep]);
 
   // Media controls resolution
-  const isMicOn = propIsMicOn ?? webrtc?.isMicOn ?? false;
-  const isSpeakerOn = propIsSpeakerOn ?? webrtc?.isSpeakerOn ?? true;
-  const isSTTActive = propIsSTTActive ?? stt?.isSTTActive ?? false;
   const speakingUsers = propSpeakingUsers ?? webrtc?.speakingUsers ?? {};
   const userSubtitles = propUserSubtitles ?? stt?.userSubtitles ?? {};
-
-  const handleToggleMic = propOnToggleMic || webrtc?.toggleMic;
-  const handleToggleSpeaker = propOnToggleSpeaker || webrtc?.toggleSpeaker;
-  const handleToggleSTT = propOnToggleSTT || stt?.toggleSTT;
 
   const turnPlayer = gameState.players.find(p => p.id === gameState.currentTurnPlayerId);
   const outcomeWinnerIds = gameState.roundWinnerIds?.length
@@ -433,13 +428,23 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     : gameState.outcome?.winnerIds || [];
   const roundWinner = gameState.players.find(p => outcomeWinnerIds.includes(p.id));
   const matchWinner = gameState.players.find(p => p.id === gameState.matchWinnerId);
-  const targetPlayer = opponents.find(p => p.id === selectedTargetId);
+  const targetPlayer = gameState.players.find(p => p.id === selectedTargetId);
+  const selectedGuessName = selectedGuessValue ? CARD_DEFINITIONS[selectedGuessValue]?.name : null;
+  const tableStatus = !gameSocket.isConnected
+    ? '연결을 복구하는 중'
+    : isActionPlaying
+      ? '이전 행동을 보여주는 중'
+      : interactionState === 'SUBMITTING'
+        ? '서버에 행동을 확인하는 중'
+        : isMyTurn
+          ? '내 차례'
+          : `${turnPlayer?.nickname || '상대'}의 차례`;
 
   const isPaused = propIsPaused ?? gameSocket.isPaused;
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
 
   return (
-    <TableAnchorProvider><BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
+    <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
       {/* 1. TOP HUD (Section 3 Tier 1) */}
       <GameHud
         roundNumber={gameState.roundNumber}
@@ -448,19 +453,19 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         turnPlayerNickname={turnPlayer?.nickname || '플레이어'}
         isMyTurn={isMyTurn}
         isConnected={gameSocket.isConnected}
-        isMicOn={isMicOn}
-        isSpeakerOn={isSpeakerOn}
-        isSTTActive={isSTTActive}
-        onToggleMic={handleToggleMic}
-        onToggleSpeaker={handleToggleSpeaker}
-        onToggleSTT={handleToggleSTT}
+        statusLabel={tableStatus}
+        turnExpiresAt={gameState.turnExpiresAt}
+        turnTimeoutSeconds={gameState.config.turnTimeoutSeconds}
         onOpenSettings={() => setMenuDrawerOpen(true)}
       />
 
       {/* Spatial Motion & VFX Stage */}
       <SpatialMotionStage
         currentAction={currentAction}
-        phase={phase}
+        localUserId={activeUserId}
+        players={visual.visualTable.players}
+        returnedActionId={gameSocket.returnedActionId}
+        onReturnCard={(actionId,version,callback)=>gameSocket.acknowledgePresentation(actionId,version,'RETURN_REQUEST',callback)}
         onPhaseComplete={handlePresentationComplete}
       />
 
@@ -487,11 +492,12 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         presentationPhase={phase}
         interactionState={interactionState}
         actionError={actionRequestError}
-        isOverDropZone={isOverDropZone}
-        activeCard={selectedCard}
+        activeCard={isActionPlaying ? null : selectedCard}
         targetPlayerName={targetPlayer?.nickname}
+        selectedGuessName={selectedGuessName}
+        canConfirm={canConfirmAction}
+        onConfirmAction={handleConfirmAction}
         onCancelAction={handleCancelAction}
-        onSelectSelfTarget={() => handleSelectTarget(activeUserId)}
       />
 
       {/* My public discard shelf is physically attached directly above my hand. */}
@@ -506,7 +512,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             onInspect={() => handleInspectDiscards(activeUserId)}
             presentationAction={null}
             hand={visual.visualTable.myHand}
-            isMyTurn={canInteract}
+            isMyTurn={isMyTurn}
+            canSelectCards={canInteract}
             selectedCardId={selectedCardId}
             interactionState={interactionState}
             onSelectCard={handleSelectCard}
@@ -519,6 +526,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         isOpen={isGuessOpen}
         targetPlayerName={targetPlayer?.nickname || '상대방'}
         remainingCounts={remainingCounts}
+        selectedGuessValue={selectedGuessValue}
         onSelectGuess={handleConfirmGuess}
         onCancel={handleCancelAction}
       />
@@ -528,13 +536,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         playerName={inspectingPlayer?.name || ''}
         discardPile={inspectingPlayer?.discards || []}
         onClose={() => setInspectingPlayer(null)}
-      />
-
-      <PriestSecretModal
-        isOpen={!!priestSecret && gameState.matchState === 'PLAYING'}
-        targetPlayerName={priestSecret?.targetName || ''}
-        secretCard={priestSecret?.card || null}
-        onClose={handlePriestReviewComplete}
       />
 
       <RoundResultModal
@@ -581,10 +582,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         targetTokens={gameState.config?.targetTokens || 4}
         onClose={() => setMenuDrawerOpen(false)}
         onLeaveRoom={handleLeaveCallback}
-        voice={webrtc}
       />
       <RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" />
-    </BoardSurface></TableAnchorProvider>
+    </BoardSurface></PhysicalTableContext.Provider></TableAnchorProvider>
   );
 };
 
@@ -592,13 +592,12 @@ const BoardSurface = styled.div`
   position: relative;
   width: 100%;
   min-width: 0;
-  height: 100dvh;
-  max-height: 100dvh;
+  min-height: 100dvh;
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto minmax(68px, 1fr) auto;
-  overflow: hidden;
+  grid-template-rows:auto auto minmax(100px, 1fr) auto;
+  overflow-x: clip;
   user-select: none;
   box-sizing: border-box;
   font-family: ${THEME.font.sans};

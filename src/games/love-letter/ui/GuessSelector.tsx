@@ -11,6 +11,7 @@ interface GuessSelectorProps {
   isOpen: boolean;
   targetPlayerName: string;
   remainingCounts: Record<number, { remaining: number; total: number }>;
+  selectedGuessValue: CardValue | null;
   onSelectGuess: (value: CardValue) => void;
   onCancel: () => void;
 }
@@ -19,6 +20,7 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
   isOpen,
   targetPlayerName,
   remainingCounts,
+  selectedGuessValue,
   onSelectGuess,
   onCancel,
 }) => {
@@ -70,6 +72,7 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
                     whileTap={!isZero ? { scale: 0.95 } : undefined}
                     $isZero={isZero}
                     disabled={isZero}
+                    $selected={selectedGuessValue === v}
                     onClick={() => onSelectGuess(v)}
                   >
                     <ChipHeader>
@@ -180,15 +183,15 @@ const ChipGrid = styled.div`
   }
 `;
 
-const GuessChip = styled.button<{ $isZero: boolean }>`
+const GuessChip = styled.button<{ $isZero: boolean; $selected: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 8px 4px;
   background: ${props => (props.$isZero ? '#f1f5f9' : '#ffffff')};
-  border: 1.5px solid ${props => (props.$isZero ? '#e2e8f0' : THEME.gold)};
+  border: 2px solid ${props => (props.$isZero ? '#e2e8f0' : props.$selected ? THEME.burgundy : THEME.gold)};
   border-radius: ${THEME.radius.lg};
-  box-shadow: ${props => (props.$isZero ? 'none' : '0 2px 8px rgba(9, 13, 22, 0.06)')};
+  box-shadow: ${props => (props.$isZero ? 'none' : props.$selected ? '0 4px 14px rgba(127, 29, 47, 0.24)' : '0 2px 8px rgba(9, 13, 22, 0.06)')};
   cursor: ${props => (props.$isZero ? 'not-allowed' : 'pointer')};
   opacity: ${props => (props.$isZero ? 0.45 : 1)};
   transition: all 0.15s ease;

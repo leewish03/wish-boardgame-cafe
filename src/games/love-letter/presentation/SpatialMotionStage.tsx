@@ -1,115 +1,130 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { motion, useReducedMotion } from 'framer-motion';
-import { GameEventEnvelope } from '../../../../packages/protocol/src/envelopes';
-import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
-import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
-import { GameCard } from '../ui/GameCard';
-import { PresentationPhase } from '../machines/presentationMachine';
+import { createPortal } from 'react-dom';
+import { motion, useAnimation, useReducedMotion } from 'framer-motion';
+import { CardInstance, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
+import { PresentationAction } from './useActionTimeline';
+import { buildPhysicalSequence } from './physicalSequence';
 import { useTableAnchorRegistry } from './TableAnchorRegistry';
 import { THEME } from '../../../shared/theme';
+import { getHeraldicIcon } from './heraldicIcons';
 
-interface Point { x:number; y:number; }
-interface SpatialMotionStageProps { currentAction:GameEventEnvelope|null; phase?:PresentationPhase; onPhaseComplete?:()=>void; }
-type MotionKind = 'draw' | 'play' | 'forcedDiscard' | 'revealDiscard' | 'swap' | 'target' | 'reaction';
-
-const fallback = (x:number, y:number):Point => ({ x:window.innerWidth*x, y:window.innerHeight*y });
-const pointOf = (element:Element|null, otherwise:Point):Point => {
-  if (!element) return otherwise;
-  const rect=element.getBoundingClientRect();
-  return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};
-};
-
-function kindFor(event:any):MotionKind {
-  if (event.type === 'CARD_DRAWN') return 'draw';
-  if (event.type === 'CARD_PLAYED') return 'play';
-  if (event.type === 'PRINCE_DISCARDED') return 'forcedDiscard';
-  if (event.type === 'HANDS_SWAPPED') return 'swap';
-  if (event.type === 'PLAYER_ELIMINATED') return 'revealDiscard';
-  if ((event.type === 'GUARD_SUCCESS' || event.type === 'GUARD_SUCCEEDED' || event.type === 'BARON_COMPARED') && (event.eliminatedId || event.presentation?.eliminatedPlayerId)) return 'revealDiscard';
-  if (event.targetId) return 'target';
-  return 'reaction';
+type Point = { x:number; y:number; width:number; height:number };
+interface Props {
+  currentAction: PresentationAction | null; onPhaseComplete?:()=>void;
+  localUserId: string; players: PlayerPublic[]; returnedActionId?:string|null;
+  onReturnCard: (actionId:string, version:number, callback:(result:{success:boolean;error?:string})=>void)=>void;
 }
 
-function visibleCard(event:any, kind:MotionKind, priorEvent?:any):CardInstance|null {
-  if (kind === 'draw' || kind === 'swap') return null;
-  return event.discardedCard || event.guessedCard || event.revealedCard || event.presentation?.revealedCard || event.card || priorEvent?.discardedCard || priorEvent?.guessedCard || priorEvent?.revealedCard || priorEvent?.card || null;
+/** The visible card drives completion; there is no independent hidden clock. */
+function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=false, duration, onComplete}: {
+  identity:string;stepId:string;from:Point;to:Point;card?:CardInstance;faceUp:boolean;initialFaceUp?:boolean;duration:number;onComplete?:()=>void;
+}) {
+  const controls=useAnimation();
+  const done=useRef(onComplete); done.current=onComplete;
+  const reduce=useReducedMotion();
+  const started=useRef(false);
+  useEffect(()=>{
+    let active=true;
+    if (!started.current) { controls.set({...from,rotateY:initialFaceUp?0:180}); started.current=true; }
+    void controls.start({...to, rotateY:faceUp?0:180, opacity:[.98,1], transition:{duration:reduce?Math.min(duration,.12):duration,ease:[.22,1,.36,1]}})
+      .then(()=>{if(active) done.current?.();});
+    return()=>{active=false;};
+  },[controls,stepId,to.x,to.y,to.width,to.height,faceUp,duration,reduce]);
+  return <CardObject as={motion.div} data-physical-card={identity} animate={controls} initial={{...from,rotateY:initialFaceUp?0:180}}>
+    <Front aria-hidden={!faceUp}>{card && <><b>{card.value} · {card.name}</b>{getHeraldicIcon(card.value,24)}</>}</Front><Back/>
+  </CardObject>;
 }
 
-export const SpatialMotionStage:React.FC<SpatialMotionStageProps>=({currentAction,phase='IDLE',onPhaseComplete})=>{
+export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,players,returnedActionId,onReturnCard,onPhaseComplete})=>{
   const registry=useTableAnchorRegistry();
-  const reduceMotion=useReducedMotion();
-  const event:any=currentAction?.event;
-  const kind=event ? kindFor(event) : 'reaction';
-  const [points,setPoints]=useState<{deck:Point;aside:Point;actorHand:Point;actorDiscard:Point;targetHand:Point;targetDiscard:Point;targetIdentity:Point}>({
-    deck:fallback(.12,.5),aside:fallback(.2,.5),actorHand:fallback(.5,.85),actorDiscard:fallback(.5,.72),targetHand:fallback(.5,.2),targetDiscard:fallback(.5,.3),targetIdentity:fallback(.5,.16),
-  });
-
-  useLayoutEffect(()=>{
-    if(!event || phase==='IDLE') return;
-    const measure=()=>{
-      const actorId=event.actorId || event.playerId;
-      const targetId=event.targetId || event.playerId || event.eliminatedId || event.presentation?.eliminatedPlayerId;
-      const eliminatedId=event.eliminatedId || event.presentation?.eliminatedPlayerId || event.playerId;
-      setPoints({
-        deck:pointOf(registry.get('deck','deck'),fallback(.12,.5)),
-        aside:pointOf(registry.get('deck','aside'),fallback(.2,.5)),
-        actorHand:pointOf(registry.get(actorId,'hand-slot-1') || registry.get(actorId,'hand-slot-0') || registry.get(actorId,'hand'),fallback(.5,.82)),
-        actorDiscard:pointOf(registry.get(actorId,'discard-latest') || registry.get(actorId,'discard'),fallback(.5,.7)),
-        targetHand:pointOf(registry.get(targetId,'hand-slot-1') || registry.get(targetId,'hand-slot-0') || registry.get(targetId,'hand'),fallback(.5,.2)),
-        targetDiscard:pointOf(registry.get(targetId,'discard-latest') || registry.get(targetId,'discard'),fallback(.5,.3)),
-        targetIdentity:pointOf(registry.get(eliminatedId || targetId,'identity'),fallback(.5,.17)),
-      });
+  const steps=buildPhysicalSequence(currentAction?.presentationEvents || []);
+  const step=steps[currentAction?.presentationIndex || 0];
+  const [geometry,setGeometry]=useState<Record<string,Point>|null>(null);
+  const [requesting,setRequesting]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  const completed=useRef<string|null>(null);
+  const callback=useRef(onPhaseComplete);callback.current=onPhaseComplete;
+  const finish=()=>{if(step && completed.current!==step.id){completed.current=step.id;callback.current?.();}};
+  const played=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='CARD_PLAYED')?.event as any)?.card as CardInstance|undefined;
+  const priest=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='PRIEST_USED')?.event as any);
+  const comparison=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='BARON_COMPARED')?.event as any);
+  const actor=players.find(p=>p.id===step?.actorId);
+  const target=players.find(p=>p.id===step?.targetId);
+  const returned=returnedActionId===currentAction?.actionId;
+  useEffect(()=>{
+    if(!step) {setGeometry(null);return;}
+    const point=(element:HTMLElement|null):Point|null=>{
+      if(!element)return null; const r=element.getBoundingClientRect();
+      return {x:r.left,y:r.top,width:r.width,height:r.height};
     };
-    measure();
-    window.addEventListener('resize',measure);
-    return()=>window.removeEventListener('resize',measure);
-  },[event,phase,registry]);
-
-  const isResultHold=phase==='RESULT';
-  const priorRevealEvent = (currentAction as any)?.presentationEvents?.slice(0, (currentAction as any)?.presentationIndex || 0).reverse().map((envelope:any) => envelope.event).find((candidate:any) => candidate?.discardedCard || candidate?.guessedCard || candidate?.revealedCard || candidate?.card);
-  const card=event ? visibleCard(event,kind,priorRevealEvent) : null;
-  // A card table is read in cause-and-effect order. These are deliberately
-  // slower than generic UI transitions so the next server action cannot look
-  // like it happened at the same time.
-  const duration=reduceMotion ? .05 : isResultHold ? 1.75 : kind==='swap' ? .9 : kind==='target' || kind==='reaction' ? .85 : kind==='draw' ? .65 : .72;
-  const source=kind==='draw' ? (event?.drawSource === 'SET_ASIDE' ? points.aside : points.deck) : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetHand : points.actorHand;
-  const destination=kind==='draw' ? points.targetHand : kind==='forcedDiscard' || kind==='revealDiscard' ? points.targetDiscard : points.actorDiscard;
-  const canFly=!isResultHold && (kind==='draw' || kind==='play' || kind==='forcedDiscard' || kind==='revealDiscard');
-  const showConnector=!isResultHold && (kind==='target' || kind==='swap');
-  if(!event || phase==='IDLE') return null;
-
-  return <MotionOverlay aria-live="polite">
-    <React.Fragment key={`${currentAction?.eventId}:${phase}:${(currentAction as any)?.presentationIndex || 0}`}>
-    {/* This is the one sequencing driver. It is a real Framer Motion node,
-        keyed for every event/phase, so a RESULT hold cannot reuse a completed
-        animation and leave the presentation queue stuck. */}
-    <motion.div
-      key={`${currentAction?.eventId}:${phase}:${(currentAction as any)?.presentationIndex || 0}`}
-      style={{ position:'fixed', width:1, height:1, opacity:0, pointerEvents:'none' }}
-      initial={{ scale:.98 }}
-      animate={{ scale:1 }}
-      transition={{ duration, ease:'linear' }}
-      onAnimationComplete={onPhaseComplete}
-    />
-    {showConnector && <Connector as={motion.svg} viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none" initial={{opacity:0}} animate={{opacity:1}}><motion.line x1={points.actorDiscard.x} y1={points.actorDiscard.y} x2={kind==='swap'?points.targetHand.x:points.targetIdentity.x} y2={kind==='swap'?points.targetHand.y:points.targetIdentity.y} stroke="rgba(127,29,47,.72)" strokeWidth="2" strokeDasharray="5 5" initial={{pathLength:0}} animate={{pathLength:1}} transition={{duration:Math.min(.75,duration)}}/></Connector>}
-    {!isResultHold && (kind==='target' || kind==='reaction' || kind==='revealDiscard') && (
-      <SeatReaction as={motion.div} style={{left:points.targetIdentity.x-27,top:points.targetIdentity.y-18}} initial={{opacity:0,scale:.8}} animate={{opacity:[0,1,.35],scale:[.8,1.06,1]}} transition={{duration}} $eliminated={kind==='revealDiscard'}/>
-    )}
-    {canFly && <FlyingCard as={motion.div} initial={{x:source.x-32,y:source.y-46,scale:.74,rotate:-5,opacity:0}} animate={{x:destination.x-32,y:destination.y-46,scale:.64,rotate:kind==='forcedDiscard'||kind==='revealDiscard'?5:0,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}>
-      {card ? <GameCard value={card.value as CardValue} name={card.name || CARD_DEFINITIONS[card.value as CardValue]?.name || '카드'} compact/> : <CardBack/>}
-    </FlyingCard>}
-    {kind==='swap' && <>
-      <FlyingBack as={motion.div} key={`${currentAction?.eventId}_a`} initial={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:0}} animate={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
-      <FlyingBack as={motion.div} key={`${currentAction?.eventId}_b`} initial={{x:points.targetHand.x-14,y:points.targetHand.y-20,opacity:0}} animate={{x:points.actorHand.x-14,y:points.actorHand.y-20,opacity:1}} transition={{duration,ease:[.16,1,.3,1]}}/>
-    </>}
-    </React.Fragment>
-  </MotionOverlay>;
+    const hand=(id:string|undefined, card?:CardInstance)=>{
+      if(!id)return null; const count=players.find(p=>p.id===id)?.cardCount || 1;
+      return point((card && registry.get(id,`card:${card.id}`)) || registry.get(id,count>1?'hand-slot-1':'hand-slot-0'));
+    };
+    const measure=()=>{
+      const actorHand=hand(step.actorId,step.kind==='PLAY'?played:undefined);
+      const targetHand=step.kind==='DRAW'
+        ? point(registry.get(step.targetId!, (players.find(p => p.id === step.targetId)?.cardCount || 0) > 0 ? 'hand-slot-1' : 'hand-slot-0'))
+        : hand(step.targetId,step.card);
+      const play=point(registry.get(step.actorId,'play'));
+      const review=point(registry.get(step.actorId,'review'));
+      const targetReview=point(registry.get(step.targetId || step.actorId,'review'));
+      const deck=point(registry.get('deck',step.apply?.drawSource==='SET_ASIDE'?'aside':'deck'));
+      const discard=point(registry.get(step.actorId,'discard'));
+      const targetDiscard=point(registry.get(step.targetId || step.actorId,'discard'));
+      if(!actorHand || !review || !deck || !play || !discard || (step.targetId && !targetHand))return;
+      const destination=(r:Point)=>r;
+      const roundHands = Object.fromEntries(Object.keys(step.cards || {}).flatMap(id => { const p = hand(id); return p ? [[`round:${id}`, p]] : []; }));
+      const measured = {...roundHands,actorHand,targetHand:targetHand || actorHand,play,review,targetReview:targetReview || review,deck,discard:destination(discard),targetDiscard:destination(targetDiscard || discard)};
+      setGeometry(previous => JSON.stringify(previous) === JSON.stringify(measured) ? previous : measured);
+    };
+    measure();window.addEventListener('resize',measure);window.addEventListener('scroll',measure,true);
+    const observer = new window.ResizeObserver(measure);
+    const controls = registry.get('table','review-controls');
+    if (controls?.parentElement) observer.observe(controls.parentElement);
+    return()=>{observer.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);};
+  },[step?.id,registry,players,played?.id]);
+  useEffect(()=>{setRequesting(false);setError(null);},[currentAction?.actionId]);
+  useEffect(()=>{if(step?.kind==='REVIEW' && returned) finish();},[step?.id,returned]);
+  if(!step || !currentAction || !geometry)return null;
+  const g=geometry;
+  const review=g.review;
+  const privatePhase=['BORROW','REVIEW','CONCEAL','RETURN'].includes(step.kind);
+  const handEffect=['REVEAL','DISCARD_HAND','DRAW'].includes(step.kind);
+  const doubleEffect=['COMPARE','COMPARE_REVIEW','RESTORE','SWAP'].includes(step.kind);
+  const drivingPlayed=!privatePhase&&!handEffect&&!doubleEffect;
+  const returnCard=()=>{
+    if(requesting)return;setRequesting(true);setError(null);
+    onReturnCard(currentAction.actionId,currentAction.stateVersion,result=>{
+      if(!result.success){setRequesting(false);setError(result.error || '반환하지 못했습니다. 다시 눌러 주세요.');}
+    });
+  };
+  return <Layer data-physical-step={step.kind}>
+    {step.kind==='ROUND_REVEAL' && Object.entries(step.cards || {}).map(([id, card], index, entries) => g[`round:${id}`] && <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={g[`round:${id}`]} to={g[`round:${id}`]} card={card} faceUp duration={step.duration} onComplete={index===entries.length-1?finish:undefined}/>)}
+    {played && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
+      from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
+    {privatePhase && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
+      from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} card={priest?.revealedCard}
+      faceUp={step.kind==='REVIEW' && localUserId===step.actorId} duration={step.duration}
+      onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot ? undefined : finish}/>}
+    {handEffect && <TableCard key={`${currentAction.actionId}:hand:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:hand:${step.targetId}`} stepId={step.id}
+      from={step.kind==='DRAW'?g.deck:g.targetHand} to={step.kind==='DISCARD_HAND'?g.targetDiscard:g.targetHand}
+      card={step.card} faceUp={step.kind!=='DRAW' || step.targetId===localUserId} duration={step.duration} onComplete={finish}/>}
+    {doubleEffect && [0,1].map(index=><TableCard key={`${currentAction.actionId}:exchange:${index}`} identity={`${currentAction.actionId}:exchange:${index}`} stepId={step.id}
+      from={index?g.targetHand:g.actorHand}
+      to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):step.kind==='RESTORE'?(index?g.targetHand:g.actorHand):(index?g.targetReview:review)}
+      card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}
+      faceUp={step.kind==='COMPARE_REVIEW' && [step.actorId,step.targetId].includes(localUserId)} duration={step.duration} onComplete={index===1?finish:undefined}/>)}
+    {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
+      <span>{actor?.nickname}님이 {target?.nickname}님의 카드를 확인 중</span>
+      {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
+      {error && <span role="alert">{error}</span>}
+    </ReviewControls>, registry.get('table','review-controls')!)}
+  </Layer>;
 };
-
-const MotionOverlay=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;`;
-const Connector=styled.svg`position:fixed;inset:0;width:100%;height:100%;overflow:visible;`;
-const SeatReaction=styled.div<{$eliminated:boolean}>`position:fixed;width:54px;height:36px;border:2px solid ${p=>p.$eliminated?THEME.burgundy:THEME.gold};border-radius:12px;box-shadow:0 0 0 4px rgba(197,160,89,.12);`;
-const FlyingCard=styled.div`position:fixed;top:0;left:0;width:64px;height:96px;transform-origin:center;filter:drop-shadow(0 10px 16px rgba(9,13,22,.28));`;
-const FlyingBack=styled.div`position:fixed;top:0;left:0;width:28px;height:40px;border:1px solid ${THEME.goldAntique};border-radius:5px;background:${THEME.burgundyDeep};box-shadow:2px 4px 8px rgba(9,13,22,.25);`;
-const CardBack=styled.div`width:64px;height:94px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.burgundyDeep};box-shadow:inset 0 0 0 2px rgba(255,255,255,.08);`;
+const Layer=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;perspective:900px;`;
+const CardObject=styled.div`position:absolute;left:0;top:0;transform-style:preserve-3d;border-radius:6px;box-shadow:0 3px 8px rgba(9,13,22,.22);`;
+const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;border:1px solid ${THEME.gold};border-radius:6px;background:#fffdf7;color:${THEME.primary};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;b{font-size:10px;text-align:center;}`;
+const Back=styled.div`position:absolute;inset:0;backface-visibility:hidden;transform:rotateY(180deg);border:1px solid ${THEME.gold};border-radius:6px;background:${THEME.burgundyDeep};`;
+const ReviewControls=styled.div`position:relative;width:100%;display:grid;gap:6px;text-align:center;color:${THEME.primary};font-size:11px;span{background:#fffdf7;padding:3px;border-radius:4px;}button{pointer-events:auto;min-height:44px;border:1px solid ${THEME.gold};border-radius:7px;background:${THEME.primary};color:white;font-weight:800;cursor:pointer;}`;

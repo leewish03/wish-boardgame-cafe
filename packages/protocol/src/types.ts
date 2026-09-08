@@ -5,8 +5,16 @@ import {
   CardInstance,
   PlayerPublic,
 } from '../../love-letter-core/src/index';
+import { GameEventEnvelope } from './envelopes';
 
 export interface GameSnapshot {
+  presentation?: {
+    actionId: string;
+    stateVersion: number;
+    returnRequested: boolean;
+    before: { publicState: PublicGameState; privateState: PrivatePlayerState };
+    events: GameEventEnvelope[];
+  } | null;
   roomId: string;
   stateVersion: number;
   serverTime: number;
