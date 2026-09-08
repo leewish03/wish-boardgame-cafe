@@ -1,8 +1,7 @@
 import React from 'react';
 import styled, { css } from 'styled-components';
 import { motion, PanInfo } from 'framer-motion';
-import { getHeraldicIcon } from '../presentation/heraldicIcons';
-import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
+import { CardArtwork } from './CardArtwork';
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 
 export interface GameCardProps {
@@ -37,13 +36,6 @@ export const GameCard: React.FC<GameCardProps> = ({
   enableDrag = false,
   compact = false,
 }) => {
-  const meta = CARD_DEFINITIONS[value] || {
-    value,
-    name,
-    nameEn: '',
-    description: '',
-  };
-
   return (
     <CardContainer
       as={motion.div}
@@ -66,36 +58,17 @@ export const GameCard: React.FC<GameCardProps> = ({
       whileHover={isInteractive && !isDisabled ? { y: -5, scale: 1.02 } : undefined}
       whileTap={isInteractive && !isDisabled ? { scale: 0.98 } : undefined}
       aria-disabled={!isInteractive || isDisabled}
-      layout
+      animate={{ y: isSelected ? -8 : 0 }}
       data-card-id={id}
       data-card-value={value}
     >
-      <CardBorder>
-        <CardHeader>
-          <ValueBadge>{value}</ValueBadge>
-          <NameBlock>
-            <CardTitle>{name}</CardTitle>
-            <CardSub>{meta.nameEn}</CardSub>
-          </NameBlock>
-        </CardHeader>
-
-        <EmblemArea>
-          {getHeraldicIcon(value, compact ? 22 : 34)}
-        </EmblemArea>
-
-        {!compact && (
-          <DescriptionArea>
-            <DescText>{meta.description}</DescText>
-          </DescriptionArea>
-        )}
-
+      <CardArtwork value={value} name={name}/>
         {isDisabled && disabledReason && (
           <DisabledBadge>
             <LockIcon>잠금</LockIcon>
             <LockText>{disabledReason}</LockText>
           </DisabledBadge>
         )}
-      </CardBorder>
     </CardContainer>
   );
 };
@@ -103,9 +76,9 @@ export const GameCard: React.FC<GameCardProps> = ({
 const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $compact: boolean }>`
   position: relative;
   width: ${props => props.$compact ? '64px' : 'clamp(106px, 29vw, 154px)'};
-  height: ${props => props.$compact ? '96px' : 'clamp(158px, 43vw, 220px)'};
-  min-width: ${props => props.$compact ? '60px' : '92px'};
-  min-height: ${props => props.$compact ? '88px' : '138px'};
+  aspect-ratio: 154 / 220;
+  height: auto;
+
   background: #fdfbf7;
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(212, 175, 55, 0.4);
@@ -113,11 +86,11 @@ const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $
   user-select: none;
   touch-action: none;
   flex-shrink: 0;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow 0.2s ease;
 
   ${props => props.$isSelected && css`
     box-shadow: 0 0 0 2px #d4af37, 0 12px 28px rgba(212, 175, 55, 0.35);
-    transform: translateY(-8px);
+
   `}
 
   ${props => props.$isDisabled && css`
@@ -125,93 +98,7 @@ const CardContainer = styled.div<{ $isSelected: boolean; $isDisabled: boolean; $
     filter: grayscale(80%);
   `}
 
-  @media (max-height: 650px) { width: ${props => props.$compact ? '54px' : '96px'}; height: ${props => props.$compact ? '80px' : '142px'}; }
-`;
-
-const CardBorder = styled.div`
-  position: absolute;
-  inset: 4px;
-  border: 1px solid rgba(212, 175, 55, 0.45);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  background: radial-gradient(circle at 50% 30%, #ffffff 0%, #f7f4ed 100%);
-`;
-
-const CardHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 5px;
-`;
-
-const ValueBadge = styled.div`
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #18181b;
-  color: #d4af37;
-  font-family: 'Cinzel', serif;
-  font-weight: 700;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #d4af37;
-  flex-shrink: 0;
-`;
-
-const NameBlock = styled.div`
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-`;
-
-const CardTitle = styled.span`
-  font-size: 12px;
-  font-weight: 700;
-  color: #18181b;
-  white-space: nowrap;
-  letter-spacing: -0.3px;
-`;
-
-const CardSub = styled.span`
-  font-size: 8px;
-  color: #71717a;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-`;
-
-const EmblemArea = styled.div`
-  flex: 1 1 auto;
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 0;
-`;
-
-const DescriptionArea = styled.div`
-  flex: 0 0 38px;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  background: rgba(24, 24, 27, 0.04);
-  border-radius: 4px;
-  padding: 4px;
-  border-top: 1px solid rgba(212, 175, 55, 0.2);
-`;
-
-const DescText = styled.p`
-  margin: 0;
-  font-size: clamp(10px, 2.5vw, 12px);
-  line-height: 1.25;
-  color: #3f3f46;
-  text-align: center;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  @media (max-height: 650px) { width: ${props => props.$compact ? '54px' : '96px'}; }
 `;
 
 const DisabledBadge = styled.div`

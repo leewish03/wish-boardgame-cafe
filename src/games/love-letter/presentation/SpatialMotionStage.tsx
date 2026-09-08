@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { createPortal } from 'react-dom';
 import { motion, useAnimation, useReducedMotion } from 'framer-motion';
@@ -7,7 +7,7 @@ import { PresentationAction } from './useActionTimeline';
 import { buildPhysicalSequence } from './physicalSequence';
 import { useTableAnchorRegistry } from './TableAnchorRegistry';
 import { THEME } from '../../../shared/theme';
-import { getHeraldicIcon } from './heraldicIcons';
+import { CardArtwork, CARD_WIDTH, CARD_HEIGHT } from '../ui/CardArtwork';
 
 type Point = { x:number; y:number; width:number; height:number };
 interface Props {
@@ -24,15 +24,19 @@ function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=fals
   const done=useRef(onComplete); done.current=onComplete;
   const reduce=useReducedMotion();
   const started=useRef(false);
-  useEffect(()=>{
+  const pose=(point:Point)=>{
+    const scale=Math.min(point.width/CARD_WIDTH,point.height/CARD_HEIGHT);
+    return {x:point.x+point.width/2-CARD_WIDTH/2,y:point.y+point.height/2-CARD_HEIGHT/2,scale};
+  };
+  useLayoutEffect(()=>{
     let active=true;
-    if (!started.current) { controls.set({...from,rotateY:initialFaceUp?0:180}); started.current=true; }
-    void controls.start({...to, rotateY:faceUp?0:180, opacity:[.98,1], transition:{duration:reduce?Math.min(duration,.12):duration,ease:[.22,1,.36,1]}})
+    if (!started.current) { controls.set({...pose(from),rotateY:initialFaceUp?0:180}); started.current=true; }
+    void controls.start({...pose(to), rotateY:faceUp?0:180, transition:{duration:reduce?Math.min(duration,.12):duration,ease:[.22,1,.36,1]}})
       .then(()=>{if(active) done.current?.();});
     return()=>{active=false;};
   },[controls,stepId,to.x,to.y,to.width,to.height,faceUp,duration,reduce]);
-  return <CardObject as={motion.div} data-physical-card={identity} animate={controls} initial={{...from,rotateY:initialFaceUp?0:180}}>
-    <Front aria-hidden={!faceUp}>{card && <><b>{card.value} · {card.name}</b>{getHeraldicIcon(card.value,24)}</>}</Front><Back/>
+  return <CardObject as={motion.div} data-physical-card={identity} animate={controls} initial={{...pose(from),rotateY:initialFaceUp?0:180}}>
+    <Front aria-hidden={!faceUp}><CardArtwork value={card?.value} name={card?.name}/></Front><Back aria-hidden={faceUp}><CardArtwork back/></Back>
   </CardObject>;
 }
 
@@ -52,7 +56,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const actor=players.find(p=>p.id===step?.actorId);
   const target=players.find(p=>p.id===step?.targetId);
   const returned=returnedActionId===currentAction?.actionId;
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(!step) {setGeometry(null);return;}
     const point=(element:HTMLElement|null):Point|null=>{
       if(!element)return null; const r=element.getBoundingClientRect();
@@ -60,7 +64,9 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     };
     const hand=(id:string|undefined, card?:CardInstance)=>{
       if(!id)return null; const count=players.find(p=>p.id===id)?.cardCount || 1;
-      return point((card && registry.get(id,`card:${card.id}`)) || registry.get(id,count>1?'hand-slot-1':'hand-slot-0'));
+      const registered = card && registry.get(id,`card:${card.id}`);
+      const visibleCard = registered?.querySelector<HTMLElement>('[data-card-id]');
+      return point(visibleCard || registered || registry.get(id,count>1?'hand-slot-1':'hand-slot-0'));
     };
     const measure=()=>{
       const actorHand=hand(step.actorId,step.kind==='PLAY'?played:undefined);
@@ -124,7 +130,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   </Layer>;
 };
 const Layer=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;perspective:900px;`;
-const CardObject=styled.div`position:absolute;left:0;top:0;transform-style:preserve-3d;border-radius:6px;box-shadow:0 3px 8px rgba(9,13,22,.22);`;
-const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;border:1px solid ${THEME.gold};border-radius:6px;background:#fffdf7;color:${THEME.primary};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;b{font-size:10px;text-align:center;}`;
-const Back=styled.div`position:absolute;inset:0;backface-visibility:hidden;transform:rotateY(180deg);border:1px solid ${THEME.gold};border-radius:6px;background:${THEME.burgundyDeep};`;
+const CardObject=styled.div`position:absolute;left:0;top:0;width:154px;height:220px;transform-origin:center;transform-style:preserve-3d;will-change:transform;`;
+const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;`;
+const Back=styled(Front)`transform:rotateY(180deg);`;
 const ReviewControls=styled.div`position:relative;width:100%;display:grid;gap:6px;text-align:center;color:${THEME.primary};font-size:11px;span{background:#fffdf7;padding:3px;border-radius:4px;}button{pointer-events:auto;min-height:44px;border:1px solid ${THEME.gold};border-radius:7px;background:${THEME.primary};color:white;font-weight:800;cursor:pointer;}`;

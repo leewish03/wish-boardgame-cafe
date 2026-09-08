@@ -34,4 +34,4 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn
 const HandContainer = styled.section`width:100%; padding:4px 8px max(12px, env(safe-area-inset-bottom)); box-sizing:border-box; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;`;
 const HandHeader = styled.div`display:flex; align-items:center; gap:7px; min-height:20px; color:#5f1d2c; font-size:11px; font-weight:850;`;
 const CardsRow = styled.div`display:grid; grid-template-columns:repeat(2,minmax(104px,154px)); align-items:flex-end; justify-content:center; gap:12px; width:100%;`;
-const Slot = styled.div<{$empty:boolean}>`min-width:0; min-height:158px; display:flex; justify-content:center; align-items:flex-end; visibility:${p=>p.$empty?'hidden':'visible'}; @media(max-height:650px){min-height:142px;}`;
+const Slot = styled.div<{$empty:boolean}>`min-width:0;width:clamp(106px,29vw,154px);aspect-ratio:154 / 220;justify-self:center;display:flex;justify-content:center;align-items:flex-end;visibility:${p=>p.$empty?'hidden':'visible'};@media(max-height:650px){width:96px;}`;

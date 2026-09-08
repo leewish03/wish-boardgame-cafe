@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { CircleSlash, Heart, ShieldCheck } from 'lucide-react';
 import { CardInstance, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
-import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { CardArtwork } from './CardArtwork';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 import { PlayerHand } from './PlayerHand';
 import { useHiddenHand, PhysicalTableContext } from '../presentation/PhysicalTableContext';
@@ -60,7 +60,7 @@ export const HeldCardBacks: React.FC<{playerId:string; count:number}> = ({ playe
 
 const HeldSlot: React.FC<{playerId:string;index:number;visible:boolean}> = ({playerId,index,visible}) => {
   const anchor = useTableAnchor(playerId, index === 0 ? 'hand-slot-0' : 'hand-slot-1');
-  return <HeldBack ref={anchor} $hidden={!visible}/>;
+  return <HeldBack ref={anchor} $hidden={!visible}><CardArtwork back/></HeldBack>;
 };
 
 export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]; local?:boolean; hideLatest?:boolean; onInspect?:()=>void}> = ({playerId,cards,local=false,hideLatest=false,onInspect}) => {
@@ -71,7 +71,7 @@ export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]
   const hidden = Math.max(0,settledCards.length-visible.length);
   return <Shelf type="button" onClick={onInspect} $local={local} aria-label={`공개 버린 패 ${cards.length}장`}>
     <ShelfLabel>{local ? '내 공개 버린 패' : '공개 패'}</ShelfLabel>
-    <Pile $local={local}><DiscardLanding ref={anchor} $index={Math.min(3,settledCards.length)} $local={local}/>{visible.map((card,index)=><DiscardCard as={motion.span} layout ref={index===visible.length-1 ? latestAnchor : undefined} key={`${card.id}_${index}`} $index={index} $local={local}><b>{card.value}</b>{getHeraldicIcon(card.value,local?12:9)}</DiscardCard>)}{visible.length===0 && <NoCards ref={latestAnchor}>아직 없음</NoCards>}{hidden>0 && <More>+{hidden}</More>}</Pile>
+    <Pile $local={local}><DiscardLanding ref={anchor} $index={Math.min(3,settledCards.length)} $local={local}/>{visible.map((card,index)=><DiscardCard ref={index===visible.length-1 ? latestAnchor : undefined} key={card.id} $index={index} $local={local}><CardArtwork value={card.value} name={card.name}/></DiscardCard>)}{visible.length===0 && <NoCards ref={latestAnchor}>아직 없음</NoCards>}{hidden>0 && <More>+{hidden}</More>}</Pile>
   </Shelf>;
 };
 
@@ -126,13 +126,13 @@ const Meta=styled.span`display:flex;align-items:center;gap:2px;color:${THEME.bur
 const Turn=styled.span`font-size:7px;font-weight:900;color:${THEME.burgundy};`;
 const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:40px; height:29px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.8);transform-origin:top center;height:24px;}`;
 const HeldCards=styled.span`height:100%;display:flex;align-items:flex-start;justify-content:center;gap:2px;`;
-const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:19px;height:27px;border-radius:3px;background:${THEME.burgundyDeep};border:1px solid ${THEME.goldAntique};box-shadow:1px 2px 3px rgba(9,13,22,.18);visibility:${p=>p.$hidden?'hidden':'visible'};`;
+const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:18.9px;height:27px;flex-shrink:0;box-shadow:1px 2px 3px rgba(9,13,22,.18);visibility:${p=>p.$hidden?'hidden':'visible'};`;
 const Count=styled.span`position:absolute;right:-5px;bottom:-2px;min-width:12px;height:12px;display:grid;place-items:center;border-radius:7px;background:${THEME.primary};color:#fff;font-size:7px;font-weight:900;`;
 const Empty=styled.span`font-size:6px;color:${THEME.mutedForeground};white-space:nowrap;position:absolute;left:50%;top:8px;transform:translateX(-50%);`;
 const Shelf=styled.button<{$local:boolean}>`position:relative;width:${p=>p.$local?'min(360px,100%)':'100%'};height:${p=>p.$local?'34px':'27px'};min-width:0;margin:0 auto;padding:0;border:0;background:transparent;color:${THEME.foreground};font:inherit;cursor:pointer;text-align:left;`;
 const ShelfLabel=styled.span`position:absolute;left:0;top:0;font-size:9px;color:${THEME.mutedForeground};font-weight:750;`;
 const Pile=styled.span<{$local:boolean}>`position:absolute;left:${p=>p.$local?'50%':'0'};bottom:0;width:${p=>p.$local?'150px':'100%'};height:${p=>p.$local?'31px':'23px'};transform:${p=>p.$local?'translateX(-50%)':'none'};`;
-const DiscardCard=styled.span<{$index:number;$local:boolean}>`position:absolute;left:${p=>p.$index*(p.$local?27:15)}px;bottom:0;width:${p=>p.$local?'31px':'20px'};height:${p=>p.$local?'29px':'22px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:3px;background:#fffdf7;border:1px solid ${THEME.gold};color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);font:900 ${p=>p.$local?'10px':'8px'} ${THEME.font.serif};`;
-const DiscardLanding=styled.span<{$index:number;$local:boolean}>`position:absolute;left:${p=>p.$index*(p.$local?27:15)}px;bottom:0;width:${p=>p.$local?'31px':'20px'};height:${p=>p.$local?'29px':'22px'};pointer-events:none;`;
+const DiscardCard=styled.span<{$index:number;$local:boolean}>`position:absolute;left:${p=>p.$index*(p.$local?27:15)}px;bottom:0;width:${p=>p.$local?'21.7px':'15.4px'};height:${p=>p.$local?'31px':'22px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:3px;color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);font:900 ${p=>p.$local?'10px':'8px'} ${THEME.font.serif};`;
+const DiscardLanding=styled.span<{$index:number;$local:boolean}>`position:absolute;left:${p=>p.$index*(p.$local?27:15)}px;bottom:0;width:${p=>p.$local?'21.7px':'15.4px'};height:${p=>p.$local?'31px':'22px'};pointer-events:none;`;
 const NoCards=styled.span`position:absolute;left:50%;bottom:5px;transform:translateX(-50%);font-size:9px;color:${THEME.mutedForeground};white-space:nowrap;`;
 const More=styled.span`position:absolute;right:0;bottom:5px;font-size:9px;color:${THEME.mutedForeground};font-weight:900;`;

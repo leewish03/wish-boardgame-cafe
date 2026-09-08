@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { CardArtwork } from './CardArtwork';
 import { THEME } from '../../../shared/theme';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 
@@ -18,7 +19,7 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) 
           <>
             <BackCardLayer $offset={4} />
             <BackCardLayer $offset={2} />
-            <TopDeckCard>
+            <TopDeckCard><CardArtwork back/>
               <DeckCountBadge>{count}</DeckCountBadge>
             </TopDeckCard>
           </>
@@ -26,7 +27,7 @@ export const DeckSlot: React.FC<DeckSlotProps> = ({ count, setAsideCount = 0 }) 
           <EmptyDeckSlot>덱 소진</EmptyDeckSlot>
         )}
       </DeckStack>
-      {setAsideCount > 0 && <AsideStack ref={asideAnchor} aria-label={`이번 라운드 제외 카드 ${setAsideCount}장`}><AsideCard /><AsideLabel>제외 {setAsideCount}</AsideLabel></AsideStack>}
+      {setAsideCount > 0 && <AsideStack aria-label={`이번 라운드 제외 카드 ${setAsideCount}장`}><AsideCard ref={asideAnchor}><CardArtwork back/></AsideCard><AsideLabel>제외 {setAsideCount}</AsideLabel></AsideStack>}
     </DeckWrapper>
   );
 };
@@ -61,8 +62,7 @@ const BackCardLayer = styled.div<{ $offset: number }>`
 const TopDeckCard = styled.div`
   position: absolute;
   inset: 0;
-  background: ${THEME.gradients.burgundySeal};
-  border: 1.5px solid ${THEME.gold};
+
   border-radius: ${THEME.radius.md};
   display: flex;
   flex-direction: column;
@@ -73,6 +73,7 @@ const TopDeckCard = styled.div`
 `;
 
 const DeckCountBadge = styled.span`
+  position:absolute;inset:0;display:grid;place-items:center;
   font-size: 14px;
   font-weight: 800;
   font-family: ${THEME.font.serif};
@@ -82,7 +83,7 @@ const DeckCountBadge = styled.span`
 `;
 
 const AsideStack = styled.div`display:flex; flex-direction:column; align-items:center; gap:3px; margin-left:8px; @media(max-width:360px), (max-height:650px){margin-left:5px;}`;
-const AsideCard = styled.div`width:24px; height:36px; border-radius:5px; background:${THEME.burgundyDeep}; border:1px solid ${THEME.goldAntique}; box-shadow:2px 2px 0 rgba(9,13,22,.16); @media(max-width:360px), (max-height:650px){width:19px;height:29px;}`;
+const AsideCard = styled.div`width:24px; height:36px; border-radius:5px;  box-shadow:2px 2px 0 rgba(9,13,22,.16); @media(max-width:360px), (max-height:650px){width:19px;height:29px;}`;
 const AsideLabel = styled.span`font-size:8px; color:${THEME.mutedForeground}; font-weight:800; white-space:nowrap;`;
 
 const EmptyDeckSlot = styled.div`
