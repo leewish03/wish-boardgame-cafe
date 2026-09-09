@@ -133,4 +133,9 @@ const Layer=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;ov
 const CardObject=styled.div`position:absolute;left:0;top:0;width:154px;height:220px;transform-origin:center;transform-style:preserve-3d;will-change:transform;`;
 const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;`;
 const Back=styled(Front)`transform:rotateY(180deg);`;
-const ReviewControls=styled.div`position:relative;width:100%;display:grid;gap:6px;text-align:center;color:${THEME.primary};font-size:11px;span{background:#fffdf7;padding:3px;border-radius:4px;}button{pointer-events:auto;min-height:44px;border:1px solid ${THEME.gold};border-radius:7px;background:${THEME.primary};color:white;font-weight:800;cursor:pointer;}`;
+const ReviewControls=styled.div`
+  position:relative;width:100%;display:grid;justify-items:center;gap:7px;margin-top:2px;text-align:center;color:${THEME.primary};font-size:10px;
+  span{color:${THEME.mutedForeground};}
+  button{pointer-events:auto;width:min(220px,100%);min-height:40px;padding:0 18px;border:1px solid ${THEME.goldAntique};border-radius:9px;background:${THEME.gradients.obsidianButton};color:white;font:900 12px ${THEME.font.serif};cursor:pointer;box-shadow:0 4px 10px rgba(9,13,22,.14);}
+  button:disabled{opacity:.6;cursor:wait;}
+`;
