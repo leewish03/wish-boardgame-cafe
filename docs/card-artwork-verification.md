@@ -50,3 +50,16 @@ Inspected Priest review/return, Prince self-discard/replacement, King exchange,
 rapid double confirm/return clicks, and resize plus reload during private review.
 Reviewed screenshots at play, review and settled stages; final console errors [].
 The user-supplied photos and pre-change local DOM supplied the comparison baseline.
+
+## Mobile table allocation follow-up — 2026-09-09
+
+- Removed the local player's redundant 44px identity row. Turn and token context
+  remains in the HUD; protection/elimination appears only when relevant.
+- Preserved self-targeting through a contextual “나를 대상으로 선택” control
+  around the local action objects.
+- Local play/review destinations increased from 54×78 / 64×92 to
+  78×111 / 96×137 (with proportional short-screen variants).
+- Local settled discards increased from 22×31 to 46×66. Opponent play/review and
+  discard anchors also increased while retaining compact multi-player rows.
+- Verified at 390×844 and 360×640 with 4/6 players: Priest private reveal,
+  Prince self-target, discard/draw settling, scrolling, and console errors [].
