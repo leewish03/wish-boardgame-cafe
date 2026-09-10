@@ -113,7 +113,7 @@ console.log('▶ Test 2: Game Pause & Turn Timer Preservation on Disconnect');
   pauseGameTimer(room);
   room.isPaused = true;
   room.pausedPlayerId = 'user_alice';
-  room.pauseExpiresAt = Date.now() + 30000;
+  room.pauseExpiresAt = Date.now() + 90000;
 
   assert.strictEqual(room.isPaused, true, 'Room must be paused');
   assert(room.savedTurnRemainingMs <= 50000 && room.savedTurnRemainingMs >= 48000, 'Saved remaining time should be ~50s');
