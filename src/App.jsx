@@ -430,7 +430,8 @@ export default function App() {
 
   const avatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${avatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`;
 
-  // Handle Automatic Session Reconnect
+  // Reconnect is invoked only after the returning player explicitly chooses
+  // it, except when an already-open table is recovering its own transport.
   const handleReconnectRequest = useCallback(
     (session) => {
       if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken || reconnectInFlightRef.current) return;
@@ -470,7 +471,7 @@ export default function App() {
             } else {
               setScreen('game');
             }
-            if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 자동으로 재접속되었습니다!');
+            if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 다시 접속했습니다.');
           } else {
             // Only clear room info, preserve nickname & avatar
             saveSession({
@@ -515,6 +516,20 @@ export default function App() {
     }
   }, [socket, connected]);
 
+  const handleDeclineReconnect = useCallback(() => {
+    const saved = reconnectOffer;
+    setReconnectOffer(null);
+    // The player has explicitly chosen to abandon this table. Notify the
+    // authoritative server when possible, then leave locally without waiting
+    // for a connection response that may itself be recovering.
+    if (socket?.connected && saved?.roomCode && saved?.userId) {
+      socket.emit('room:forfeit', { roomCode: saved.roomCode, userId: saved.userId });
+    }
+    clearSession();
+    setRoomState(null);
+    setScreen('lobby');
+  }, [reconnectOffer, socket]);
+
   const refreshOpenRooms = useCallback(() => {
     if (!socket?.connected) return;
     socket.emit('room:list', {}, (result) => {
@@ -538,6 +553,9 @@ export default function App() {
 
     const handleRoomState = (state) => {
       if (!state) return;
+      // A saved session from a fresh visit must be decided in the reconnect
+      // dialog before any room broadcast can navigate the player to a table.
+      if (reconnectOffer && screen !== 'waitingRoom' && screen !== 'game') return;
       setRoomState(state);
       if (state.gameState === 'LOBBY') {
         setScreen('waitingRoom');
@@ -579,7 +597,7 @@ export default function App() {
       socket.off('room:resumed', handleRoomResumed);
       socket.off('chat:message', handleChatMessage);
     };
-  }, [socket, sfx]);
+  }, [socket, sfx, reconnectOffer, screen]);
 
   // Handle Entry (Nickname submission)
   const handleEnterLobby = (e) => {
@@ -865,10 +883,10 @@ export default function App() {
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
-      <Dialog open={!!reconnectOffer} onClose={() => setReconnectOffer(null)}>
-        <DialogHeader><DialogTitle>이전 방으로 돌아갈까요?</DialogTitle><DialogDescription>진행 중이던 방 또는 대기실 세션을 찾았습니다. 원할 때만 다시 연결합니다.</DialogDescription></DialogHeader>
+      <Dialog open={!!reconnectOffer}>
+        <DialogHeader><DialogTitle>진행 중인 방을 찾았습니다</DialogTitle><DialogDescription>이전 방에 다시 접속할지, 이 방에서 나갈지 선택해 주세요.</DialogDescription></DialogHeader>
         <DialogFooter>
-          <Button $variant="secondary" onClick={() => { const saved = reconnectOffer; setReconnectOffer(null); saveSession({ nickname: saved?.nickname, avatarUrl: saved?.avatarUrl }); }}>로비로</Button>
+          <Button $variant="secondary" onClick={handleDeclineReconnect}>방에서 나가기</Button>
           <Button $variant="gold" onClick={() => { const saved = reconnectOffer; setReconnectOffer(null); handleReconnectRequest(saved); }}>재접속</Button>
         </DialogFooter>
       </Dialog>

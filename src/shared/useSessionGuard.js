@@ -164,11 +164,13 @@ export function useSessionGuard({
   }, [screen]);
 
   // 3. A mobile keyboard can suspend the transport without a full page
-  // reload. Returning to the game must re-verify the room session so a pause
-  // caused by that transport loss cannot remain on the table.
+  // reload. Only an already-entered table may recover automatically. A fresh
+  // app visit must stop at App's reconnect-choice dialog instead of silently
+  // entering a saved room.
   useEffect(() => {
     const handleResume = () => {
       if (document.visibilityState === 'hidden') return;
+      if (screen !== 'waitingRoom' && screen !== 'game') return;
       const session = loadSession();
       if (!session?.roomCode || !session?.userId || !session?.sessionToken || !socket) return;
       if (!socket.connected) {
@@ -193,7 +195,7 @@ export function useSessionGuard({
       window.removeEventListener('focus', handleResume);
       window.removeEventListener('online', handleResume);
     };
-  }, [socket]);
+  }, [socket, screen]);
 
   // 4. Lightweight disconnect recovery; do not reconnect on ordinary focus.
   useEffect(() => {
