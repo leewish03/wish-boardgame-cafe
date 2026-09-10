@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { roomRepository } from './RoomRepository.js';
 import { TurnCoordinator } from './TurnCoordinator.js';
 import { decideBotAction } from './AiBotController.js';
+import { RECONNECT_GRACE_MS } from '../shared/reconnectPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -599,6 +600,45 @@ export class LoveLetterService {
     this.pauseExpiryTimers.delete(roomCode);
   }
 
+  schedulePauseExpiry(roomCode, playerId, pauseExpiry) {
+    this.clearPauseExpiryTimer(roomCode);
+    const timer = setTimeout(() => {
+      this.pauseExpiryTimers.delete(roomCode);
+      this.expirePausedPlayer(roomCode, playerId, pauseExpiry).catch((error) => {
+        console.error('Paused player expiry failed:', error.message);
+      });
+    }, Math.max(0, pauseExpiry - Date.now()));
+    timer.unref?.();
+    this.pauseExpiryTimers.set(roomCode, timer);
+  }
+
+  async restorePausedRooms() {
+    // Socket timers do not survive a process restart.  Restore each persisted
+    // pause with a fresh, bounded deadline so a stale room can never keep its
+    // remaining players in a permanent reconnect overlay.
+    const rooms = await roomRepository.listRooms();
+    for (const room of rooms) {
+      if (!room?.isPaused || !room.gameStateObject) continue;
+      const pausedPlayer = room.players?.find((player) => player.id === room.pausedPlayerId)
+        || room.players?.find((player) => player.isDisconnected);
+      if (!pausedPlayer) {
+        room.isPaused = false;
+        room.pausedPlayerId = null;
+        room.pauseExpiresAt = null;
+        delete room.pausedTurnRemainingMs;
+        await roomRepository.saveRoom(room);
+        this.broadcastRoomState(this.io, room.code);
+        continue;
+      }
+
+      room.pausedPlayerId = pausedPlayer.id;
+      room.pauseExpiresAt = Date.now() + RECONNECT_GRACE_MS;
+      await roomRepository.saveRoom(room);
+      this.schedulePauseExpiry(room.code, pausedPlayer.id, room.pauseExpiresAt);
+      this.broadcastRoomState(this.io, room.code);
+    }
+  }
+
   appendSystemMessage(room, text) {
     if (!room.chatMessages) room.chatMessages = [];
     const message = {
@@ -645,21 +685,13 @@ export class LoveLetterService {
 
     room.isPaused = true;
     room.pausedPlayerId = playerId;
-    room.pauseExpiresAt = Date.now() + 180_000;
+    room.pauseExpiresAt = Date.now() + RECONNECT_GRACE_MS;
     room.pausedTurnRemainingMs = Math.max(0, room.gameStateObject.turnExpiresAt - Date.now());
     this.turnCoordinator.clearTurnTimer(roomCode);
     this.clearBotTimer(roomCode);
     this.clearResolutionTimer(roomCode);
-    this.clearPauseExpiryTimer(roomCode);
     const pauseExpiry = room.pauseExpiresAt;
-    const timer = setTimeout(() => {
-      this.pauseExpiryTimers.delete(roomCode);
-      this.expirePausedPlayer(roomCode, playerId, pauseExpiry).catch((error) => {
-        console.error('Paused player expiry failed:', error.message);
-      });
-    }, Math.max(1_000, pauseExpiry - Date.now()));
-    timer.unref?.();
-    this.pauseExpiryTimers.set(roomCode, timer);
+    this.schedulePauseExpiry(roomCode, playerId, pauseExpiry);
     await roomRepository.saveRoom(room);
     this.broadcastRoomState(this.io, roomCode);
   }

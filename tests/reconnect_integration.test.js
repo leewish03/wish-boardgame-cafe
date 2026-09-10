@@ -102,7 +102,7 @@ async function runReconnectIntegrationTests() {
     assert.strictEqual(room.pausedPlayerId, userB_Id, 'pausedPlayerId must match disconnected player');
     assert.ok(room.pauseExpiresAt > Date.now(), 'pauseExpiresAt must be in the future (3-min grace period)');
 
-    console.log(`   ✅ Server detected disconnect and entered 3-minute grace pause mode for Player B.\n`);
+    console.log(`   ✅ Server detected disconnect and entered the bounded reconnect pause for Player B.\n`);
 
     // -------------------------------------------------------------
     // Step 3: Reject Unauthorized Reconnection Attempt (Wrong Token)

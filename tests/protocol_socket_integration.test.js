@@ -41,7 +41,11 @@ async function main() {
   const io = new Server(server, { cors: { origin: '*' } });
   initRoomManager(io);
   const service = createLoveLetterService(io, { broadcastRoomState });
-  configureCoreGameLifecycle({ resume: (roomCode) => service.resumeRoom(roomCode) });
+  configureCoreGameLifecycle({
+    pause: (roomCode, playerId) => service.pauseRoom(roomCode, playerId),
+    resume: (roomCode) => service.resumeRoom(roomCode),
+    forfeit: (roomCode, playerId) => service.handleCommand(roomCode, { type: 'FORFEIT', playerId }),
+  });
   registerLoveLetterController(io, service);
   await new Promise((resolve) => server.listen(0, resolve));
 
@@ -167,6 +171,22 @@ async function main() {
     assertNoSecrets(afterB, joined.userId);
     assert.ok(actionEvent.event, 'game:event must be emitted for the action');
     assert.equal(actionEvent.event.type, 'CARD_PLAYED', 'first presentation event must identify the played card');
+
+    // A reconnect timeout must remain bounded even if the runtime that owned
+    // the original timer restarted. Also, a connected player leaving while
+    // another player is paused must release the room instead of orphaning its
+    // pause flag after the core forfeit clears the timer.
+    const disconnectedPlayer = room.players.find((player) => player.id === joined.userId);
+    disconnectedPlayer.isDisconnected = true;
+    disconnectedPlayer.socketId = null;
+    await service.pauseRoom(created.roomCode, joined.userId);
+    const originalExpiry = room.pauseExpiresAt;
+    await service.restorePausedRooms();
+    assert.ok(room.pauseExpiresAt >= originalExpiry, 'restored paused room must receive a fresh bounded expiry');
+    assert.equal(room.isPaused, true, 'restored room remains visibly paused until it resolves');
+    const leaveResult = await emit(a, 'room:forfeit', { roomCode: created.roomCode, userId: created.userId });
+    assert.equal(leaveResult.success, true, 'connected player can leave during another player reconnect pause');
+    assert.equal(room.isPaused, false, 'explicit leave must clear another player reconnect pause');
     console.log('✅ Protocol controller: server-authoritative command, private snapshots, and event stream verified.');
   } finally {
     if (testRoomCode) delete rooms[testRoomCode];

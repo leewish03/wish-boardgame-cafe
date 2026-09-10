@@ -113,7 +113,7 @@ console.log('▶ Test 2: Game Pause & Turn Timer Preservation on Disconnect');
   pauseGameTimer(room);
   room.isPaused = true;
   room.pausedPlayerId = 'user_alice';
-  room.pauseExpiresAt = Date.now() + 180000;
+  room.pauseExpiresAt = Date.now() + 30000;
 
   assert.strictEqual(room.isPaused, true, 'Room must be paused');
   assert(room.savedTurnRemainingMs <= 50000 && room.savedTurnRemainingMs >= 48000, 'Saved remaining time should be ~50s');
@@ -179,9 +179,9 @@ console.log('▶ Test 3: Game Resume on Successful Reconnect');
 }
 
 // -------------------------------------------------------------
-// Test 4: 3-Minute Timeout Expiration & Forfeit
+// Test 4: Reconnect Timeout Expiration & Forfeit
 // -------------------------------------------------------------
-console.log('▶ Test 4: 3-Minute Timeout Expiration -> Auto Forfeit');
+console.log('▶ Test 4: Reconnect Timeout Expiration -> Auto Forfeit');
 {
   const mockIo = createMockIo();
   const room = {
@@ -220,7 +220,7 @@ console.log('▶ Test 4: 3-Minute Timeout Expiration -> Auto Forfeit');
   };
   rooms['ROOM04'] = room;
 
-  // 3-minute timer expires
+  // reconnect timer expires
   handlePauseExpired(mockIo, 'ROOM04', 'user_alice');
 
   assert.strictEqual(room.players[0].isEliminated, true, 'Alice should be eliminated on timeout');
@@ -235,7 +235,7 @@ console.log('▶ Test 4: 3-Minute Timeout Expiration -> Auto Forfeit');
 // -------------------------------------------------------------
 // Test 5: Explicit Forfeit (Door Icon / room:forfeit)
 // -------------------------------------------------------------
-console.log('▶ Test 5: Explicit Forfeit (No 3-minute wait)');
+console.log('▶ Test 5: Explicit Forfeit (No reconnect wait)');
 {
   const mockIo = createMockIo();
   const room = {

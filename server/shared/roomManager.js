@@ -9,6 +9,7 @@ import {
   handleForfeitedPlayer,
 } from '../games/love-letter.js';
 import { createBotPlayer } from '../games/love-letter-ai.js';
+import { RECONNECT_GRACE_MS } from './reconnectPolicy.js';
 
 export { roomRepository };
 
@@ -823,12 +824,17 @@ export function initRoomManager(io) {
         if (!uId) throw new Error('기권할 플레이어를 찾을 수 없습니다.');
         const departingPlayer = room.players.find((player) => player.id === uId);
 
-        if (room.pauseTimeout && room.pausedPlayerId === uId) {
-          clearTimeout(room.pauseTimeout);
+        // An explicit departure resolves the reconnect wait for everyone.
+        // Previously, if a connected player left while waiting for somebody
+        // else, the core forfeit command cleared its expiry timer but the room
+        // stayed flagged as paused forever.
+        if (room.isPaused) {
+          if (room.pauseTimeout) clearTimeout(room.pauseTimeout);
           room.pauseTimeout = null;
           room.isPaused = false;
           room.pausedPlayerId = null;
           room.pauseExpiresAt = null;
+          delete room.pausedTurnRemainingMs;
         }
 
         if (room.gameStateObject && coreGameLifecycle?.forfeit) {
@@ -957,7 +963,7 @@ export function initRoomManager(io) {
       }
 
       // If in PLAYING or ROUND_END state: DO NOT REMOVE PLAYER!
-      // Pause game and start 3-minute (180s) grace timer
+      // Pause game only long enough for a normal mobile foreground return.
       if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
         if (room.gameStateObject && coreGameLifecycle?.pause) {
           await coreGameLifecycle.pause(roomCode, userId);
@@ -966,7 +972,7 @@ export function initRoomManager(io) {
         if (!room.isPaused) {
           room.isPaused = true;
           room.pausedPlayerId = userId;
-          room.pauseExpiresAt = Date.now() + 180000;
+          room.pauseExpiresAt = Date.now() + RECONNECT_GRACE_MS;
 
           pauseGameTimer(room);
 
@@ -975,7 +981,7 @@ export function initRoomManager(io) {
             void handlePauseExpired(io, roomCode, userId).catch((error) => {
               console.error('Disconnected player expiry failed:', error);
             });
-          }, 180000);
+          }, RECONNECT_GRACE_MS);
         }
 
         broadcastRoomState(io, roomCode);

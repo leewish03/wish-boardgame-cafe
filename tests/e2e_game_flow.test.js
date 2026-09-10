@@ -124,9 +124,9 @@ server.listen(0, async () => {
     await new Promise((r) => setTimeout(r, 100));
 
     if (!room.isPaused || room.pausedPlayerId !== user2Id) {
-      throw new Error('Game did not enter 3-minute Pause state on disconnect!');
+      throw new Error('Game did not enter the bounded reconnect pause state on disconnect!');
     }
-    console.log(`  ✅ Step 7: Server entered 3-minute PAUSE mode for Player 2 (ExpiresAt: ${new Date(room.pauseExpiresAt).toISOString()}).`);
+    console.log(`  ✅ Step 7: Server entered bounded PAUSE mode for Player 2 (ExpiresAt: ${new Date(room.pauseExpiresAt).toISOString()}).`);
 
     // Step 8: Simulate Player 2 reconnecting with sessionToken
     console.log('  ▶ Step 8: Simulating Player 2 returning and reconnecting via sessionToken...');

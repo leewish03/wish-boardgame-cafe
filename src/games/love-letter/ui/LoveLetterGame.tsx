@@ -32,7 +32,7 @@ export interface LoveLetterGameProps {
   stt?: any;
   chatMessages?: any[];
   onSendChat?: (text: string) => void;
-  onLeave?: () => void;
+  onLeave?: (options?: { immediate?: boolean }) => void;
 
   // Pure props fallback
   gameState?: GameState;
@@ -398,13 +398,11 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     }
   };
 
-  const handleForfeit = () => {
-    if (propOnForfeit) {
-      propOnForfeit();
-    } else {
-      gameSocket.forfeit();
-    }
-  };
+  const handlePausedLeave = useCallback(() => {
+    // Route away immediately even if Socket.IO is the connection being
+    // recovered.  App still emits the authoritative forfeit/leave command.
+    handleLeaveCallback({ immediate: true });
+  }, [handleLeaveCallback]);
 
   const handlePresentationComplete = useCallback(() => {
     if (physicalStep?.apply) visual.applyCompletedEvent(physicalStep.apply);
@@ -582,7 +580,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       <PauseOverlay
         isPaused={isPaused}
         pausedPlayerName={pausedPlayerName}
-        onForfeit={handleForfeit}
+        pauseExpiresAt={gameSocket.rawRoomState?.pauseExpiresAt}
+        onLeaveLobby={handlePausedLeave}
       />
 
       <GameMenuDrawer

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock3 } from 'lucide-react';
@@ -7,14 +7,25 @@ import { THEME } from '../../../shared/theme';
 interface PauseOverlayProps {
   isPaused: boolean;
   pausedPlayerName?: string;
-  onForfeit: () => void;
+  pauseExpiresAt?: number | null;
+  onLeaveLobby: () => void;
 }
 
 export const PauseOverlay: React.FC<PauseOverlayProps> = ({
   isPaused,
   pausedPlayerName = '플레이어',
-  onForfeit,
+  pauseExpiresAt,
+  onLeaveLobby,
 }) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isPaused) return undefined;
+    setNow(Date.now());
+    const interval = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [isPaused]);
+  const remainingMs = Math.max(0, Number(pauseExpiresAt || 0) - now);
+  const remainingSeconds = Math.ceil(remainingMs / 1_000);
   return (
     <AnimatePresence>
       {isPaused && (
@@ -35,9 +46,11 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
             <PauseDesc>
               <strong>{pausedPlayerName}</strong> 님의 네트워크 연결을 복구하고 있습니다…
               <br />
-              <SubNotice>(모바일 백그라운드 유예 시간 대기 중)</SubNotice>
+              <SubNotice>{remainingSeconds > 0
+                ? `${remainingSeconds}초 안에 돌아오지 않으면 자동으로 퇴장 처리됩니다.`
+                : '재접속 시간을 마쳐 게임 상태를 정리하고 있습니다.'}</SubNotice>
             </PauseDesc>
-            <ForfeitBtn onClick={onForfeit}>살롱 로비로 나가기</ForfeitBtn>
+            <ForfeitBtn onClick={onLeaveLobby}>지금 살롱 로비로 나가기</ForfeitBtn>
           </PauseBox>
         </Overlay>
       )}
