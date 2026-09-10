@@ -7,6 +7,7 @@ import { THEME } from '../../../shared/theme';
 import { CardArtwork } from './CardArtwork';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 import { PlayerHand } from './PlayerHand';
+import { RoomChat } from '../../../shared/RoomChat';
 import { useHiddenHand, PhysicalTableContext } from '../presentation/PhysicalTableContext';
 
 type PresentationAction = { event?: any } | null;
@@ -96,8 +97,9 @@ export const OpponentZone: React.FC<OpponentZoneProps> = ({presentationAction,..
 interface LocalZoneProps extends IdentityProps {
   hand:CardInstance[]; selectedCardId:string|null; interactionState:string; isMyTurn:boolean; canSelectCards:boolean;
   onSelectCard:(card:CardInstance)=>void; onCancelSelection?:()=>void; onInspect?:()=>void; presentationAction?:PresentationAction;
+  chatMessages?:any[]; onSendChat?:(text:string)=>void; onChatOpenChange?:(open:boolean)=>void;
 }
-export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,...identity}) => {
+export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,chatMessages,onSendChat,onChatOpenChange,...identity}) => {
   const projected = projectedObjects(identity.player, presentationAction || null);
   const event:any = presentationAction?.event;
   const visualHand = (() => {
@@ -107,7 +109,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
     return hand;
   })().slice(0, 2);
   return <LocalZoneRoot>
-    <LocalDiscard><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
+    <LocalDiscard><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/><ChatDock><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></ChatDock></LocalDiscard>
     <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={
       <SelfTarget
         as={motion.button}
@@ -139,7 +141,8 @@ const ReviewSpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
 const LocalZoneRoot=styled.section`width:100%;min-width:0;max-width:100%;display:grid;grid-template-rows:auto auto;gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
-const LocalDiscard=styled.div`width:100%;min-width:0;`;
+const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;
+const ChatDock=styled.div`position:absolute;right:0;top:-4px;z-index:2;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
   position:relative;width:100%;height:100%;min-width:0;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
   cursor:${p=>p.$targetable?'pointer':'default'};

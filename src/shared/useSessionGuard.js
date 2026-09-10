@@ -163,14 +163,23 @@ export function useSessionGuard({
     };
   }, [screen]);
 
-  // 3. Focus return happens when users cancel browser reload dialogs. It is
-  // not a reconnect event, so only request a harmless state sync.
+  // 3. A mobile keyboard can suspend the transport without a full page
+  // reload. Returning to the game must re-verify the room session so a pause
+  // caused by that transport loss cannot remain on the table.
   useEffect(() => {
     const handleResume = () => {
+      if (document.visibilityState === 'hidden') return;
       const session = loadSession();
-      if (socket?.connected && session?.roomCode && session?.userId) {
-        socket.emit('game:sync-request', { roomCode: session.roomCode, userId: session.userId, sessionToken: session.sessionToken });
+      if (!session?.roomCode || !session?.userId || !session?.sessionToken || !socket) return;
+      if (!socket.connected) {
+        socket.connect();
+        return;
       }
+      if (typeof onReconnectRequestRef.current === 'function') {
+        onReconnectRequestRef.current(session);
+        return;
+      }
+      socket.emit('game:sync-request', { roomCode: session.roomCode, userId: session.userId, sessionToken: session.sessionToken });
     };
 
     document.addEventListener('visibilitychange', handleResume);
@@ -224,7 +233,7 @@ export function useSessionGuard({
           if (res?.success) {
             // Desync check: if client thinks room is paused, but server is unpaused
             const currentRoomState = roomStateRef.current;
-            if (currentRoomState && currentRoomState.isPaused && !res.isPaused) {
+            if (res.isPaused || (currentRoomState && currentRoomState.isPaused && !res.isPaused)) {
               if (typeof onReconnectRequestRef.current === 'function') {
                 onReconnectRequestRef.current(session);
               }

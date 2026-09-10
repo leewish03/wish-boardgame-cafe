@@ -20,7 +20,6 @@ import { THEME } from '../../../shared/theme';
 import { GameState, CardValue, PlayerId, CardInstance } from '../../../../packages/love-letter-core/src/types';
 import { calculateRemainingCards } from '../../../../packages/love-letter-core/src/selectors';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
-import { RoomChat } from '../../../shared/RoomChat';
 import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { PhysicalTableContext } from '../presentation/PhysicalTableContext';
 
@@ -525,6 +524,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             interactionState={interactionState}
             onSelectCard={handleSelectCard}
             onCancelSelection={handleCancelAction}
+            chatMessages={chatMessages}
+            onSendChat={onSendChat}
+            onChatOpenChange={handleChatOpenChange}
           />
       )}
 
@@ -590,18 +592,16 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onClose={() => setMenuDrawerOpen(false)}
         onLeaveRoom={handleLeaveCallback}
       />
-      <RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={activeUserId} onOpenChange={handleChatOpenChange}/>
     </BoardSurface></PhysicalTableContext.Provider></TableAnchorProvider>
   );
 };
 
 const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
-  position: ${p=>p.$chatOpen?'fixed':'relative'};
-  inset:${p=>p.$chatOpen?'0':'auto'};
+  position:relative;
   height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : 'auto'};
   width: 100%;
   min-width: 0;
-  min-height: 100dvh;
+  min-height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : '100dvh'};
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;

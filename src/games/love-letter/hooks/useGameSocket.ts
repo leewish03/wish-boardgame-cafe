@@ -205,7 +205,10 @@ export function useGameSocket({
   useEffect(() => {
     if (!socket) return;
 
-    const handleConnect = () => setIsConnected(true);
+    const handleConnect = () => {
+      setIsConnected(true);
+      socket.emit(SOCKET_EVENTS.GAME_VIEW_READY);
+    };
     const handleDisconnect = () => { setIsConnected(false); pendingDraws.current = []; };
 
     const handleRoomState = (state: any) => {

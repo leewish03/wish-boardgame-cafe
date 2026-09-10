@@ -611,7 +611,7 @@ export function initRoomManager(io) {
     });
 
     // 3.1 Session Heartbeat & State Verification
-    socket.on('session:heartbeat', (payload, callback) => {
+    socket.on('session:heartbeat', async (payload, callback) => {
       try {
         let mapping = socketToUser[socket.id];
         const { roomCode, userId, playerId, sessionToken } = payload || {};
@@ -648,6 +648,24 @@ export function initRoomManager(io) {
         if (player.isDisconnected) {
           player.isDisconnected = false;
           player.disconnectedAt = null;
+        }
+
+        // Mobile browsers can restore a transport while the app is returning
+        // from the keyboard without emitting a distinct reconnect flow. A
+        // verified heartbeat is therefore sufficient to release a pause that
+        // was created for this same player.
+        if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
+          const pausedId = room.pausedPlayerId || player.id;
+          if (room.pauseTimeout) {
+            clearTimeout(room.pauseTimeout);
+            room.pauseTimeout = null;
+          }
+          room.stateVersion = (room.stateVersion || 0) + 1;
+          if (room.gameStateObject && coreGameLifecycle?.resume) {
+            await coreGameLifecycle.resume(code);
+          } else {
+            resumeGameTimer(io, room, pausedId);
+          }
         }
 
         if (typeof callback === 'function') {

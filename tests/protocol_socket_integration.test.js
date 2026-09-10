@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import { io as ClientIO } from 'socket.io-client';
-import { initRoomManager, rooms, broadcastRoomState } from '../server/shared/roomManager.js';
+import { initRoomManager, rooms, broadcastRoomState, configureCoreGameLifecycle } from '../server/shared/roomManager.js';
 import { createLoveLetterService } from '../server/core/LoveLetterService.js';
 import { registerLoveLetterController } from '../server/games/loveLetterController.js';
 
@@ -41,6 +41,7 @@ async function main() {
   const io = new Server(server, { cors: { origin: '*' } });
   initRoomManager(io);
   const service = createLoveLetterService(io, { broadcastRoomState });
+  configureCoreGameLifecycle({ resume: (roomCode) => service.resumeRoom(roomCode) });
   registerLoveLetterController(io, service);
   await new Promise((resolve) => server.listen(0, resolve));
 
@@ -79,6 +80,26 @@ async function main() {
     await Promise.all([resumedSnapshotA, resumedSnapshotB]);
     assert.equal(room.isPaused, false, 'valid reconnect must resume the core room');
     assert.ok(room.gameStateObject.stateVersion > stateVersionBeforePause, 'resume must produce a newer snapshot version');
+    const heartbeatPlayerId = room.gameStateObject.currentTurnPlayerId;
+    const heartbeatSocket = heartbeatPlayerId === created.userId ? a : b;
+    const heartbeatToken = heartbeatPlayerId === created.userId ? created.sessionToken : joined.sessionToken;
+    const heartbeatPlayer = room.players.find((player) => player.id === heartbeatPlayerId);
+    heartbeatPlayer.isDisconnected = true;
+    heartbeatPlayer.disconnectedAt = Date.now();
+    heartbeatPlayer.socketId = null;
+    await service.pauseRoom(created.roomCode, heartbeatPlayerId);
+    assert.equal(room.isPaused, true, 'a transport pause must be visible before heartbeat recovery');
+    const heartbeatSnapshotA = once(a, 'game:snapshot');
+    const heartbeatSnapshotB = once(b, 'game:snapshot');
+    const heartbeatRecovery = await emit(heartbeatSocket, 'session:heartbeat', {
+      roomCode: created.roomCode,
+      userId: heartbeatPlayerId,
+      sessionToken: heartbeatToken,
+    });
+    assert.equal(heartbeatRecovery.success, true, 'verified heartbeat must recover the room session');
+    await Promise.all([heartbeatSnapshotA, heartbeatSnapshotB]);
+    assert.equal(room.isPaused, false, 'verified heartbeat must release the reconnect pause');
+    assert.equal(heartbeatPlayer.isDisconnected, false, 'heartbeat recovery must restore presence');
     state = room.gameStateObject;
     const priestActorId = state.currentTurnPlayerId;
     const priestTargetId = state.players.find((player) => player.id !== priestActorId)?.id;

@@ -36,7 +36,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn
     })}</CardsRow>
   </HandContainer>;
 };
-const HandContainer = styled.section`width:100%; padding:4px 8px max(72px, env(safe-area-inset-bottom)); box-sizing:border-box; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;`;
+const HandContainer = styled.section`width:100%; padding:4px 8px max(12px, env(safe-area-inset-bottom)); box-sizing:border-box; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;`;
 const HandHeader = styled.div`display:flex; align-items:center; gap:7px; min-height:20px; color:#5f1d2c; font-size:11px; font-weight:850;`;
 const CardsRow = styled.div`--decision-card:clamp(106px,29vw,154px);display:grid;grid-template-columns:repeat(3,var(--decision-card));align-items:flex-end;justify-content:center;gap:clamp(4px,2vw,12px);width:100%;@media(max-width:340px){--decision-card:96px;}@media(max-height:650px){--decision-card:96px;}`;
 const HandCell=styled.div<{$column:number}>`grid-column:${p=>p.$column};min-width:0;display:flex;justify-content:center;`;

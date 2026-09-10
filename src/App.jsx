@@ -405,6 +405,7 @@ export default function App() {
   const [openRooms, setOpenRooms] = useState([]);
   const [roomsUpdatedAt, setRoomsUpdatedAt] = useState(0);
   const reconnectInFlightRef = useRef(false);
+  const reconnectTimeoutRef = useRef(null);
   const [reconnectOffer, setReconnectOffer] = useState(null);
 
   // Room State from Server
@@ -433,7 +434,16 @@ export default function App() {
   const handleReconnectRequest = useCallback(
     (session) => {
       if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken || reconnectInFlightRef.current) return;
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
       reconnectInFlightRef.current = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectInFlightRef.current = false;
+        reconnectTimeoutRef.current = null;
+      }, 6000);
 
       socket.emit(
         'room:reconnect',
@@ -443,6 +453,8 @@ export default function App() {
           sessionToken: session.sessionToken,
         },
         (res) => {
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
           reconnectInFlightRef.current = false;
           if (res?.success) {
             const restoredUser = {
@@ -480,6 +492,10 @@ export default function App() {
     },
     [socket]
   );
+
+  useEffect(() => () => {
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+  }, []);
 
   // Screen Wake Lock, beforeunload & visibilitychange guard hook
   useSessionGuard({
