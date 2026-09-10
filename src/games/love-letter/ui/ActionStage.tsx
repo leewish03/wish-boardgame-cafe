@@ -8,16 +8,18 @@ import { THEME } from '../../../shared/theme';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 import { buildPhysicalSequence } from '../presentation/physicalSequence';
+import { playerCopy } from './playerCopy';
 
 interface ActionStageProps {
   deckCount: number;
   setAsideCount?: number;
   players?: PlayerPublic[];
+  localUserId: string;
   lastAction: GameEventSummary | null;
   interactionState?: string;
   actionError?: string | null;
   activeCard?: CardInstance | null;
-  targetPlayerName?: string | null;
+  targetPlayerId?: string | null;
   selectedGuessName?: string | null;
   canConfirm?: boolean;
   onConfirmAction?: () => void;
@@ -31,13 +33,14 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   deckCount,
   setAsideCount = 0,
   players = [],
+  localUserId,
   lastAction,
   presentationAction,
   presentationPhase,
   interactionState,
   actionError,
   activeCard,
-  targetPlayerName,
+  targetPlayerId,
   selectedGuessName,
   canConfirm = false,
   onConfirmAction,
@@ -49,17 +52,19 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   const targetEvent = step?.kind !== 'PLAY' ? step : null;
   const event: any = presentationAction?.event || lastAction;
   const actionEvent: any = played?.event || event;
-  const actor = actionEvent?.actorName || actionEvent?.actorNickname || players.find(player => player.id === actionEvent?.actorId)?.nickname || actionEvent?.actorId;
-  const target = targetPlayerName || players.find(player => player.id === (targetEvent?.targetId || actionEvent?.targetId))?.nickname;
+  const actorId = actionEvent?.actorId || step?.actorId;
+  const actor = playerCopy(players, actorId, localUserId);
+  const targetId = targetPlayerId || targetEvent?.targetId || actionEvent?.targetId;
+  const target = targetId ? playerCopy(players, targetId, localUserId) : null;
   const card = actionEvent?.card || actionEvent?.playedCard;
-  const result = !presentationAction || step?.kind === 'CLEANUP' ? (event?.description || event?.presentation?.description) : null;
+  const result = step?.kind === 'RESULT_DWELL' ? (event?.description || event?.presentation?.description) : null;
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name}의 대상을 선택하세요` : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' && activeCard ? `${activeCard.name} 사용 준비 완료` : null;
-  const hasTarget = Boolean(targetEvent?.targetId || actionEvent?.targetId);
+  const hasTarget = Boolean(targetId);
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
 
   return <StageContainer aria-label={`덱 ${deckCount}장 남음`}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
-    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerName && <span>{targetPlayerName} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor || '플레이어'} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>카드를 선택해 행동을 준비하세요</span>)}<div ref={controlsAnchor}/></Narration>
+    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>카드를 선택해 행동을 준비하세요</span>)}<div ref={controlsAnchor}/></Narration>
     {activeCard && <ActionControls><CancelButton type="button" onClick={onCancelAction} disabled={interactionState === 'SUBMITTING'}>취소</CancelButton><ConfirmButton type="button" disabled={!canConfirm} onClick={onConfirmAction}>{interactionState === 'SUBMITTING' ? '전달 중…' : '이 카드 사용'}</ConfirmButton></ActionControls>}
   </StageContainer>;
 };

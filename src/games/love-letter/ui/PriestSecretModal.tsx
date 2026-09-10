@@ -43,7 +43,7 @@ export const PriestSecretModal: React.FC<PriestSecretModalProps> = ({
           >
             <HeaderTitle><Eye size={18} aria-hidden="true" /> 사제의 은밀한 손패 투시</HeaderTitle>
             <Subtitle>
-              <strong>[{targetPlayerName}]</strong> 님의 손패를 당신만 확인했습니다
+              <strong>[{targetPlayerName}]</strong> 님의 손패를 나만 확인했습니다
             </Subtitle>
 
             <CardFrame>

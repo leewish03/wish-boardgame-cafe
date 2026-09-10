@@ -1,7 +1,7 @@
 import { GameEventEnvelope } from './envelopes';
 import { CardInstance } from '../../love-letter-core/src/types';
 
-export type PhysicalKind = 'PLAY' | 'TARGET' | 'BORROW' | 'REVIEW' | 'CONCEAL' | 'RETURN' | 'REVEAL' | 'DISCARD_HAND' | 'DRAW' | 'SWAP' | 'COMPARE' | 'COMPARE_REVIEW' | 'RESTORE' | 'PROTECT' | 'HOLD' | 'CLEANUP' | 'ROUND_REVEAL';
+export type PhysicalKind = 'PLAY' | 'TARGET' | 'BORROW' | 'REVIEW' | 'CONCEAL' | 'RETURN' | 'REVEAL' | 'DISCARD_HAND' | 'DRAW' | 'SWAP' | 'COMPARE' | 'COMPARE_REVIEW' | 'RESTORE' | 'PROTECT' | 'HOLD' | 'RESULT_DWELL' | 'CLEANUP' | 'ROUND_REVEAL';
 export interface PhysicalStep {
   id: string; kind: PhysicalKind; actorId: string; targetId?: string;
   card?: CardInstance; cards?: Record<string, CardInstance>; apply?: any; duration: number;
@@ -55,7 +55,9 @@ export function buildPhysicalSequence(envelopes: GameEventEnvelope[]): PhysicalS
     if (event.type === 'PLAYER_PROTECTED') add('PROTECT', { apply: event, duration: .5 });
   }
   if (played) {
-    add('HOLD', { duration: 1.2 });
+    // Reading the resolved outcome is part of the presentation, not a hidden
+    // delay. The server-side presentation gate remains closed until it ends.
+    add('RESULT_DWELL', { duration: 3 });
     add('CLEANUP', { card: played.card, apply: { ...played, type: 'PLAY_TO_DISCARD' } });
   }
   return steps;

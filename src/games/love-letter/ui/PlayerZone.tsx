@@ -107,8 +107,8 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
     return hand;
   })().slice(0, 2);
   return <LocalZoneRoot>
-    <LocalObjects>
-      <PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/>
+    <LocalDiscard><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
+    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={
       <SelfTarget
         as={motion.button}
         type="button"
@@ -123,38 +123,32 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
       >
         {identity.isTargetable && <SelfTargetLabel>{identity.isSelectedTarget ? '나 선택됨' : '나를 대상으로 선택'}</SelfTargetLabel>}
         {identity.player.isProtected && <SelfState><ShieldCheck size={11}/> 보호 중</SelfState>}
-        {identity.player.isEliminated && <SelfState><CircleSlash size={11}/> 탈락</SelfState>}
         <PlayPlace playerId={identity.player.id} local/>
       </SelfTarget>
-    </LocalObjects>
-    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection}/></LocalHand>
+    }/></LocalHand>
   </LocalZoneRoot>;
 };
 
 const ObjectsRow=styled.div`display:flex;align-items:center;justify-content:center;gap:8px;min-height:0;gap:4px;`;
 const PlayDock=styled.div<{$local?:boolean}>`
-  position:relative;display:flex;align-items:center;justify-content:center;gap:${p=>p.$local?'6px':'3px'};justify-self:center;
-  padding:${p=>p.$local?'3px':'2px'};box-sizing:border-box;border:1px dashed rgba(184,161,107,.42);border-radius:${p=>p.$local?'10px':'7px'};
+  position:relative;width:${p=>p.$local?'100%':'44px'};height:${p=>p.$local?'100%':'63px'};justify-self:center;
+  padding:0;box-sizing:border-box;border:1px dashed rgba(184,161,107,.42);border-radius:${p=>p.$local?'10px':'7px'};
   background:rgba(255,255,255,.14);
 `;
-const ReviewSpace=styled.div`position:relative;width:44px;height:63px;box-sizing:border-box;`;
-const PlaySpace=styled.div`position:relative;width:36px;height:51px;justify-self:center;box-sizing:border-box;`;
+const ReviewSpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
+const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
-const LocalZoneRoot=styled.section`width:100%;min-width:0;max-width:100%;display:grid;grid-template-rows:auto auto;gap:5px;align-items:end;padding:0 8px;box-sizing:border-box;`;
-const LocalObjects=styled.div`width:min(370px,100%);min-height:142px;margin:0 auto;display:grid;grid-template-columns:minmax(112px,1fr) auto;align-items:end;gap:10px;`;
+const LocalZoneRoot=styled.section`width:100%;min-width:0;max-width:100%;display:grid;grid-template-rows:auto auto;gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
+const LocalDiscard=styled.div`width:100%;min-width:0;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
-  position:relative;min-width:0;margin:0;padding:3px;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
+  position:relative;width:100%;height:100%;min-width:0;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
   cursor:${p=>p.$targetable?'pointer':'default'};
   ${p=>p.$targetable&&css`border-color:${THEME.burgundy};background:rgba(255,241,242,.72);`}
   ${p=>p.$selected&&css`border-width:2px;background:#fff1f2;`}
   ${p=>p.$eliminated&&css`opacity:.48;filter:grayscale(1);`}
-  ${PlaySpace}{width:74px;height:106px;}
-  ${ReviewSpace}{width:90px;height:129px;}
-  @media(max-width:360px){${PlaySpace}{width:70px;height:100px;}${ReviewSpace}{width:86px;height:123px;}}
-  @media(max-height:650px){${PlaySpace}{width:66px;height:94px;}${ReviewSpace}{width:80px;height:114px;}}
 `;
 const SelfTargetLabel=styled.span`position:absolute;left:50%;top:-14px;transform:translateX(-50%);white-space:nowrap;color:${THEME.burgundy};font-size:9px;font-weight:900;`;
-const SelfState=styled.span`position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:${THEME.burgundy};font-size:9px;font-weight:900;`;
+const SelfState=styled.span`position:absolute;left:50%;bottom:4px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:${THEME.burgundy};font-size:9px;font-weight:900;z-index:1;`;
 const LocalHand=styled.div`width:100%;min-width:0;`;
 const IdentityButton=styled.button<{$turn:boolean;$targetable:boolean;$selected:boolean;$eliminated:boolean;$self:boolean}>`width:100%; min-width:0; height:44px; display:flex; flex-direction:row; align-items:center; justify-content:initial; gap:4px; padding:3px 6px; box-sizing:border-box; border-radius:8px; border:1px solid ${THEME.border}; background:rgba(255,253,247,.96); color:${THEME.foreground}; font:inherit; cursor:${p=>p.$targetable?'pointer':'default'}; ${p=>p.$turn&&css`border-color:${THEME.gold}; background:#fffdf3;`} ${p=>p.$targetable&&css`border:2px solid ${THEME.burgundy};`} ${p=>p.$selected&&css`background:#fff1f2;`} ${p=>p.$eliminated&&css`opacity:.5;filter:grayscale(1);`} @media(max-height:650px){height:44px;padding:2px 4px;}`;
 const Avatar=styled.div<{$turn:boolean;$speaking:boolean}>`position:relative; width:23px; height:23px; flex:0 0 23px; display:grid; place-items:center; overflow:visible; border-radius:50%; background:${THEME.primary}; color:${THEME.goldLight}; font:900 11px ${THEME.font.serif}; border:1px solid ${p=>p.$turn?THEME.gold:THEME.border}; ${p=>p.$speaking&&css`box-shadow:0 0 0 2px ${THEME.emerald};`} img{width:100%;height:100%;border-radius:inherit;object-fit:cover;} @media(max-height:650px){width:20px;height:20px;flex-basis:20px;}`;
@@ -163,9 +157,9 @@ const IdentityCopy=styled.span`min-width:0;flex:1;display:flex;flex-direction:co
 const Name=styled.strong`font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@media(max-width:360px){font-size:8px;letter-spacing:-.35px;}`;
 const Meta=styled.span`display:flex;align-items:center;gap:2px;color:${THEME.burgundy};font-size:8px;font-weight:800;small{font-size:6.5px;color:${THEME.mutedForeground};border:1px solid ${THEME.border};border-radius:3px;padding:0 2px;}`;
 const Turn=styled.span`font-size:7px;font-weight:900;color:${THEME.burgundy};`;
-const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:40px; height:29px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.8);transform-origin:top center;height:24px;}`;
+const HeldArea=styled.div<{$empty:boolean}>`position:relative; width:64px; height:45px; justify-self:center; opacity:${p=>p.$empty ? .45 : 1}; @media(max-height:650px){transform:scale(.82);transform-origin:top center;height:37px;}`;
 const HeldCards=styled.span`height:100%;display:flex;align-items:flex-start;justify-content:center;gap:2px;`;
-const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:18.9px;height:27px;flex-shrink:0;box-shadow:1px 2px 3px rgba(9,13,22,.18);visibility:${p=>p.$hidden?'hidden':'visible'};`;
+const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:29px;height:41px;flex-shrink:0;box-shadow:1px 2px 3px rgba(9,13,22,.18);visibility:${p=>p.$hidden?'hidden':'visible'};`;
 const Count=styled.span`position:absolute;right:-5px;bottom:-2px;min-width:12px;height:12px;display:grid;place-items:center;border-radius:7px;background:${THEME.primary};color:#fff;font-size:7px;font-weight:900;`;
 const Empty=styled.span`font-size:6px;color:${THEME.mutedForeground};white-space:nowrap;position:absolute;left:50%;top:8px;transform:translateX(-50%);`;
 const Shelf=styled.button<{$local:boolean}>`

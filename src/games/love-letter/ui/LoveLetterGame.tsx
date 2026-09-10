@@ -73,6 +73,12 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 }) => {
   const activeUserId = currentUser?.id || propMyUserId || '';
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [frozenBoardHeight, setFrozenBoardHeight] = useState<number | null>(null);
+  const handleChatOpenChange = useCallback((open: boolean) => {
+    setChatOpen(open);
+    setFrozenBoardHeight(open && typeof window !== 'undefined' ? window.innerHeight : null);
+  }, []);
 
   // Presentation timeline
   const { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying, hasPendingPresentation } = useActionTimeline();
@@ -444,7 +450,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
 
   return (
-    <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface onPointerDown={() => sfx.unlockAndStart()}>
+    <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface $chatOpen={chatOpen} $frozenHeight={frozenBoardHeight} onPointerDown={() => sfx.unlockAndStart()}>
       {/* 1. TOP HUD (Section 3 Tier 1) */}
       <GameHud
         roundNumber={gameState.roundNumber}
@@ -487,13 +493,14 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         deckCount={visual.visualTable.deckCount}
         setAsideCount={visual.visualTable.setAsideCount}
         players={visual.visualTable.players}
+        localUserId={activeUserId}
         lastAction={isActionPlaying ? (gameState.lastAction || gameSocket.lastAction) : null}
         presentationAction={currentAction}
         presentationPhase={phase}
         interactionState={interactionState}
         actionError={actionRequestError}
         activeCard={isActionPlaying ? null : selectedCard}
-        targetPlayerName={targetPlayer?.nickname}
+        targetPlayerId={targetPlayer?.id}
         selectedGuessName={selectedGuessName}
         canConfirm={canConfirmAction}
         onConfirmAction={handleConfirmAction}
@@ -583,13 +590,15 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onClose={() => setMenuDrawerOpen(false)}
         onLeaveRoom={handleLeaveCallback}
       />
-      <RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" />
+      <RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={activeUserId} onOpenChange={handleChatOpenChange}/>
     </BoardSurface></PhysicalTableContext.Provider></TableAnchorProvider>
   );
 };
 
-const BoardSurface = styled.div`
-  position: relative;
+const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
+  position: ${p=>p.$chatOpen?'fixed':'relative'};
+  inset:${p=>p.$chatOpen?'0':'auto'};
+  height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : 'auto'};
   width: 100%;
   min-width: 0;
   min-height: 100dvh;

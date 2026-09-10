@@ -38,7 +38,9 @@ try {
   const observer = service.presentationForPlayer(room,'p2');
   assert.ok(actor.events.find(e=>e.event.type==='PRIEST_USED').event.revealedCard);
   assert.equal(JSON.stringify(observer).includes('held1'),false,'No target card identity or face in observer payload');
-  assert.deepEqual(buildPhysicalSequence(actor.events).map(s=>s.kind),['PLAY','TARGET','BORROW','REVIEW','CONCEAL','RETURN','HOLD','CLEANUP']);
+  const priestSequence = buildPhysicalSequence(actor.events);
+  assert.deepEqual(priestSequence.map(s=>s.kind),['PLAY','TARGET','BORROW','REVIEW','CONCEAL','RETURN','RESULT_DWELL','CLEANUP']);
+  assert.equal(priestSequence.find(step=>step.kind==='RESULT_DWELL')?.duration,3,'The resolved action remains readable for three seconds');
   assert.equal((await service.acknowledgePresentation(...args,'RETURN_REQUEST')).success,true);
   assert.equal((await service.acknowledgePresentation(...args,'RETURN_REQUEST')).success,true);
   assert.equal(emitted.filter(e=>e.name==='game:presentation-return').length,1,'Duplicate return emits once');

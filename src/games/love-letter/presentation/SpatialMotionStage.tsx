@@ -17,27 +17,33 @@ interface Props {
 }
 
 /** The visible card drives completion; there is no independent hidden clock. */
-function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=false, duration, onComplete}: {
-  identity:string;stepId:string;from:Point;to:Point;card?:CardInstance;faceUp:boolean;initialFaceUp?:boolean;duration:number;onComplete?:()=>void;
+function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=false, duration, onComplete, toOffset}: {
+  identity:string;stepId:string;from:Point;to:Point;card?:CardInstance;faceUp:boolean;initialFaceUp?:boolean;duration:number;onComplete?:()=>void;toOffset?:{x:number;y:number;scale?:number};
 }) {
   const controls=useAnimation();
   const done=useRef(onComplete); done.current=onComplete;
   const reduce=useReducedMotion();
   const started=useRef(false);
-  const pose=(point:Point)=>{
-    const scale=Math.min(point.width/CARD_WIDTH,point.height/CARD_HEIGHT);
-    return {x:point.x+point.width/2-CARD_WIDTH/2,y:point.y+point.height/2-CARD_HEIGHT/2,scale};
+  const pose=(point:Point,offset?:{x:number;y:number;scale?:number})=>{
+    const scale=Math.min(point.width/CARD_WIDTH,point.height/CARD_HEIGHT)*(offset?.scale ?? 1);
+    return {x:point.x+point.width/2-CARD_WIDTH/2+(offset?.x ?? 0),y:point.y+point.height/2-CARD_HEIGHT/2+(offset?.y ?? 0),scale};
   };
   useLayoutEffect(()=>{
     let active=true;
     if (!started.current) { controls.set({...pose(from),rotateY:initialFaceUp?0:180}); started.current=true; }
-    void controls.start({...pose(to), rotateY:faceUp?0:180, transition:{duration:reduce?Math.min(duration,.12):duration,ease:[.22,1,.36,1]}})
+    void controls.start({...pose(to,toOffset), rotateY:faceUp?0:180, transition:{duration:reduce?Math.min(duration,.12):duration,ease:[.22,1,.36,1]}})
       .then(()=>{if(active) done.current?.();});
     return()=>{active=false;};
-  },[controls,stepId,to.x,to.y,to.width,to.height,faceUp,duration,reduce]);
+  },[controls,stepId,to.x,to.y,to.width,to.height,faceUp,duration,reduce,toOffset?.x,toOffset?.y,toOffset?.scale]);
   return <CardObject as={motion.div} data-physical-card={identity} animate={controls} initial={{...pose(from),rotateY:initialFaceUp?0:180}}>
     <Front aria-hidden={!faceUp}><CardArtwork value={card?.value} name={card?.name}/></Front><Back aria-hidden={faceUp}><CardArtwork back/></Back>
   </CardObject>;
+}
+
+function ResultDwell({duration,onComplete}:{duration:number;onComplete:()=>void}) {
+  return <motion.div aria-hidden="true" initial={{opacity:.99}} animate={{opacity:1}}
+    transition={{duration,ease:'linear'}} onAnimationComplete={onComplete}
+    style={{position:'fixed',width:1,height:1,pointerEvents:'none'}}/>;
 }
 
 export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,players,returnedActionId,onReturnCard,onPhaseComplete})=>{
@@ -99,7 +105,8 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const privatePhase=['BORROW','REVIEW','CONCEAL','RETURN'].includes(step.kind);
   const handEffect=['REVEAL','DISCARD_HAND','DRAW'].includes(step.kind);
   const doubleEffect=['COMPARE','COMPARE_REVIEW','RESTORE','SWAP'].includes(step.kind);
-  const drivingPlayed=!privatePhase&&!handEffect&&!doubleEffect;
+  const resultDwell=step.kind==='RESULT_DWELL';
+  const drivingPlayed=!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect;
   const returnCard=()=>{
     if(requesting)return;setRequesting(true);setError(null);
     onReturnCard(currentAction.actionId,currentAction.stateVersion,result=>{
@@ -109,9 +116,9 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   return <Layer data-physical-step={step.kind}>
     {step.kind==='ROUND_REVEAL' && Object.entries(step.cards || {}).map(([id, card], index, entries) => g[`round:${id}`] && <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={g[`round:${id}`]} to={g[`round:${id}`]} card={card} faceUp duration={step.duration} onComplete={index===entries.length-1?finish:undefined}/>)}
     {played && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
-      from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
+      from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
     {privatePhase && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
-      from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} card={priest?.revealedCard}
+      from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} toOffset={step.kind==='RETURN'?undefined:{x:5,y:-5,scale:.94}} card={priest?.revealedCard}
       faceUp={step.kind==='REVIEW' && localUserId===step.actorId} duration={step.duration}
       onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot ? undefined : finish}/>}
     {handEffect && <TableCard key={`${currentAction.actionId}:hand:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:hand:${step.targetId}`} stepId={step.id}
@@ -122,6 +129,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):step.kind==='RESTORE'?(index?g.targetHand:g.actorHand):(index?g.targetReview:review)}
       card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}
       faceUp={step.kind==='COMPARE_REVIEW' && [step.actorId,step.targetId].includes(localUserId)} duration={step.duration} onComplete={index===1?finish:undefined}/>)}
+    {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
     {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
       <span>{actor?.nickname}님이 {target?.nickname}님의 카드를 확인 중</span>
       {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
