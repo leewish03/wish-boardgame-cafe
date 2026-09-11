@@ -75,7 +75,7 @@ export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]
   return <Shelf type="button" onClick={onInspect} $local={local} aria-label={`공개 버린 패 ${cards.length}장`}>
     <ShelfLabel>{local ? '내 공개 버린 패' : '공개 패'}</ShelfLabel>
     <Pile $local={local}>
-      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? pileAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <DiscardMiniFace><b>{card.value}</b><span>{card.name}</span></DiscardMiniFace>}</DiscardCard>)}
+      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? pileAnchor : undefined} key={card.id} $local={local}><CardArtwork value={card.value} name={card.name}/></DiscardCard>)}
       {settledCards.length===0 && <><DiscardLanding ref={pileAnchor} $local={local}/><NoCards>아직 없음</NoCards></>}
     </Pile>
   </Shelf>;
@@ -144,7 +144,7 @@ const PlayDock=styled.div<{$local?:boolean}>`
 const ReviewSpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
-const LocalZoneRoot=styled.section`width:100%;min-width:0;max-width:100%;display:grid;grid-template-rows:auto auto;gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
+const LocalZoneRoot=styled.section`width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr);gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
 const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;
 const ChatDock=styled.div`position:absolute;right:0;top:-4px;z-index:2;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
@@ -156,7 +156,7 @@ const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminate
 `;
 const SelfTargetLabel=styled.span`position:absolute;left:50%;top:-14px;transform:translateX(-50%);white-space:nowrap;color:${THEME.burgundy};font-size:9px;font-weight:900;`;
 const SelfState=styled.span`position:absolute;left:50%;bottom:4px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:${THEME.burgundy};font-size:9px;font-weight:900;z-index:1;`;
-const LocalHand=styled.div`width:100%;min-width:0;`;
+const LocalHand=styled.div`width:100%;height:100%;min-width:0;min-height:0;display:flex;align-items:flex-end;`;
 const IdentityButton=styled.button<{$turn:boolean;$targetable:boolean;$selected:boolean;$eliminated:boolean;$self:boolean}>`width:100%; min-width:0; height:44px; display:flex; flex-direction:row; align-items:center; justify-content:initial; gap:4px; padding:3px 6px; box-sizing:border-box; border-radius:8px; border:1px solid ${THEME.border}; background:rgba(255,253,247,.96); color:${THEME.foreground}; font:inherit; cursor:${p=>p.$targetable?'pointer':'default'}; ${p=>p.$turn&&css`border-color:${THEME.gold}; background:#fffdf3;`} ${p=>p.$targetable&&css`border:2px solid ${THEME.burgundy};`} ${p=>p.$selected&&css`background:#fff1f2;`} ${p=>p.$eliminated&&css`opacity:.5;filter:grayscale(1);`} @media(max-height:650px){height:44px;padding:2px 4px;}`;
 const Avatar=styled.div<{$turn:boolean;$speaking:boolean}>`position:relative; width:23px; height:23px; flex:0 0 23px; display:grid; place-items:center; overflow:visible; border-radius:50%; background:${THEME.primary}; color:${THEME.goldLight}; font:900 11px ${THEME.font.serif}; border:1px solid ${p=>p.$turn?THEME.gold:THEME.border}; ${p=>p.$speaking&&css`box-shadow:0 0 0 2px ${THEME.emerald};`} img{width:100%;height:100%;border-radius:inherit;object-fit:cover;} @media(max-height:650px){width:20px;height:20px;flex-basis:20px;}`;
 const Status=styled.span`position:absolute;right:-3px;bottom:-3px;width:13px;height:13px;display:grid;place-items:center;border-radius:50%;background:#fff;color:${THEME.burgundy};border:1px solid ${THEME.border};`;
@@ -181,10 +181,9 @@ const Pile=styled.span<{$local:boolean}>`
   @media(max-width:420px){grid-template-columns:repeat(3,${p=>p.$local?'50px':'36px'});grid-auto-rows:${p=>p.$local?'71px':'52px'};min-height:${p=>p.$local?'71px':'52px'};}
 `;
 const DiscardCard=styled.span<{$local:boolean}>`
-  width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);background:${p=>p.$local?'transparent':'#fffdf6'};border:${p=>p.$local?'0':'1px solid rgba(184,161,107,.58)'};
+  width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);background:transparent;border:0;overflow:hidden;
   @media(max-width:420px){width:${p=>p.$local?'50px':'36px'};height:${p=>p.$local?'71px':'52px'};}
 `;
-const DiscardMiniFace=styled.span`width:100%;height:100%;padding:3px 2px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:${THEME.primary};line-height:1;text-align:center;b{align-self:flex-start;font:900 10px ${THEME.font.serif};}span{font-size:7px;font-weight:900;word-break:keep-all;}`;
 const DiscardLanding=styled.span<{$local:boolean}>`
   width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};pointer-events:none;visibility:hidden;
   @media(max-width:420px){width:${p=>p.$local?'50px':'36px'};height:${p=>p.$local?'71px':'52px'};}

@@ -8,6 +8,7 @@ import { buildPhysicalSequence } from './physicalSequence';
 import { useTableAnchorRegistry } from './TableAnchorRegistry';
 import { THEME } from '../../../shared/theme';
 import { CardArtwork, CARD_WIDTH, CARD_HEIGHT } from '../ui/CardArtwork';
+import { playerCopy } from '../ui/playerCopy';
 
 type Point = { x:number; y:number; width:number; height:number };
 interface Props {
@@ -60,7 +61,8 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const priest=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='PRIEST_USED')?.event as any);
   const comparison=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='BARON_COMPARED')?.event as any);
   const actor=players.find(p=>p.id===step?.actorId);
-  const target=players.find(p=>p.id===step?.targetId);
+  const actorText=playerCopy(players,step?.actorId,localUserId);
+  const targetText=playerCopy(players,step?.targetId,localUserId);
   const returned=returnedActionId===currentAction?.actionId;
   useLayoutEffect(()=>{
     if(!step) {setGeometry(null);return;}
@@ -151,7 +153,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       faceUp={step.kind==='COMPARE_REVIEW' && [step.actorId,step.targetId].includes(localUserId)} duration={step.duration} onComplete={index===1?finish:undefined}/>)}
     {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
     {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
-      <span>{actor?.nickname}님이 {target?.nickname}님의 카드를 확인 중</span>
+      <span>{actorText.subject} {targetText.possessive} 카드를 확인 중</span>
       {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
       {error && <span role="alert">{error}</span>}
     </ReviewControls>, registry.get('table','review-controls')!)}

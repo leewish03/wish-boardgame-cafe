@@ -22,6 +22,7 @@ import { calculateRemainingCards } from '../../../../packages/love-letter-core/s
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { PhysicalTableContext } from '../presentation/PhysicalTableContext';
+import { playerCopy } from './playerCopy';
 
 export interface LoveLetterGameProps {
   // Support both direct legacy props from App.jsx and pure GameState
@@ -374,7 +375,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     const player = gameState.players.find(p => p.id === playerId);
     if (player) {
       setInspectingPlayer({
-        name: player.nickname,
+        name: playerCopy(gameState.players, player.id, activeUserId).name,
         discards: player.discardPile || [],
       });
     }
@@ -441,7 +442,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         ? '서버에 행동을 확인하는 중'
         : isMyTurn
           ? '내 차례'
-          : `${turnPlayer?.nickname || '상대'}의 차례`;
+          : `${playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}의 차례`;
 
   const isPaused = propIsPaused ?? gameSocket.isPaused;
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
@@ -511,7 +512,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         targetPlayerId={targetPlayer?.id}
         selectedGuessName={selectedGuessName}
         isMyTurn={isMyTurn}
-        turnPlayerName={turnPlayer?.nickname || '상대'}
+        turnPlayerName={playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}
         canConfirm={canConfirmAction}
         onConfirmAction={handleConfirmAction}
         onCancelAction={handleCancelAction}
@@ -562,6 +563,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         isOpen={gameState.matchState === 'ROUND_END' && !isActionPlaying}
         roundNumber={gameState.roundNumber}
         winnerName={roundWinner?.nickname || '승자'}
+        localUserId={activeUserId}
         winnerTokens={roundWinner?.tokens || 1}
         targetTokens={gameState.config?.targetTokens || 4}
         isHost={me?.isHost || false}
@@ -579,7 +581,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       <MatchResultModal
         isOpen={gameState.matchState === 'GAME_OVER' && !isActionPlaying}
-        championName={matchWinner?.nickname || '최종 우승자'}
+        championName={matchWinner?.id === activeUserId ? '내가' : (matchWinner?.nickname || '최종 우승자')}
+        localUserId={activeUserId}
         targetTokens={gameState.config?.targetTokens || 4}
         onPlayAgain={me?.isHost ? handleStartNextRound : undefined}
         onReturnToLobby={handleLeaveCallback}
@@ -617,10 +620,11 @@ const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto auto auto;
-  align-content:start;
+  grid-template-rows:auto auto auto minmax(min-content,1fr);
+  align-content:stretch;
   overflow-x: clip;
   overflow-y:auto;
+  overscroll-behavior-y:none;
   user-select: none;
   box-sizing: border-box;
   font-family: ${THEME.font.sans};
