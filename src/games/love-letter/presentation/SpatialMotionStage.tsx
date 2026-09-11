@@ -85,22 +85,42 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const deck=point(registry.get('deck',step.apply?.drawSource==='SET_ASIDE'?'aside':'deck'));
       const discard=point(registry.get(step.actorId,'discard'));
       const targetDiscard=point(registry.get(step.targetId || step.actorId,'discard'));
-      if(!actorHand || !review || !deck || !play || !discard || (step.targetId && !targetHand))return;
-      const destination=(r:Point)=>r;
       const roundHands = Object.fromEntries(Object.keys(step.cards || {}).flatMap(id => { const p = hand(id); return p ? [[`round:${id}`, p]] : []; }));
-      const measured = {...roundHands,actorHand,targetHand:targetHand || actorHand,play,review,targetReview:targetReview || review,deck,discard:destination(discard),targetDiscard:destination(targetDiscard || discard)};
+      const required: Array<Point | null | undefined> = step.kind === 'DRAW'
+        ? [deck, targetHand]
+        : step.kind === 'PLAY'
+          ? [actorHand, play]
+          : step.kind === 'TARGET'
+            ? [play, targetHand]
+            : step.kind === 'CLEANUP'
+              ? [play, discard]
+              : step.kind === 'ROUND_REVEAL'
+                ? Object.values(roundHands)
+                : [actorHand];
+      if (!required.length || required.some(point => !point)) return false;
+      const destination=(r:Point)=>r;
+      const fallback: Point = {x:0,y:0,width:1,height:1};
+      const measured = {...roundHands,actorHand:actorHand || fallback,targetHand:targetHand || actorHand || fallback,play:play || fallback,review:review || fallback,targetReview:targetReview || review || fallback,deck:deck || fallback,discard:destination(discard || fallback),targetDiscard:destination(targetDiscard || discard || fallback)};
       setGeometry(previous => JSON.stringify(previous) === JSON.stringify(measured) ? previous : measured);
+      return true;
     };
-    measure();window.addEventListener('resize',measure);window.addEventListener('scroll',measure,true);
+    let frameA=0; let frameB=0;
+    if (!measure()) {
+      // Layout can legitimately be one frame behind a snapshot. Retry twice,
+      // then settle rather than allowing a missing anchor to lock the game.
+      frameA=window.requestAnimationFrame(()=>{ if (!measure()) frameB=window.requestAnimationFrame(()=>{ if (!measure()) finish(); }); });
+    }
+    window.addEventListener('resize',measure);window.addEventListener('scroll',measure,true);
     const observer = new window.ResizeObserver(measure);
     const controls = registry.get('table','review-controls');
     if (controls?.parentElement) observer.observe(controls.parentElement);
-    return()=>{observer.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);};
+    return()=>{window.cancelAnimationFrame(frameA);window.cancelAnimationFrame(frameB);observer.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);};
   },[step?.id,registry,players,played?.id]);
   useEffect(()=>{setRequesting(false);setError(null);},[currentAction?.actionId]);
   useEffect(()=>{if(step?.kind==='REVIEW' && returned) finish();},[step?.id,returned]);
-  if(!step || !currentAction || !geometry)return null;
-  const g=geometry;
+  if(!step || !currentAction)return null;
+  if(!geometry && step.kind !== 'RESULT_DWELL')return null;
+  const g=geometry || {} as Record<string,Point>;
   const review=g.review;
   const privatePhase=['BORROW','REVIEW','CONCEAL','RETURN'].includes(step.kind);
   const handEffect=['REVEAL','DISCARD_HAND','DRAW'].includes(step.kind);
@@ -114,17 +134,17 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     });
   };
   return <Layer data-physical-step={step.kind}>
-    {step.kind==='ROUND_REVEAL' && Object.entries(step.cards || {}).map(([id, card], index, entries) => g[`round:${id}`] && <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={g[`round:${id}`]} to={g[`round:${id}`]} card={card} faceUp duration={step.duration} onComplete={index===entries.length-1?finish:undefined}/>)}
-    {played && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
+    {step.kind==='ROUND_REVEAL' && (() => { const visible=Object.entries(step.cards || {}).filter(([id])=>g[`round:${id}`]); return visible.map(([id, card], index) => <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={g[`round:${id}`]} to={g[`round:${id}`]} card={card} faceUp duration={step.duration} onComplete={index===visible.length-1?finish:undefined}/>); })()}
+    {played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
       from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
-    {privatePhase && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
+    {privatePhase && geometry && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
       from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} toOffset={step.kind==='RETURN'?undefined:{x:5,y:-5,scale:.94}} card={priest?.revealedCard}
       faceUp={step.kind==='REVIEW' && localUserId===step.actorId} duration={step.duration}
       onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot ? undefined : finish}/>}
-    {handEffect && <TableCard key={`${currentAction.actionId}:hand:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:hand:${step.targetId}`} stepId={step.id}
+    {handEffect && geometry && <TableCard key={`${currentAction.actionId}:hand:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:hand:${step.targetId}`} stepId={step.id}
       from={step.kind==='DRAW'?g.deck:g.targetHand} to={step.kind==='DISCARD_HAND'?g.targetDiscard:g.targetHand}
       card={step.card} faceUp={step.kind!=='DRAW' || step.targetId===localUserId} duration={step.duration} onComplete={finish}/>}
-    {doubleEffect && [0,1].map(index=><TableCard key={`${currentAction.actionId}:exchange:${index}`} identity={`${currentAction.actionId}:exchange:${index}`} stepId={step.id}
+    {doubleEffect && geometry && [0,1].map(index=><TableCard key={`${currentAction.actionId}:exchange:${index}`} identity={`${currentAction.actionId}:exchange:${index}`} stepId={step.id}
       from={index?g.targetHand:g.actorHand}
       to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):step.kind==='RESTORE'?(index?g.targetHand:g.actorHand):(index?g.targetReview:review)}
       card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}

@@ -4,6 +4,8 @@ export interface GameEventEnvelope {
   eventId: string;
   actionId: string;
   stateVersion: number;
+  /** Presentation boundary. Older clients may omit this field. */
+  roundNumber?: number;
   timestamp: number;
   event: GameEvent;
   presentation?: GameEventSummary | null;

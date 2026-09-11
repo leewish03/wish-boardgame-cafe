@@ -13,7 +13,7 @@ export interface UseGameSocketOptions {
   initialRoomState?: any;
   onLeaveRoom?: () => void;
   onGameEvent?: (envelope: GameEventEnvelope) => void;
-  onPresentationCancel?: () => void;
+  onPresentationCancel?: (roundNumber?: number) => void;
 }
 
 export interface UseGameSocketReturn {
@@ -31,6 +31,7 @@ export interface UseGameSocketReturn {
   forfeit: () => void;
   leaveRoom: () => void;
   rawRoomState: any | null;
+  serverClockOffsetMs: number;
 }
 
 /**
@@ -179,6 +180,7 @@ export function useGameSocket({
   const pendingDraws = useRef<GameEventEnvelope[]>([]);
   const outcomeVersion = useRef<number | null>(null);
   const [returnedActionId, setReturnedActionId] = useState<string | null>(null);
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
 
   const myUserId = currentUser?.id || '';
 
@@ -235,8 +237,19 @@ export function useGameSocket({
 
     const handleGameSnapshot = (snapshot: GameSnapshot) => {
       if (!snapshot?.publicState || snapshot.stateVersion < latestStateVersionRef.current) return;
+      const incomingRound = snapshot.publicState.roundNumber;
+      const isNewRound = seenRound.current !== null && seenRound.current !== incomingRound;
+      if (isNewRound) {
+        // Clear refs synchronously before the new deal is placed into the
+        // presentation queue. A late beat from the previous round must never
+        // keep this snapshot visually frozen.
+        pendingDraws.current = [];
+        setReturnedActionId(null);
+        onPresentationCancel?.(incomingRound);
+      }
       latestStateVersionRef.current = snapshot.stateVersion;
-      if (!snapshot.presentation && !snapshot.publicState.lastAction && snapshot.publicState.matchState === 'PLAYING' && seenRound.current !== snapshot.publicState.roundNumber) {
+      setServerClockOffsetMs(snapshot.serverTime - Date.now());
+      if (!snapshot.presentation && !snapshot.publicState.lastAction && snapshot.publicState.matchState === 'PLAYING' && seenRound.current !== incomingRound) {
         const state = snapshot.publicState;
         const total = state.players.reduce((sum, p) => sum + p.cardCount, 0);
         const id = `deal_${snapshot.stateVersion}`;
@@ -244,7 +257,7 @@ export function useGameSocket({
         let remaining = state.deckCount + total;
         for (let slot = 0; slot < 2; slot++) for (const p of state.players) {
           if (p.cardCount <= slot) continue;
-          onGameEvent?.({ eventId: `${id}:${p.id}:${slot}`, actionId: `${id}:${p.id}:${slot}`, before: slot === 0 && p.id === state.players[0].id ? before : undefined, stateVersion: snapshot.stateVersion,
+          onGameEvent?.({ eventId: `${id}:${p.id}:${slot}`, actionId: id, roundNumber: incomingRound, before: slot === 0 && p.id === state.players[0].id ? before : undefined, stateVersion: snapshot.stateVersion,
             timestamp: snapshot.serverTime, event: { type: 'CARD_DRAWN', playerId: p.id, card: p.id === myUserId ? snapshot.privateState?.hand[slot] : undefined, remainingDeckCount: --remaining } } as any);
         }
       } else if (!snapshot.presentation && seenRound.current === snapshot.publicState.roundNumber) {
@@ -256,12 +269,12 @@ export function useGameSocket({
         onGameEvent?.({ eventId: `outcome_${snapshot.stateVersion}`, actionId: `outcome_${snapshot.stateVersion}`, stateVersion: snapshot.stateVersion, timestamp: snapshot.serverTime,
           event: { type: 'ROUND_ENDED', winnerCards: snapshot.publicState.outcome.winnerCards } } as any);
       }
-      seenRound.current = snapshot.publicState.roundNumber;
+      seenRound.current = incomingRound;
       if (snapshot.presentation) {
         const pending = snapshot.presentation;
         if (pending.returnRequested) setReturnedActionId(pending.actionId);
         const before = { ...pending.before.publicState, mySecretHand: pending.before.privateState.hand };
-        pending.events.forEach(envelope => onGameEvent?.({ ...envelope, before, event: { ...envelope.event, presentation: envelope.presentation } } as any));
+        pending.events.forEach(envelope => onGameEvent?.({ ...envelope, roundNumber: envelope.roundNumber ?? incomingRound, before, event: { ...envelope.event, presentation: envelope.presentation } } as any));
       }
       setLastAction(snapshot.publicState.lastAction || null);
       const nextState = {
@@ -416,5 +429,6 @@ export function useGameSocket({
     forfeit,
     leaveRoom,
     rawRoomState,
+    serverClockOffsetMs,
   };
 }

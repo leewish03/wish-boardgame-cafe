@@ -7,6 +7,7 @@ import { CardInstance, GameState, PlayerPublic } from '../../../../packages/love
  * finishes. Game rules and input validation always continue to use GameState.
  */
 export interface VisualTableState {
+  roundNumber: number;
   stateVersion: number;
   players: PlayerPublic[];
   myHand: CardInstance[];
@@ -21,6 +22,7 @@ function copyCard(card: CardInstance): CardInstance {
 function fromSnapshot(gameState: GameState, myHand: CardInstance[]): VisualTableState {
   const raw = gameState as GameState & { deckCount?: number; setAsideCardCount?: number };
   return {
+    roundNumber: gameState.roundNumber || 0,
     stateVersion: gameState.stateVersion || 0,
     players: (gameState.players || []).map((player) => ({
       ...player,
@@ -124,8 +126,14 @@ export function useVisualTableState(
   useEffect(() => {
     const latest = fromSnapshot(gameState, myHand);
     latestRef.current = latest;
+    // A new round is a hard visual boundary. Keeping the previous table while
+    // its last animation finishes makes the next round look permanently stuck.
+    if (latest.roundNumber !== visualTable.roundNumber) {
+      setVisualTable(latest);
+      return;
+    }
     if (!isActionPlaying && !hasPendingPresentation?.()) setVisualTable(latest);
-  }, [gameState, myHand, isActionPlaying, hasPendingPresentation]);
+  }, [gameState, myHand, isActionPlaying, hasPendingPresentation, visualTable.roundNumber]);
 
   const applyCompletedEvent = useCallback((event: any) => {
     setVisualTable((previous) => applyEvent(previous, event, localUserId, latestRef.current));

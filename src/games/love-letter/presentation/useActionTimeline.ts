@@ -15,7 +15,7 @@ export interface PresentationAction extends GameEventEnvelope {
 const SKIPPED_BEATS = new Set(['CARD_GUESSED', 'GUARD_SUCCEEDED', 'PRIEST_REVEALED', 'HANDMAID_PROTECTED', 'KING_SWAP', 'CARD_DISCARDED', 'TURN_ENDED', 'TURN_STARTED']);
 
 const isVisualBeat = (envelope: GameEventEnvelope) => !SKIPPED_BEATS.has((envelope.event as any).type);
-const actionKey = (envelope: GameEventEnvelope) => envelope.actionId || envelope.eventId;
+const actionKey = (envelope: GameEventEnvelope) => `${envelope.roundNumber ?? 'legacy'}:${envelope.actionId || envelope.eventId}`;
 function createAction(envelope: GameEventEnvelope): PresentationAction {
   return { ...envelope, presentationEvents: [envelope], presentationIndex: 0 };
 }
@@ -33,6 +33,7 @@ export function useActionTimeline() {
   const processedEventIdsRef = useRef<Set<string>>(new Set());
   const scheduledStartRef = useRef(false);
   const phaseRef = useRef<PresentationPhase>('IDLE');
+  const currentRoundRef = useRef<number | null>(null);
 
   const setPresentationPhase = useCallback((next: PresentationPhase) => {
     phaseRef.current = next;
@@ -64,6 +65,19 @@ export function useActionTimeline() {
 
   const enqueueAction = useCallback((envelope: GameEventEnvelope) => {
     if (!envelope?.eventId || processedEventIdsRef.current.has(envelope.eventId) || !isVisualBeat(envelope)) return;
+    const incomingRound = envelope.roundNumber;
+    if (incomingRound != null && currentRoundRef.current != null) {
+      if (incomingRound < currentRoundRef.current) return;
+      if (incomingRound > currentRoundRef.current) {
+        processedEventIdsRef.current.clear();
+        queueRef.current = [];
+        currentRef.current = null;
+        setCurrentAction(null);
+        setIsActionPlaying(false);
+        setPresentationPhase('IDLE');
+      }
+    }
+    if (incomingRound != null) currentRoundRef.current = incomingRound;
     processedEventIdsRef.current.add(envelope.eventId);
     const key = actionKey(envelope);
 
@@ -106,13 +120,14 @@ export function useActionTimeline() {
     startNext();
   }, [setPresentationPhase, startNext]);
 
-  const resetTimeline = useCallback(() => {
+  const resetTimeline = useCallback((roundNumber?: number) => {
     processedEventIdsRef.current.clear();
     queueRef.current = [];
     currentRef.current = null;
     setCurrentAction(null);
     setIsActionPlaying(false);
     setPresentationPhase('IDLE');
+    if (roundNumber != null) currentRoundRef.current = roundNumber;
   }, [setPresentationPhase]);
 
   // Socket events from one command can arrive back-to-back. Keep this

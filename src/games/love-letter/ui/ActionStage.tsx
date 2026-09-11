@@ -8,6 +8,7 @@ import { THEME } from '../../../shared/theme';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
 import { buildPhysicalSequence } from '../presentation/physicalSequence';
+import { deriveActionNarrative } from '../presentation/deriveActionNarrative';
 import { playerCopy } from './playerCopy';
 
 interface ActionStageProps {
@@ -52,18 +53,8 @@ export const ActionStage: React.FC<ActionStageProps> = ({
 }) => {
   const step = buildPhysicalSequence(presentationAction?.presentationEvents || [])[presentationAction?.presentationIndex || 0];
   const controlsAnchor = useTableAnchor('table','review-controls');
-  const played = presentationAction?.presentationEvents.find(envelope => (envelope.event as any).type === 'CARD_PLAYED');
-  const targetEvent = step?.kind !== 'PLAY' ? step : null;
-  const event: any = presentationAction?.event || lastAction;
-  const actionEvent: any = played?.event || event;
-  const actorId = actionEvent?.actorId || step?.actorId;
-  const actor = playerCopy(players, actorId, localUserId);
-  const targetId = targetPlayerId || targetEvent?.targetId || actionEvent?.targetId;
-  const target = targetId ? playerCopy(players, targetId, localUserId) : null;
-  const card = actionEvent?.card || actionEvent?.playedCard;
-  const result = step?.kind === 'RESULT_DWELL' ? (event?.description || event?.presentation?.description) : null;
+  const narrative = deriveActionNarrative(presentationAction, players, localUserId, targetPlayerId);
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name}의 대상을 선택하세요` : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' && activeCard ? `${activeCard.name} 사용 준비 완료` : null;
-  const hasTarget = Boolean(targetId);
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
   const idleMessage = isMyTurn
     ? '카드를 선택해 행동을 준비하세요'
@@ -73,7 +64,7 @@ export const ActionStage: React.FC<ActionStageProps> = ({
 
   return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
-    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
+    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
     {/* Private-review controls need their own flow space. Mounting them inside
         the narration card made the grid compress and overlap the local area. */}
     <ReviewControlsAnchor ref={controlsAnchor}/>

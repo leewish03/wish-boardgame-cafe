@@ -171,6 +171,7 @@ async function main() {
     assertNoSecrets(afterB, joined.userId);
     assert.ok(actionEvent.event, 'game:event must be emitted for the action');
     assert.equal(actionEvent.event.type, 'CARD_PLAYED', 'first presentation event must identify the played card');
+    assert.equal(actionEvent.roundNumber, room.gameStateObject.roundNumber, 'event must carry its presentation round boundary');
 
     // A reconnect timeout must remain bounded even if the runtime that owned
     // the original timer restarted. Also, a connected player leaving while

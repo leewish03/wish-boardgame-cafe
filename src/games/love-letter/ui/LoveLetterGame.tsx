@@ -445,6 +445,15 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   const isPaused = propIsPaused ?? gameSocket.isPaused;
   const pausedPlayerName = propPausedPlayerName ?? gameSocket.pausedPlayerName ?? '플레이어';
+  const clockMode = !gameSocket.isConnected
+    ? 'DISCONNECTED'
+    : isPaused
+      ? 'PAUSED'
+      : isActionPlaying || hasPendingPresentation() || gameState.playPhase !== 'TURN_INPUT'
+        ? 'PRESENTING'
+        : gameState.matchState !== 'PLAYING'
+          ? 'HIDDEN'
+          : 'RUNNING';
 
   return (
     <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface $chatOpen={chatOpen} $frozenHeight={frozenBoardHeight} onPointerDown={() => sfx.unlockAndStart()}>
@@ -459,6 +468,8 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         statusLabel={tableStatus}
         turnExpiresAt={gameState.turnExpiresAt}
         turnTimeoutSeconds={gameState.config.turnTimeoutSeconds}
+        serverClockOffsetMs={gameSocket.serverClockOffsetMs}
+        clockMode={clockMode}
         onOpenSettings={() => setMenuDrawerOpen(true)}
       />
 
@@ -606,7 +617,8 @@ const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto minmax(164px, 1fr) auto;
+  grid-template-rows:auto auto auto auto;
+  align-content:start;
   overflow-x: clip;
   overflow-y:auto;
   user-select: none;
