@@ -73,7 +73,7 @@ export const ActionStage: React.FC<ActionStageProps> = ({
 };
 
 const StageContainer = styled.section<{$reviewing:boolean;$hasControls:boolean}>`
-  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'230px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'270px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
