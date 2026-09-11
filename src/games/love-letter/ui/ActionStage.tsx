@@ -62,7 +62,7 @@ export const ActionStage: React.FC<ActionStageProps> = ({
 
   const isPrivateReview = step?.kind === 'REVIEW';
 
-  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview}>
+  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview} $hasControls={Boolean(activeCard)}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
     <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
     {/* Private-review controls need their own flow space. Mounting them inside
@@ -72,8 +72,8 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   </StageContainer>;
 };
 
-const StageContainer = styled.section<{$reviewing:boolean}>`
-  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+const StageContainer = styled.section<{$reviewing:boolean;$hasControls:boolean}>`
+  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'230px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
