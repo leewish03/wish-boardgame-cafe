@@ -22,8 +22,12 @@ export function deriveActionNarrative(action: PresentationAction | null | undefi
   const target = targetId ? playerCopy(players, targetId, localUserId) : null;
   const card = played?.card || summary?.card || first?.card || first?.playedCard;
 
-  if (action.actionId.startsWith('deal_') || first?.type === 'CARD_DRAWN' && !played) {
+  if (action.actionId.startsWith('deal_')) {
     return { title: '새 라운드 패를 나누는 중', detail: first?.playerId ? `${playerCopy(players, first.playerId, localUserId).name}에게 카드 1장` : undefined };
+  }
+  if (first?.type === 'CARD_DRAWN' && !played) {
+    const player = playerCopy(players, first.playerId, localUserId);
+    return { title: `${player.subject} 카드 1장 뽑음` };
   }
   if (step?.kind === 'TARGET' && target) return { title: `${actor.subject} ${target.object} 지목`, detail: card?.name ? `${card.name} 효과` : undefined };
   if (step?.kind === 'RESULT_DWELL' && summary?.description) return { title: `${actor.name} · ${card?.name || '카드'} 사용`, result: summary.description };
