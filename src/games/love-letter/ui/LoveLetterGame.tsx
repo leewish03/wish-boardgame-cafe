@@ -597,15 +597,16 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
 const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
   position:relative;
-  height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : 'auto'};
+  height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : '100dvh'};
   width: 100%;
   min-width: 0;
   min-height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : '100dvh'};
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto minmax(100px, 1fr) auto;
+  grid-template-rows:auto auto minmax(164px, 1fr) auto;
   overflow-x: clip;
+  overflow-y:auto;
   user-select: none;
   box-sizing: border-box;
   font-family: ${THEME.font.sans};

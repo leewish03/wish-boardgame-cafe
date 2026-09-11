@@ -62,15 +62,20 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   const hasTarget = Boolean(targetId);
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
 
-  return <StageContainer aria-label={`덱 ${deckCount}장 남음`}>
+  const isPrivateReview = step?.kind === 'REVIEW';
+
+  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
-    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>카드를 선택해 행동을 준비하세요</span>)}<div ref={controlsAnchor}/></Narration>
+    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>카드를 선택해 행동을 준비하세요</span>)}</Narration>
+    {/* Private-review controls need their own flow space. Mounting them inside
+        the narration card made the grid compress and overlap the local area. */}
+    <ReviewControlsAnchor ref={controlsAnchor}/>
     {activeCard && <ActionControls><CancelButton type="button" onClick={onCancelAction} disabled={interactionState === 'SUBMITTING'}>취소</CancelButton><ConfirmButton type="button" disabled={!canConfirm} onClick={onConfirmAction}>{interactionState === 'SUBMITTING' ? '전달 중…' : '이 카드 사용'}</ConfirmButton></ActionControls>}
   </StageContainer>;
 };
 
-const StageContainer = styled.section`
-  width:100%; min-width:0; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+const StageContainer = styled.section<{$reviewing:boolean}>`
+  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
@@ -84,6 +89,9 @@ const Narration = styled.div`
   strong{font-weight:900;} span{color:${THEME.mutedForeground};} em{font-style:normal;color:${THEME.burgundy};font-weight:800;}
   @media(max-width:360px){min-height:48px;padding:8px 10px;font-size:10px;border-radius:10px;}
   @media(max-height:650px){min-height:44px;padding:7px 10px;}
+`;
+const ReviewControlsAnchor = styled.div`
+  width:min(460px, 100%); min-width:0;
 `;
 const SelectionCard = styled.div`
   width:min(460px, 100%); padding:9px 12px; box-sizing:border-box; display:flex; flex-direction:column; gap:3px; text-align:center;
