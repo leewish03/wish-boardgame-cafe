@@ -108,9 +108,13 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
     if (event?.type === 'PRINCE_DISCARDED' && event.targetId === identity.player.id && event.discardedCard) return [event.discardedCard];
     return hand;
   })().slice(0, 2);
+  // A blank play dock is useful only while the local player can make a
+  // decision. Leaving it visible during another player's turn turns a
+  // one-card hand into an unexplained, off-centre layout.
+  const showActionSlot = isMyTurn || interactionState !== 'IDLE' || identity.isTargetable;
   return <LocalZoneRoot>
     <LocalDiscard><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/><ChatDock><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></ChatDock></LocalDiscard>
-    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={
+    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={showActionSlot ? (
       <SelfTarget
         as={motion.button}
         type="button"
@@ -127,7 +131,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
         {identity.player.isProtected && <SelfState><ShieldCheck size={11}/> 보호 중</SelfState>}
         <PlayPlace playerId={identity.player.id} local/>
       </SelfTarget>
-    }/></LocalHand>
+    ) : undefined}/></LocalHand>
   </LocalZoneRoot>;
 };
 

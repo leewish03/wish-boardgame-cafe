@@ -26,6 +26,8 @@ interface ActionStageProps {
   onCancelAction?: () => void;
   presentationAction?: PresentationAction | null;
   presentationPhase?: PresentationPhase;
+  isMyTurn?: boolean;
+  turnPlayerName?: string;
 }
 
 /** The centre of the table explains both the last action and the next legal action. */
@@ -45,6 +47,8 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   canConfirm = false,
   onConfirmAction,
   onCancelAction,
+  isMyTurn = false,
+  turnPlayerName = '상대',
 }) => {
   const step = buildPhysicalSequence(presentationAction?.presentationEvents || [])[presentationAction?.presentationIndex || 0];
   const controlsAnchor = useTableAnchor('table','review-controls');
@@ -61,12 +65,15 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name}의 대상을 선택하세요` : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' && activeCard ? `${activeCard.name} 사용 준비 완료` : null;
   const hasTarget = Boolean(targetId);
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
+  const idleMessage = isMyTurn
+    ? '카드를 선택해 행동을 준비하세요'
+    : `${turnPlayerName}의 차례 · 행동을 기다리는 중`;
 
   const isPrivateReview = step?.kind === 'REVIEW';
 
   return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
-    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>카드를 선택해 행동을 준비하세요</span>)}</Narration>
+    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (event ? <><strong>{actor.name} · {card?.name || card?.value || '카드'} 사용</strong>{hasTarget && <span>{target ? `${target.name} 대상` : '대상 지정'}</span>}{result && <em>{result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
     {/* Private-review controls need their own flow space. Mounting them inside
         the narration card made the grid compress and overlap the local area. */}
     <ReviewControlsAnchor ref={controlsAnchor}/>

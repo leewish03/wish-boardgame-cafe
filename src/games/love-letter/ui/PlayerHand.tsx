@@ -29,7 +29,9 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn
     <HandHeader><span>{message}</span></HandHeader>
     <CardsRow>{actionSlot && <ActionSlot>{actionSlot}</ActionSlot>}{[0, 1].map((index) => {
       const card = hand[index];
-      const start = hand.length === 1 ? (index === 0 ? 3 : 2) : index + 2;
+      const start = actionSlot
+        ? (hand.length === 1 ? (index === 0 ? 3 : 2) : index + 2)
+        : (hand.length === 1 ? 2 : index === 0 ? 1 : 3);
       if (!card) return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index}/></HandCell>;
       const countessLocked = hasCountess && hasPrinceOrKing && card.value !== 7;
       return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index} cardId={card.id}><GameCard id={card.id} value={card.value as CardValue} name={card.name} isSelected={selectedCardId===card.id} isDisabled={countessLocked} isInteractive={canSelectCards && !countessLocked} disabledReason={countessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined} onClick={() => canSelectCards && !countessLocked && onSelectCard(card)} /></HandSlot></HandCell>;
