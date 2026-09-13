@@ -73,9 +73,9 @@ export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]
   }, [anchor, latestAnchor]);
   const settledCards = hideLatest ? cards.slice(0, -1) : cards;
   return <Shelf type="button" onClick={onInspect} $local={local} aria-label={`공개 버린 패 ${cards.length}장`}>
-    <ShelfLabel>{local ? '내 공개 버린 패' : '공개 패'}</ShelfLabel>
+    {!local && <ShelfLabel>공개 패</ShelfLabel>}
     <Pile $local={local}>
-      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? pileAnchor : undefined} key={card.id} $local={local}><CardArtwork value={card.value} name={card.name}/></DiscardCard>)}
+      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? pileAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <MiniFace><b>{card.value}</b><span>{card.name}</span></MiniFace>}</DiscardCard>)}
       {settledCards.length===0 && <><DiscardLanding ref={pileAnchor} $local={local}/><NoCards>아직 없음</NoCards></>}
     </Pile>
   </Shelf>;
@@ -108,13 +108,9 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
     if (event?.type === 'PRINCE_DISCARDED' && event.targetId === identity.player.id && event.discardedCard) return [event.discardedCard];
     return hand;
   })().slice(0, 2);
-  // A blank play dock is useful only while the local player can make a
-  // decision. Leaving it visible during another player's turn turns a
-  // one-card hand into an unexplained, off-centre layout.
-  const showActionSlot = isMyTurn || interactionState !== 'IDLE' || identity.isTargetable;
   return <LocalZoneRoot>
-    <LocalDiscard><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/><ChatDock><RoomChat messages={chatMessages as never[]} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></ChatDock></LocalDiscard>
-    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={showActionSlot ? (
+    <LocalDiscard><DiscardHeader><span>내 공개 버린 패</span><RoomChat messages={chatMessages as never[]} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></DiscardHeader><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
+    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={(
       <SelfTarget
         as={motion.button}
         type="button"
@@ -131,7 +127,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
         {identity.player.isProtected && <SelfState><ShieldCheck size={11}/> 보호 중</SelfState>}
         <PlayPlace playerId={identity.player.id} local/>
       </SelfTarget>
-    ) : undefined}/></LocalHand>
+    )}/></LocalHand>
   </LocalZoneRoot>;
 };
 
@@ -146,7 +142,7 @@ const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
 const LocalZoneRoot=styled.section`width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr);gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
 const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;
-const ChatDock=styled.div`position:absolute;right:0;top:-4px;z-index:2;`;
+const DiscardHeader=styled.div`height:40px;display:flex;align-items:center;justify-content:space-between;color:${THEME.mutedForeground};font-size:9px;font-weight:750;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
   position:relative;width:100%;height:100%;min-width:0;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
   cursor:${p=>p.$targetable?'pointer':'default'};
@@ -170,20 +166,20 @@ const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:29px;height:4
 const Count=styled.span`position:absolute;right:-5px;bottom:-2px;min-width:12px;height:12px;display:grid;place-items:center;border-radius:7px;background:${THEME.primary};color:#fff;font-size:7px;font-weight:900;`;
 const Empty=styled.span`font-size:6px;color:${THEME.mutedForeground};white-space:nowrap;position:absolute;left:50%;top:8px;transform:translateX(-50%);`;
 const Shelf=styled.button<{$local:boolean}>`
-  position:relative;width:100%;min-height:${p=>p.$local?'103px':'72px'};min-width:0;margin:0 auto;padding:15px 0 0;border:0;
+  position:relative;width:100%;min-height:${p=>p.$local?'77px':'72px'};min-width:0;margin:0 auto;padding:${p=>p.$local?'0':'15px 0 0'};border:0;
   background:transparent;color:${THEME.foreground};font:inherit;cursor:pointer;text-align:left;box-sizing:border-box;overflow:visible;
 `;
 const ShelfLabel=styled.span`position:absolute;left:0;top:0;font-size:9px;color:${THEME.mutedForeground};font-weight:750;`;
 const Pile=styled.span<{$local:boolean}>`
-  position:relative;width:100%;min-height:${p=>p.$local?'77px':'52px'};display:grid;
-  grid-template-columns:repeat(${p=>p.$local?3:3},${p=>p.$local?'54px':'36px'});grid-auto-rows:${p=>p.$local?'77px':'52px'};
-  align-content:end;align-items:end;gap:${p=>p.$local?'4px':'2px'};overflow:visible;
-  @media(max-width:420px){grid-template-columns:repeat(3,${p=>p.$local?'50px':'36px'});grid-auto-rows:${p=>p.$local?'71px':'52px'};min-height:${p=>p.$local?'71px':'52px'};}
+  position:relative;width:100%;min-height:${p=>p.$local?'77px':'52px'};display:flex;flex-wrap:nowrap;align-items:flex-end;gap:${p=>p.$local?'4px':'0'};overflow-x:${p=>p.$local?'auto':'visible'};overflow-y:visible;
+  @media(max-width:420px){min-height:${p=>p.$local?'71px':'52px'};}
 `;
 const DiscardCard=styled.span<{$local:boolean}>`
   width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);background:transparent;border:0;overflow:hidden;
+  ${p=>!p.$local&&`& + &{margin-left:-9px;}`}
   @media(max-width:420px){width:${p=>p.$local?'50px':'36px'};height:${p=>p.$local?'71px':'52px'};}
 `;
+const MiniFace=styled.span`width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid ${THEME.gold};border-radius:4px;background:#fdfbf7;color:${THEME.foreground};b{font:900 15px ${THEME.font.serif};line-height:1;color:${THEME.primary};}span{font-size:7px;font-weight:900;white-space:nowrap;}`;
 const DiscardLanding=styled.span<{$local:boolean}>`
   width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};pointer-events:none;visibility:hidden;
   @media(max-width:420px){width:${p=>p.$local?'50px':'36px'};height:${p=>p.$local?'71px':'52px'};}

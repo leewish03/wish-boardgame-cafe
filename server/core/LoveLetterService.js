@@ -249,10 +249,26 @@ export class LoveLetterService {
   }
 
   projectPresentationForPlayer(summary, recipientPlayerId) {
-    if (summary.resultType !== 'PRIEST_REVEAL' || summary.actorId === recipientPlayerId) {
-      return summary;
+    // Build a public allow-list instead of copying future summary fields by
+    // default. Private card facts are added only for their entitled viewer.
+    const publicSummary = {
+      actionId: summary.actionId,
+      actorId: summary.actorId,
+      card: summary.card,
+      targetId: summary.targetId ?? null,
+      guessValue: summary.guessValue ?? null,
+      resultType: summary.resultType,
+      eliminatedPlayerId: summary.eliminatedPlayerId ?? null,
+      swapped: !!summary.swapped,
+    };
+    if (summary.resultType === 'PRIEST_REVEAL' && summary.actorId === recipientPlayerId && summary.revealedCard) {
+      return { ...publicSummary, revealedCard: summary.revealedCard };
     }
-    const { revealedCard, ...publicSummary } = summary;
+    // Guard and Prince publicly reveal a discarded/eliminated card; retain
+    // only those result types, never incidental hand information.
+    if (['GUARD_SUCCESS', 'PRINCE_DISCARD', 'PRINCE_PRINCESS_ELIMINATED', 'PRINCESS_ELIMINATED'].includes(summary.resultType) && summary.revealedCard) {
+      return { ...publicSummary, revealedCard: summary.revealedCard };
+    }
     return publicSummary;
   }
 

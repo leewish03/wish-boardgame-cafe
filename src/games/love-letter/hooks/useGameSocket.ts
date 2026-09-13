@@ -249,7 +249,8 @@ export function useGameSocket({
       }
       latestStateVersionRef.current = snapshot.stateVersion;
       setServerClockOffsetMs(snapshot.serverTime - Date.now());
-      if (!snapshot.presentation && !snapshot.publicState.lastAction && snapshot.publicState.matchState === 'PLAYING' && seenRound.current !== incomingRound) {
+      const hasAuthoritativeRoundDraws = pendingDraws.current.some(envelope => envelope.roundNumber === incomingRound && (envelope.event as any)?.drawReason === 'ROUND_DEAL');
+      if (!snapshot.presentation && !snapshot.publicState.lastAction && snapshot.publicState.matchState === 'PLAYING' && seenRound.current !== incomingRound && !hasAuthoritativeRoundDraws) {
         const state = snapshot.publicState;
         const total = state.players.reduce((sum, p) => sum + p.cardCount, 0);
         const id = `deal_${snapshot.stateVersion}`;
@@ -258,9 +259,9 @@ export function useGameSocket({
         for (let slot = 0; slot < 2; slot++) for (const p of state.players) {
           if (p.cardCount <= slot) continue;
           onGameEvent?.({ eventId: `${id}:${p.id}:${slot}`, actionId: id, roundNumber: incomingRound, before: slot === 0 && p.id === state.players[0].id ? before : undefined, stateVersion: snapshot.stateVersion,
-            timestamp: snapshot.serverTime, event: { type: 'CARD_DRAWN', playerId: p.id, card: p.id === myUserId ? snapshot.privateState?.hand[slot] : undefined, remainingDeckCount: --remaining } } as any);
+            timestamp: snapshot.serverTime, event: { type: 'CARD_DRAWN', playerId: p.id, card: p.id === myUserId ? snapshot.privateState?.hand[slot] : undefined, remainingDeckCount: --remaining, drawReason: slot === 0 ? 'ROUND_DEAL' : 'TURN_DRAW', handSlot: slot as 0 | 1 } } as any);
         }
-      } else if (!snapshot.presentation && seenRound.current === snapshot.publicState.roundNumber) {
+      } else if (!snapshot.presentation && (seenRound.current === snapshot.publicState.roundNumber || hasAuthoritativeRoundDraws)) {
         pendingDraws.current.forEach(envelope => onGameEvent?.(envelope));
       }
       pendingDraws.current = [];
@@ -288,9 +289,9 @@ export function useGameSocket({
     };
 
     const handleGameEvent = (envelope: GameEventEnvelope) => {
-      // Card actions arrive atomically in snapshot.presentation. Only standalone
-      // turn draws use the event stream, so aliases cannot create extra motions.
-      if (!envelope?.actionId?.startsWith('draw_') || seenRound.current === null) return;
+      // Draws arrive before their snapshot at round start. Buffer them rather
+      // than reconstructing past physical moves from the final card counts.
+      if (envelope?.event?.type !== 'CARD_DRAWN') return;
       pendingDraws.current.push(envelope);
     };
 

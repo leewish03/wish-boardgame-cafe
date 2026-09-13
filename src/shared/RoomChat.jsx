@@ -15,7 +15,7 @@ const Form = styled.form`display:grid;grid-template-columns:minmax(0,1fr) auto;g
 const SendButton=styled.button`min-width:58px;height:40px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.obsidianButton};color:#fff;font:800 11px ${THEME.font.sans};cursor:pointer;`;
 const ViewportOverlay=styled.div`position:fixed;z-index:2000;pointer-events:auto;padding:8px;box-sizing:border-box;`;
 const ChatPanel=styled.div`height:100%;width:min(560px,100%);margin:0 auto;`;
-const Toggle = styled.button`position:${p=>p.$inline?'relative':'fixed'};right:${p=>p.$inline?'auto':'14px'};bottom:${p=>p.$inline?'auto':'max(14px,env(safe-area-inset-bottom))'};z-index:901;width:${p=>p.$inline?'32px':'44px'};height:${p=>p.$inline?'32px':'44px'};border-radius:50%;display:grid;place-items:center;border:1px solid ${THEME.gold};color:#fff;background:${THEME.primary};box-shadow:0 5px 12px rgba(9,13,22,.2);cursor:pointer;span{position:absolute;right:-3px;top:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:10px;display:grid;place-items:center;background:${THEME.burgundy};font-size:9px;font-weight:900;}`;
+const Toggle = styled.button`position:${p=>p.$inline?'relative':'fixed'};right:${p=>p.$inline?'auto':'14px'};bottom:${p=>p.$inline?'auto':'max(14px,env(safe-area-inset-bottom))'};z-index:901;width:${p=>p.$inline?'40px':'44px'};height:${p=>p.$inline?'40px':'44px'};border-radius:50%;display:grid;place-items:center;border:1px solid ${THEME.gold};color:#fff;background:${THEME.primary};box-shadow:0 5px 12px rgba(9,13,22,.2);cursor:pointer;span{position:absolute;right:-3px;top:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:10px;display:grid;place-items:center;background:${THEME.burgundy};font-size:9px;font-weight:900;}`;
 
 export function RoomChat({ messages = [], onSend, mode = 'panel', currentUserId, onOpenChange, launcherPlacement = 'fixed' }) {
   const [text, setText] = useState('');
@@ -37,5 +37,5 @@ export function RoomChat({ messages = [], onSend, mode = 'panel', currentUserId,
   if (!compact) return content;
   const panel = open && typeof document !== 'undefined' ? createPortal(<ViewportOverlay style={{top:viewport.top,left:viewport.left,width:viewport.width,height:viewport.height}}><ChatPanel>{content}</ChatPanel></ViewportOverlay>, document.body) : null;
   const inline = launcherPlacement === 'inline';
-  return <>{panel}<Toggle $inline={inline} ref={launcherRef} type="button" onClick={() => setOpen(value => !value)} aria-label="채팅 열기"><MessageCircle size={inline ? 16 : 20}/>{unread > 0 && <span>{unread > 9 ? '9+' : unread}</span>}</Toggle></>;
+  return <>{panel}<Toggle $inline={inline} ref={launcherRef} type="button" onClick={() => setOpen(value => !value)} aria-label="채팅 열기"><MessageCircle size={inline ? 19 : 20}/>{unread > 0 && <span>{unread > 9 ? '9+' : unread}</span>}</Toggle></>;
 }

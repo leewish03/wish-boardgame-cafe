@@ -79,7 +79,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     const measure=()=>{
       const actorHand=hand(step.actorId,step.kind==='PLAY'?played:undefined);
       const targetHand=step.kind==='DRAW'
-        ? point(registry.get(step.targetId!, (players.find(p => p.id === step.targetId)?.cardCount || 0) > 0 ? 'hand-slot-1' : 'hand-slot-0'))
+        ? point(registry.get(step.targetId!, (step.apply?.handSlot === 0 || step.apply?.handSlot === 1) ? (`hand-slot-${step.apply.handSlot}` as 'hand-slot-0' | 'hand-slot-1') : ((players.find(p => p.id === step.targetId)?.cardCount || 0) > 0 ? 'hand-slot-1' : 'hand-slot-0')))
         : hand(step.targetId,step.card);
       const play=point(registry.get(step.actorId,'play'));
       const review=point(registry.get(step.actorId,'review'));
@@ -143,7 +143,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} toOffset={step.kind==='RETURN'?undefined:{x:5,y:-5,scale:.94}} card={priest?.revealedCard}
       faceUp={step.kind==='REVIEW' && localUserId===step.actorId} duration={step.duration}
       onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot ? undefined : finish}/>}
-    {handEffect && geometry && <TableCard key={`${currentAction.actionId}:hand:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:hand:${step.targetId}`} stepId={step.id}
+    {handEffect && geometry && <TableCard key={`${currentAction.actionId}:${step.id}:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:${step.id}:${step.targetId}`} stepId={step.id}
       from={step.kind==='DRAW'?g.deck:g.targetHand} to={step.kind==='DISCARD_HAND'?g.targetDiscard:g.targetHand}
       card={step.card} faceUp={step.kind!=='DRAW' || step.targetId===localUserId} duration={step.duration} onComplete={finish}/>}
     {doubleEffect && geometry && [0,1].map(index=><TableCard key={`${currentAction.actionId}:exchange:${index}`} identity={`${currentAction.actionId}:exchange:${index}`} stepId={step.id}

@@ -3,7 +3,7 @@ import { PlayerId, CardInstance, CardValue } from './types';
 export type GameEvent =
   | { type: 'ROUND_STARTED'; roundNumber: number; firstPlayerId: PlayerId; remainingDeckCount: number }
   | { type: 'TURN_STARTED'; playerId: PlayerId; turnExpiresAt: number; remainingDeckCount: number }
-  | { type: 'CARD_DRAWN'; playerId: PlayerId; card: CardInstance; remainingDeckCount: number; actionId?: string; sequence?: number; drawSource?: 'DECK' | 'SET_ASIDE' }
+  | { type: 'CARD_DRAWN'; playerId: PlayerId; card: CardInstance; remainingDeckCount: number; actionId?: string; sequence?: number; drawSource?: 'DECK' | 'SET_ASIDE'; drawReason?: 'ROUND_DEAL' | 'TURN_DRAW' | 'PRINCE_REPLACEMENT'; handSlot?: 0 | 1 }
   | { type: 'CARD_PLAYED'; actionId: string; actorId: PlayerId; card: CardInstance }
   | { type: 'PLAYER_TARGETED'; actionId: string; actorId: PlayerId; targetId: PlayerId }
   | { type: 'GUARD_GUESSED'; actionId: string; actorId: PlayerId; targetId: PlayerId; guessValue: CardValue }

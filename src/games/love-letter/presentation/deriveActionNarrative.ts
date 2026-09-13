@@ -5,21 +5,11 @@ import { playerCopy } from '../ui/playerCopy';
 
 export interface ActionNarrative { title: string; detail?: string; result?: string; }
 
-function fallbackResult(description: string | undefined, players: PlayerPublic[], localUserId: string) {
-  if (!description) return undefined;
-  const localNickname = players.find((player) => player.id === localUserId)?.nickname;
-  if (!localNickname) return description;
-
-  // Legacy server summaries are complete Korean sentences containing bracketed
-  // nicknames. Keep them as a fallback, but never expose my nickname as though
-  // I were another player.
-  return description
-    .replaceAll(`[${localNickname}] 님이`, '내가')
-    .replaceAll(`[${localNickname}] 님은`, '나는')
-    .replaceAll(`[${localNickname}] 님의`, '내')
-    .replaceAll(`[${localNickname}] 님`, '나')
-    .replaceAll(`[${localNickname}]`, '나');
-}
+const hasFinalConsonant = (word: string) => {
+  const code = word.codePointAt(word.length - 1) || 0;
+  return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+};
+const subjectParticle = (word: string) => `${word}${hasFinalConsonant(word) ? '이' : '가'}`;
 
 function resultCopy(summary: any, players: PlayerPublic[], localUserId: string, actorId?: string, targetId?: string) {
   const actor = playerCopy(players, actorId, localUserId);
@@ -34,7 +24,7 @@ function resultCopy(summary: any, players: PlayerPublic[], localUserId: string, 
     case 'GUARD_SUCCESS':
       return `추측 성공 · ${target?.possessive || '상대의'} 카드는 ${revealedName || guessedName || '추측한 카드'} · 탈락`;
     case 'GUARD_FAILED':
-      return `추측 실패 · ${target?.possessive || '상대의'} 카드는 ${guessedName || '추측한 카드'}가 아닙니다.`;
+      return `${target?.possessive || '상대의'} 카드는 ${subjectParticle(guessedName || '추측한 카드')} 아닙니다.`;
     case 'PRIEST_REVEAL':
       return `${actor.subject} ${target?.possessive || '상대의'} 손패를 확인했습니다.`;
     case 'BARON_WIN':
@@ -48,11 +38,13 @@ function resultCopy(summary: any, players: PlayerPublic[], localUserId: string, 
     case 'PRINCE_PRINCESS_ELIMINATED': return targetId === localUserId ? '내 공주가 버려져 탈락했습니다.' : `공주가 버려져 ${target?.name || '상대'} 탈락`;
     case 'PRINCE_DISCARD': return `${target?.subject || '상대가'} ${revealedName || '손패'} 카드를 버리고 새로 뽑았습니다.`;
     case 'KING_SWAP': return `${actor.subject} ${target?.possessive || '상대의'} 손패와 맞바꿨습니다.`;
-    case 'COUNTESS_PLAY': return '백작부인 효과가 처리되었습니다.';
+    // Countess has no public effect. Whether it was forced or a bluff is
+    // hidden information, so do not imply a resolution or its reason.
+    case 'COUNTESS_PLAY': return '백작부인을 사용했습니다.';
     case 'PRINCESS_ELIMINATED': return actorId === localUserId ? '내가 공주를 사용해 탈락했습니다.' : `${actor.name}님이 공주를 사용해 탈락했습니다.`;
     case 'TARGET_INVALID_NOOP': return '지목 가능한 상대가 없어 카드 효과가 무효화되었습니다.';
     case 'CARD_PLAYED': return `${actor.subject} 카드를 사용했습니다.`;
-    default: return fallbackResult(summary?.description, players, localUserId);
+    default: return undefined;
   }
 }
 
@@ -73,16 +65,16 @@ export function deriveActionNarrative(action: PresentationAction | null | undefi
   const target = targetId ? playerCopy(players, targetId, localUserId) : null;
   const card = played?.card || summary?.card || first?.card || first?.playedCard;
 
-  if (action.actionId.startsWith('deal_')) {
+  if (first?.drawReason === 'ROUND_DEAL' || action.actionId.startsWith('round_deal_') || action.actionId.startsWith('deal_')) {
     return { title: '새 라운드 패를 나누는 중', detail: first?.playerId ? `${playerCopy(players, first.playerId, localUserId).name}에게 카드 1장` : undefined };
   }
   if (first?.type === 'CARD_DRAWN' && !played) {
     const player = playerCopy(players, first.playerId, localUserId);
     return { title: `${player.subject} 카드 1장 뽑음` };
   }
-  if (step?.kind === 'TARGET' && target) return { title: `${actor.subject} ${target.object} 지목`, detail: card?.name ? `${card.name} 효과` : undefined };
+  if (step?.kind === 'TARGET' && target) return { title: `${actor.subject} ${target.object} 지목`, detail: card?.name ? `${card.name} 사용` : undefined };
   if (step?.kind === 'RESULT_DWELL' && summary) return { title: `${actor.name} · ${card?.name || '카드'} 사용`, result: resultCopy(summary, players, localUserId, actorId, targetId) };
   if (step?.kind === 'REVIEW' && target) return { title: `${actor.subject} ${target.possessive} 카드를 확인 중` };
-  if (card) return { title: `${actor.name} · ${card.name || card.value} 사용`, detail: target ? `${target.name} 대상` : undefined };
-  return { title: `${actor.name}의 행동을 확인하는 중` };
+  if (card) return { title: `${actor.name} · ${card.name || card.value} 사용`, detail: target ? `${target.object} 대상으로 선택` : undefined };
+  return { title: actorId === localUserId ? '내 행동을 확인하는 중' : `${actor.possessive} 행동을 확인하는 중` };
 }

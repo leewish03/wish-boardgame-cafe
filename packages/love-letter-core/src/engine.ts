@@ -58,12 +58,15 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       s.setAsideOpenCards = [];
       s.deck = deck;
 
-      // Deal 1 card each
-      for (const p of s.players) {
+      const roundDealActionId = `round_deal_${s.roundNumber}_${s.stateVersion}`;
+      // Deal 1 card each. These are real events, not a client-side reconstruction
+      // from a later snapshot, so every observer can see why a card moved.
+      for (const [sequence, p] of s.players.entries()) {
         const card = s.deck.pop();
         if (card) {
           s.secrets[p.id].hand.push(card);
           p.cardCount = 1;
+          events.push({ type: 'CARD_DRAWN', actionId: roundDealActionId, sequence, playerId: p.id, card, remainingDeckCount: s.deck.length, drawReason: 'ROUND_DEAL', handSlot: 0 });
         }
       }
 
@@ -98,9 +101,12 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         firstPlayer.cardCount = s.secrets[firstPlayerId].hand.length;
         events.push({
           type: 'CARD_DRAWN',
+          actionId: `turn_draw_${s.roundNumber}_${firstPlayerId}_${s.stateVersion}`,
           playerId: firstPlayerId,
           card: drawCard,
           remainingDeckCount: s.deck.length,
+          drawReason: 'TURN_DRAW',
+          handSlot: 1,
         });
       }
 
@@ -377,6 +383,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
                   card: newCard,
                   remainingDeckCount: s.deck.length,
                   drawSource,
+                  drawReason: 'PRINCE_REPLACEMENT',
+                  handSlot: 0,
                 });
               }
             }
@@ -557,6 +565,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           playerId: nextPlayer.id,
           card: nextDraw,
           remainingDeckCount: s.deck.length,
+          drawReason: 'TURN_DRAW',
+          handSlot: 1,
         });
       }
 
@@ -710,6 +720,8 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
             playerId: nextPlayer.id,
             card: nextDraw,
             remainingDeckCount: s.deck.length,
+            drawReason: 'TURN_DRAW',
+            handSlot: 1,
           });
         }
 

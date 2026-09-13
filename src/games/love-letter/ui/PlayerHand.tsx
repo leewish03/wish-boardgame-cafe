@@ -27,11 +27,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn
   if (isEliminated) return <HandContainer data-player-id="self-seat" $eliminated><EliminatedRail><EliminatedMark><CircleSlash size={38}/></EliminatedMark><EliminatedCopy><small>ROUND SPECTATOR</small><strong>이번 라운드에서 탈락했습니다</strong><span>공개된 테이블을 관전하며 다음 라운드를 기다려 주세요</span></EliminatedCopy></EliminatedRail></HandContainer>;
   return <HandContainer data-player-id="self-seat">
     <HandHeader><span>{message}</span></HandHeader>
-    <CardsRow>{actionSlot && <ActionSlot>{actionSlot}</ActionSlot>}{[0, 1].map((index) => {
+    <CardsRow><ActionSlot>{actionSlot}</ActionSlot>{[0, 1].map((index) => {
       const card = hand[index];
-      const start = actionSlot
-        ? (hand.length === 1 ? (index === 0 ? 3 : 2) : index + 2)
-        : (hand.length === 1 ? 2 : index === 0 ? 1 : 3);
+      // Slot 0 is the held card at right; slot 1 is a just-drawn card in the
+      // centre. Their physical anchors never depend on turn/UI state.
+      const start = index === 0 ? 3 : 2;
       if (!card) return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index}/></HandCell>;
       const countessLocked = hasCountess && hasPrinceOrKing && card.value !== 7;
       return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index} cardId={card.id}><GameCard id={card.id} value={card.value as CardValue} name={card.name} isSelected={selectedCardId===card.id} isDisabled={countessLocked} isInteractive={canSelectCards && !countessLocked} disabledReason={countessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined} onClick={() => canSelectCards && !countessLocked && onSelectCard(card)} /></HandSlot></HandCell>;

@@ -74,11 +74,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const activeUserId = currentUser?.id || propMyUserId || '';
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
   const [chatOpen, setChatOpen] = useState(false);
-  const [frozenBoardHeight, setFrozenBoardHeight] = useState<number | null>(null);
-  const handleChatOpenChange = useCallback((open: boolean) => {
-    setChatOpen(open);
-    setFrozenBoardHeight(open && typeof window !== 'undefined' ? window.innerHeight : null);
-  }, []);
+  const handleChatOpenChange = useCallback((open: boolean) => setChatOpen(open), []);
 
   // Presentation timeline
   const { currentAction, phase, enqueueAction, advancePresentation, resetTimeline, isActionPlaying, hasPendingPresentation } = useActionTimeline();
@@ -457,7 +453,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
           : 'RUNNING';
 
   return (
-    <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface $chatOpen={chatOpen} $frozenHeight={frozenBoardHeight} onPointerDown={() => sfx.unlockAndStart()}>
+    <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface $chatOpen={chatOpen} onPointerDown={() => sfx.unlockAndStart()}>
       {/* 1. TOP HUD (Section 3 Tier 1) */}
       <GameHud
         roundNumber={gameState.roundNumber}
@@ -484,6 +480,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onPhaseComplete={handlePresentationComplete}
       />
 
+      <TableViewport>
       {/* 2. OPPONENT RAIL (Section 3 Tier 2) */}
       <OpponentRail
         opponents={visual.visualTable.players.filter(p => p.id !== activeUserId)}
@@ -517,6 +514,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onConfirmAction={handleConfirmAction}
         onCancelAction={handleCancelAction}
       />
+      </TableViewport>
 
       {/* My public discard shelf is physically attached directly above my hand. */}
       {visual.visualTable.players.find(p => p.id === activeUserId) && (
@@ -611,24 +609,24 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   );
 };
 
-const BoardSurface = styled.div<{$chatOpen:boolean;$frozenHeight:number|null}>`
+const BoardSurface = styled.div<{$chatOpen:boolean}>`
   position:relative;
-  height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : '100dvh'};
+  height:100dvh;
   width: 100%;
   min-width: 0;
-  min-height:${p=>p.$chatOpen&&p.$frozenHeight ? `${p.$frozenHeight}px` : '100dvh'};
+  min-height:100dvh;
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
-  grid-template-rows:auto auto auto minmax(min-content,1fr);
+  grid-template-rows:auto minmax(0,1fr) auto;
   align-content:stretch;
-  overflow-x: clip;
-  overflow-y:auto;
+  overflow:hidden;
   overscroll-behavior-y:none;
   user-select: none;
   box-sizing: border-box;
   font-family: ${THEME.font.sans};
   color: ${THEME.foreground};
 `;
+const TableViewport = styled.main`min-height:0;overflow-y:auto;overflow-x:clip;display:grid;grid-template-rows:auto auto;align-content:start;overscroll-behavior-y:contain;`;
 
 export default LoveLetterGame;
