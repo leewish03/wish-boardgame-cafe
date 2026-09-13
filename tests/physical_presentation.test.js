@@ -67,10 +67,24 @@ try {
   const cancelled = room.pendingResolution.actionId;
   await service.handleCommand(room.code,{type:'FORFEIT',playerId:'p2'});
   assert.equal(room.pendingResolution,null,'Forfeit cancels the presentation gate');
-  assert.equal(room.gameStateObject.playPhase,'TURN_INPUT','An unrelated departure cannot leave a resolving turn stuck');
+  assert.equal(room.gameStateObject.playPhase,'TURN_PREPARING','An unrelated departure must enter the next-turn draw gate');
+  const turnGate = room.pendingTurnPresentation;
+  assert.ok(turnGate, 'The next turn draw must wait for presentation acknowledgements');
+  await service.acknowledgePresentation(room.code, 'p0', turnGate.presentationId, turnGate.stateVersion, 'TURN_PREPARATION', turnGate.roundNumber);
+  await service.acknowledgePresentation(room.code, 'p1', turnGate.presentationId, turnGate.stateVersion, 'TURN_PREPARATION', turnGate.roundNumber);
+  await service.acknowledgePresentation(room.code, 'p2', turnGate.presentationId, turnGate.stateVersion, 'TURN_PREPARATION', turnGate.roundNumber);
+  assert.equal(room.gameStateObject.playPhase,'TURN_INPUT','Every connected player acknowledgement opens the prepared turn');
+  room = await fixture(4);
+  await service.handleCommand(room.code,{type:'FORFEIT',playerId:'p0'});
+  const fallbackGate = room.pendingTurnPresentation;
+  assert.ok(fallbackGate, 'A departing turn player must also create a draw gate');
+  assert.equal((await service.acknowledgePresentation(room.code, 'p1', fallbackGate.presentationId, fallbackGate.stateVersion - 1, 'TURN_PREPARATION', fallbackGate.roundNumber)).success, false, 'Stale acknowledgements cannot open a turn');
+  fallbackGate.fallbackAt = Date.now() - 1;
+  assert.equal((await service.applyPendingTurnOpening(room.code, fallbackGate.presentationId)).opened, true, 'The bounded fallback opens a turn when an acknowledgement is lost');
+  assert.equal(room.gameStateObject.playPhase, 'TURN_INPUT');
   assert.equal((await service.acknowledgePresentation(room.code,'p0',cancelled,undefined,'RETURN_REQUEST')).success,false);
   console.log('Physical presentation: deferred turn, indefinite private review, return authorization/idempotency, privacy and all eight card sequences passed.');
 } finally {
-  service.clearResolutionTimer('PHYSICAL'); service.turnCoordinator.clearTurnTimer('PHYSICAL'); service.clearBotTimer('PHYSICAL');
+  service.clearResolutionTimer('PHYSICAL'); service.clearTurnPresentationTimer('PHYSICAL'); service.turnCoordinator.clearTurnTimer('PHYSICAL'); service.clearBotTimer('PHYSICAL');
   await roomRepository.deleteRoom('PHYSICAL');
 }

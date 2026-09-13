@@ -83,6 +83,7 @@ async function startServer() {
     forfeit: (roomCode, playerId) => loveLetterService.handleCommand(roomCode, { type: 'FORFEIT', playerId }),
   });
   await loveLetterService.restorePausedRooms();
+  await loveLetterService.restorePendingTurnPresentations();
   initWebRTCSignaling(io);
   initSTTBroadcast(io);
   registerLoveLetterController(io, loveLetterService);

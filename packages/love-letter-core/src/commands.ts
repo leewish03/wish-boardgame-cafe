@@ -2,6 +2,11 @@ import { PlayerId, CardId, CardValue, MatchConfig } from './types';
 
 export type GameCommand =
   | { type: 'FINALIZE_ACTION' }
+  | {
+      /** Server-only: opens input only after the card-draw presentation settles. */
+      type: 'OPEN_TURN';
+      playerId: PlayerId;
+    }
   | { type: 'START_MATCH'; config?: Partial<MatchConfig> }
   | { type: 'START_ROUND' }
   | {

@@ -9,6 +9,12 @@ export interface GameEventEnvelope {
   timestamp: number;
   event: GameEvent;
   presentation?: GameEventSummary | null;
+  /** Groups several physical actions into one server-gated turn preparation. */
+  presentationBatch?: {
+    id: string;
+    kind: 'TURN_PREPARATION';
+    isFinalAction: boolean;
+  };
   recipientPlayerId?: PlayerId;
 }
 

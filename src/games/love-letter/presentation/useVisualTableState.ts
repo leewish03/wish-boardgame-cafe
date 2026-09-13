@@ -129,6 +129,10 @@ export function useVisualTableState(
     // A new round is a hard visual boundary. Keeping the previous table while
     // its last animation finishes makes the next round look permanently stuck.
     if (latest.roundNumber !== visualTable.roundNumber) {
+      // An authoritative ROUND_DEAL carries its own empty-table baseline. Do
+      // not briefly replace that baseline with the fully dealt snapshot before
+      // the first card has left the deck.
+      if (isActionPlaying || hasPendingPresentation?.()) return;
       setVisualTable(latest);
       return;
     }

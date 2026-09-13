@@ -403,6 +403,20 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
   const handlePresentationComplete = useCallback(() => {
     if (physicalStep?.apply) visual.applyCompletedEvent(physicalStep.apply);
+    const isFinalStep = Boolean(physicalStep && currentAction && currentAction.presentationIndex === physicalSteps.length - 1);
+    const presentationBatch = currentAction?.presentationBatch;
+    if (currentAction && isFinalStep && presentationBatch?.kind === 'TURN_PREPARATION' && presentationBatch.isFinalAction) {
+      // A skipped motion follows this same path. The server may now wait for
+      // every connected participant, but the visible table is already settled.
+      visual.settleToSnapshot();
+      gameSocket.acknowledgePresentation(
+        presentationBatch.id,
+        currentAction.stateVersion,
+        'TURN_PREPARATION',
+        undefined,
+        currentAction.roundNumber,
+      );
+    }
     // The final visible beat may be an elimination or a forced discard, which
     // has no actorId of its own. The action summary remains the authority for
     // deciding who is allowed to release the server-side presentation gate.
@@ -416,7 +430,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       }
     }
     advancePresentation();
-  }, [activeUserId, advancePresentation, currentAction, gameSocket, phase, visual, physicalStep]);
+  }, [activeUserId, advancePresentation, currentAction, gameSocket, phase, visual, physicalStep, physicalSteps.length]);
 
   // Media controls resolution
   const speakingUsers = propSpeakingUsers ?? webrtc?.speakingUsers ?? {};
@@ -432,6 +446,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const selectedGuessName = selectedGuessValue ? CARD_DEFINITIONS[selectedGuessValue]?.name : null;
   const tableStatus = !gameSocket.isConnected
     ? '연결을 복구하는 중'
+    : gameState.playPhase === 'ROUND_START'
+      ? '새 라운드 패를 나누는 중'
+      : gameState.playPhase === 'TURN_PREPARING'
+        ? turnPlayer?.id === activeUserId ? '내가 카드를 받는 중' : `${playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}님이 카드를 받는 중`
     : isActionPlaying
       ? '이전 행동을 보여주는 중'
       : interactionState === 'SUBMITTING'
@@ -527,6 +545,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             onSelect={() => handleSelectTarget(activeUserId)}
             onInspect={() => handleInspectDiscards(activeUserId)}
             presentationAction={null}
+            presentationMessage={gameState.playPhase === 'ROUND_START' ? '새 라운드 패를 나누는 중' : gameState.playPhase === 'TURN_PREPARING' ? (isMyTurn ? '내 카드가 도착하는 중' : '다음 턴 준비 중') : null}
             hand={visual.visualTable.myHand}
             isMyTurn={isMyTurn}
             canSelectCards={canInteract}

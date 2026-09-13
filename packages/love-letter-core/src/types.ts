@@ -82,6 +82,7 @@ export type MatchState = 'LOBBY' | 'PLAYING' | 'ROUND_END' | 'GAME_OVER';
 export type PlayPhase =
   | 'ROUND_START'
   | 'TURN_START'
+  | 'TURN_PREPARING'
   | 'TURN_INPUT'
   | 'ACTION_RESOLVING'
   | 'TURN_TRANSITION'

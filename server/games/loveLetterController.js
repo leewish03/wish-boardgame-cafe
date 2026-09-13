@@ -96,6 +96,7 @@ export function registerLoveLetterController(io, service) {
           payload?.actionId,
           payload?.expectedStateVersion,
           payload?.completedPhase,
+          payload?.roundNumber,
         );
         if (typeof callback === 'function') callback(result);
       } catch (error) {

@@ -96,10 +96,10 @@ export const OpponentZone: React.FC<OpponentZoneProps> = ({presentationAction,..
 
 interface LocalZoneProps extends IdentityProps {
   hand:CardInstance[]; selectedCardId:string|null; interactionState:string; isMyTurn:boolean; canSelectCards:boolean;
-  onSelectCard:(card:CardInstance)=>void; onCancelSelection?:()=>void; onInspect?:()=>void; presentationAction?:PresentationAction;
+  onSelectCard:(card:CardInstance)=>void; onCancelSelection?:()=>void; onInspect?:()=>void; presentationAction?:PresentationAction; presentationMessage?: string | null;
   chatMessages?:any[]; onSendChat?:(text:string)=>void; onChatOpenChange?:(open:boolean)=>void;
 }
-export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,chatMessages,onSendChat,onChatOpenChange,...identity}) => {
+export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,presentationMessage,chatMessages,onSendChat,onChatOpenChange,...identity}) => {
   const projected = projectedObjects(identity.player, presentationAction || null);
   const event:any = presentationAction?.event;
   const visualHand = (() => {
@@ -110,7 +110,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
   })().slice(0, 2);
   return <LocalZoneRoot>
     <LocalDiscard><DiscardHeader><span>내 공개 버린 패</span><RoomChat messages={chatMessages as never[]} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></DiscardHeader><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
-    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={(
+    <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} presentationMessage={presentationMessage} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={(
       <SelfTarget
         as={motion.button}
         type="button"

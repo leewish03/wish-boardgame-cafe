@@ -22,7 +22,7 @@ export interface UseGameSocketReturn {
   gameState: GameState | null;
   myHand: CardInstance[];
   lastAction: any | null;
-  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST', callback?: (result: { success: boolean; error?: string }) => void) => void;
+  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
@@ -275,7 +275,14 @@ export function useGameSocket({
         const pending = snapshot.presentation;
         if (pending.returnRequested) setReturnedActionId(pending.actionId);
         const before = { ...pending.before.publicState, mySecretHand: pending.before.privateState.hand };
-        pending.events.forEach(envelope => onGameEvent?.({ ...envelope, roundNumber: envelope.roundNumber ?? incomingRound, before, event: { ...envelope.event, presentation: envelope.presentation } } as any));
+        pending.events.forEach((envelope, sequence) => onGameEvent?.({
+          ...envelope,
+          roundNumber: envelope.roundNumber ?? incomingRound,
+          // A multi-action turn preparation has one shared visual baseline.
+          // Reapplying it for the starter draw would erase cards already dealt.
+          before: sequence === 0 ? before : undefined,
+          event: { ...envelope.event, presentation: envelope.presentation },
+        } as any));
       }
       setLastAction(snapshot.publicState.lastAction || null);
       const nextState = {
@@ -319,7 +326,7 @@ export function useGameSocket({
   // Derive GameState & Hand
   const { gameState, myHand } = useMemo(() => adaptRoomStateToGameState(rawRoomState, myUserId), [rawRoomState, myUserId]);
 
-  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST', callback?: (result: { success: boolean; error?: string }) => void) => {
+  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => {
     if (!socket?.connected) {
       callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
       return;
@@ -330,6 +337,7 @@ export function useGameSocket({
       actionId,
       expectedStateVersion,
       completedPhase,
+      roundNumber,
     }, (result: any) => callback?.(result || { success: false, error: '서버 응답을 받지 못했습니다.' }));
   }, [socket, roomCode, rawRoomState?.code, myUserId]);
 

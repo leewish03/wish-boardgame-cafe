@@ -110,17 +110,31 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         });
       }
 
+      // The server deliberately keeps the turn closed while every client sees
+      // the initial deal. OPEN_TURN is the only command allowed to start its
+      // clock and accept input.
+      s.turnStartedAt = 0;
+      s.turnExpiresAt = 0;
+
+      return { nextState: s, events };
+    }
+
+    case 'OPEN_TURN': {
+      if (!s.currentTurnPlayerId || s.currentTurnPlayerId !== command.playerId) {
+        throw new Error('현재 플레이어의 턴만 열 수 있습니다.');
+      }
+      if (!['ROUND_START', 'TURN_PREPARING'].includes(s.playPhase)) {
+        throw new Error('열 수 있는 턴 준비 상태가 아닙니다.');
+      }
       s.playPhase = 'TURN_INPUT';
       s.turnStartedAt = Date.now();
       s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
-
       events.push({
         type: 'TURN_STARTED',
-        playerId: firstPlayerId,
+        playerId: s.currentTurnPlayerId,
         turnExpiresAt: s.turnExpiresAt,
         remainingDeckCount: s.deck.length,
       });
-
       return { nextState: s, events };
     }
 
@@ -544,15 +558,15 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
       // Remove protection when turn starts
       nextPlayer.isProtected = false;
 
-      s.playPhase = 'TURN_INPUT';
-      s.turnStartedAt = Date.now();
-      s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
+      s.playPhase = 'TURN_PREPARING';
+      s.turnStartedAt = 0;
+      s.turnExpiresAt = 0;
 
       events.push({
         type: 'TURN_ENDED',
         previousPlayerId: playerId,
         nextPlayerId: nextPlayer.id,
-        turnExpiresAt: s.turnExpiresAt,
+        turnExpiresAt: 0,
       });
 
       // Draw card for next player
@@ -562,6 +576,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         nextPlayer.cardCount = s.secrets[nextPlayer.id].hand.length;
         events.push({
           type: 'CARD_DRAWN',
+          actionId: `turn_draw_${s.roundNumber}_${nextPlayer.id}_${s.stateVersion}`,
           playerId: nextPlayer.id,
           card: nextDraw,
           remainingDeckCount: s.deck.length,
@@ -569,13 +584,6 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           handSlot: 1,
         });
       }
-
-      events.push({
-        type: 'TURN_STARTED',
-        playerId: nextPlayer.id,
-        turnExpiresAt: s.turnExpiresAt,
-        remainingDeckCount: s.deck.length,
-      });
 
       return { nextState: s, events };
     }
@@ -707,9 +715,9 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         s.currentTurnPlayerId = nextPlayer.id;
         nextPlayer.isProtected = false;
 
-        s.playPhase = 'TURN_INPUT';
-        s.turnStartedAt = Date.now();
-        s.turnExpiresAt = s.turnStartedAt + s.config.turnTimeoutSeconds * 1000;
+        s.playPhase = 'TURN_PREPARING';
+        s.turnStartedAt = 0;
+        s.turnExpiresAt = 0;
 
         if (s.deck.length > 0) {
           const nextDraw = s.deck.pop()!;
@@ -717,6 +725,7 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           nextPlayer.cardCount = s.secrets[nextPlayer.id].hand.length;
           events.push({
             type: 'CARD_DRAWN',
+            actionId: `turn_draw_${s.roundNumber}_${nextPlayer.id}_${s.stateVersion}`,
             playerId: nextPlayer.id,
             card: nextDraw,
             remainingDeckCount: s.deck.length,
@@ -725,12 +734,6 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
           });
         }
 
-        events.push({
-          type: 'TURN_STARTED',
-          playerId: nextPlayer.id,
-          turnExpiresAt: s.turnExpiresAt,
-          remainingDeckCount: s.deck.length,
-        });
       }
 
       return { nextState: s, events };

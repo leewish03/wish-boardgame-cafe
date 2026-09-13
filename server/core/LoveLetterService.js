@@ -49,6 +49,8 @@ const { buildPhysicalSequence } = loadTs(path.join(root, 'packages/protocol/src/
 const BOT_THINK_MIN_MS = 1800;
 const BOT_THINK_MAX_MS = 2600;
 const ACTION_MAX_WAIT_MS = 8_000;
+const ROUND_PRESENTATION_MAX_WAIT_MS = 8_000;
+const TURN_PRESENTATION_MAX_WAIT_MS = 4_000;
 export { SOCKET_EVENTS };
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -85,6 +87,7 @@ export class LoveLetterService {
     this.commandQueues = new Map();
     this.botTimers = new Map();
     this.resolutionTimers = new Map();
+    this.turnPresentationTimers = new Map();
     this.pauseExpiryTimers = new Map();
     this.roundAdvanceTimers = new Map();
     this.progressRequests = new Map();
@@ -152,12 +155,94 @@ export class LoveLetterService {
     this.resolutionTimers.set(roomCode, timer);
   }
 
-  async acknowledgePresentation(roomCode, playerId, actionId, expectedStateVersion, completedPhase) {
-    return this.runRoomOperation(roomCode, () => this.applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase));
+  createTurnPresentation(room, beforeState, gameState, events, kind) {
+    const drawEvents = events.filter((event) => event.type === 'CARD_DRAWN' && ['ROUND_DEAL', 'TURN_DRAW'].includes(event.drawReason));
+    if (!drawEvents.length || !gameState.currentTurnPlayerId) return null;
+    const actionIds = [...new Set(drawEvents.map((event) => this.getActionId(gameState, event)))];
+    const presentationId = `turn_presentation_${gameState.roundNumber}_${gameState.stateVersion}_${gameState.currentTurnPlayerId}`;
+    return {
+      kind,
+      presentationId,
+      actionIds,
+      roundNumber: gameState.roundNumber,
+      stateVersion: gameState.stateVersion,
+      activePlayerId: gameState.currentTurnPlayerId,
+      beforeState,
+      events,
+      requiredPlayerIds: room.players
+        .filter((player) => !player.isBot && player.socketId && !player.isDisconnected)
+        .map((player) => player.id),
+      acknowledgedPlayerIds: [],
+      fallbackAt: Date.now() + (kind === 'ROUND_DEAL' ? ROUND_PRESENTATION_MAX_WAIT_MS : TURN_PRESENTATION_MAX_WAIT_MS),
+    };
   }
 
-  async applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase) {
+  async schedulePendingTurnPresentation(roomCode) {
     const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingTurnPresentation;
+    if (!room || !pending || room.isPaused) return;
+    this.clearTurnPresentationTimer(roomCode);
+    if (!pending.requiredPlayerIds.length || pending.requiredPlayerIds.every((id) => pending.acknowledgedPlayerIds.includes(id))) {
+      await this.applyPendingTurnOpening(roomCode, pending.presentationId);
+      return;
+    }
+    const delay = Math.max(25, pending.fallbackAt - Date.now());
+    const timer = setTimeout(() => {
+      this.turnPresentationTimers.delete(roomCode);
+      this.runRoomOperation(roomCode, () => this.applyPendingTurnOpening(roomCode, pending.presentationId))
+        .catch((error) => console.error('Turn presentation fallback failed:', error.message));
+    }, delay);
+    timer.unref?.();
+    this.turnPresentationTimers.set(roomCode, timer);
+  }
+
+  async applyPendingTurnOpening(roomCode, presentationId) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingTurnPresentation;
+    if (!room || !pending || pending.presentationId !== presentationId || room.isPaused) return { success: false, stale: true };
+    const allAcknowledged = pending.requiredPlayerIds.every((id) => pending.acknowledgedPlayerIds.includes(id));
+    if (!allAcknowledged && Date.now() < pending.fallbackAt) return { success: false, pending: true };
+
+    this.clearTurnPresentationTimer(roomCode);
+    room.pendingTurnPresentation = null;
+    const { nextState, events } = core.executeCommand(room.gameStateObject, {
+      type: 'OPEN_TURN',
+      playerId: pending.activePlayerId,
+    });
+    this.applyGameStateToRoom(room, nextState);
+    await roomRepository.saveRoom(room);
+    for (const [sequence, event] of events.entries()) this.broadcastGameEvent(roomCode, nextState, { ...event, sequence: event.sequence ?? sequence });
+    this.broadcastGameSnapshot(roomCode, room);
+    this.broadcastRoomState(this.io, roomCode);
+    this.scheduleTurnTimeout(roomCode, nextState);
+    this.scheduleNextTurnIfBot(roomCode);
+    return { success: true, opened: true };
+  }
+
+  async acknowledgePresentation(roomCode, playerId, actionId, expectedStateVersion, completedPhase, roundNumber) {
+    return this.runRoomOperation(roomCode, () => this.applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase, roundNumber));
+  }
+
+  async applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase, roundNumber) {
+    const room = await roomRepository.getRoom(roomCode);
+    const turnPending = room?.pendingTurnPresentation;
+    if (turnPending && completedPhase === 'TURN_PREPARATION') {
+      if (turnPending.presentationId !== actionId || (expectedStateVersion != null && turnPending.stateVersion !== expectedStateVersion)) {
+        return { success: false, stale: true, error: '이전 카드 배분의 확인입니다.' };
+      }
+      if (roundNumber != null && turnPending.roundNumber !== roundNumber) {
+        return { success: false, stale: true, error: '이전 라운드의 확인입니다.' };
+      }
+      if (!turnPending.requiredPlayerIds.includes(playerId)) {
+        return { success: false, error: '현재 배분 확인 대상이 아닙니다.' };
+      }
+      if (!turnPending.acknowledgedPlayerIds.includes(playerId)) turnPending.acknowledgedPlayerIds.push(playerId);
+      await roomRepository.saveRoom(room);
+      const allAcknowledged = turnPending.requiredPlayerIds.every((id) => turnPending.acknowledgedPlayerIds.includes(id));
+      if (allAcknowledged) return this.applyPendingTurnOpening(roomCode, turnPending.presentationId);
+      await this.schedulePendingTurnPresentation(roomCode);
+      return { success: true, pending: true };
+    }
     const pending = room?.pendingResolution;
     if (!room || !pending) return { success: false, stale: true, error: '이미 정착한 행동입니다.' };
     if (pending.actionId !== actionId || (expectedStateVersion != null && pending.stateVersion !== expectedStateVersion)) {
@@ -199,8 +284,12 @@ export class LoveLetterService {
     if (!room || !pending || pending.actionId !== actionId || room.isPaused) return;
     this.clearResolutionTimer(roomCode);
     room.pendingResolution = null;
+    const beforeState = room.gameStateObject;
     const { nextState: gameState, events: transitionEvents } = core.executeCommand(room.gameStateObject, { type: 'FINALIZE_ACTION' });
     this.applyGameStateToRoom(room, gameState);
+    if (gameState.playPhase === 'TURN_PREPARING') {
+      room.pendingTurnPresentation = this.createTurnPresentation(room, beforeState, gameState, transitionEvents, 'TURN_DRAW');
+    }
     await roomRepository.saveRoom(room);
     for (const [sequence, event] of transitionEvents.entries()) {
       this.broadcastGameEvent(roomCode, gameState, { ...event, sequence: event.sequence ?? sequence });
@@ -208,8 +297,11 @@ export class LoveLetterService {
     this.broadcastGameSnapshot(roomCode, room);
     this.broadcastRoomState(this.io, roomCode);
     this.scheduleRoundAdvance(roomCode, room, gameState);
-    this.scheduleTurnTimeout(roomCode, gameState);
-    this.scheduleNextTurnIfBot(roomCode);
+    if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
+    else {
+      this.scheduleTurnTimeout(roomCode, gameState);
+      this.scheduleNextTurnIfBot(roomCode);
+    }
   }
 
   projectEventForPlayer(event, gameState, recipientPlayerId) {
@@ -272,6 +364,12 @@ export class LoveLetterService {
     return publicSummary;
   }
 
+  clearTurnPresentationTimer(roomCode) {
+    const timer = this.turnPresentationTimers.get(roomCode);
+    if (timer) clearTimeout(timer);
+    this.turnPresentationTimers.delete(roomCode);
+  }
+
   applyGameStateToRoom(room, gameState) {
     room.gameStateObject = gameState;
     room.gameState = gameState.matchState;
@@ -317,7 +415,7 @@ export class LoveLetterService {
           serverTime: Date.now(),
           publicState,
           privateState: secret,
-          presentation: room.pendingResolution ? this.presentationForPlayer(room, player.id) : null,
+          presentation: (room.pendingResolution || room.pendingTurnPresentation) ? this.presentationForPlayer(room, player.id) : null,
         };
         this.io.to(player.socketId).emit(SOCKET_EVENTS.GAME_SNAPSHOT, snapshot);
       }
@@ -343,8 +441,43 @@ export class LoveLetterService {
 
   presentationForPlayer(room, playerId) {
     const pending = room.pendingResolution;
+    const turnPending = room.pendingTurnPresentation;
+    if (turnPending) {
+      return {
+        kind: 'TURN_PREPARATION',
+        actionId: turnPending.presentationId,
+        actionIds: turnPending.actionIds,
+        stateVersion: turnPending.stateVersion,
+        roundNumber: turnPending.roundNumber,
+        activePlayerId: turnPending.activePlayerId,
+        returnRequested: false,
+        before: {
+          publicState: core.getPublicGameState(turnPending.beforeState),
+          privateState: core.getPrivatePlayerState(turnPending.beforeState, playerId),
+        },
+        events: turnPending.events.map((event, sequence) => {
+          const actionId = this.getActionId(room.gameStateObject, event);
+          return {
+            eventId: `${turnPending.presentationId}:${sequence}:${playerId}`,
+            actionId,
+            stateVersion: turnPending.stateVersion,
+            roundNumber: turnPending.roundNumber,
+            timestamp: turnPending.fallbackAt,
+            recipientPlayerId: playerId,
+            event: this.projectEventForPlayer(event, room.gameStateObject, playerId),
+            presentation: null,
+            presentationBatch: {
+              id: turnPending.presentationId,
+              kind: 'TURN_PREPARATION',
+              isFinalAction: actionId === turnPending.actionIds[turnPending.actionIds.length - 1],
+            },
+          };
+        }),
+      };
+    }
     if (!pending) return null;
     return {
+      kind: 'CARD_ACTION',
       actionId: pending.actionId,
       stateVersion: pending.stateVersion,
       returnRequested: !!pending.returnRequestedAt,
@@ -373,14 +506,17 @@ export class LoveLetterService {
     if (room.isPaused && command.type !== 'FORFEIT') {
       throw new Error('재접속을 기다리는 동안 게임이 일시 정지되었습니다.');
     }
-    if (room.pendingResolution && command.type !== 'FORFEIT') {
+    if ((room.pendingResolution || room.pendingTurnPresentation) && command.type !== 'FORFEIT') {
       throw new Error('이전 카드 행동을 확인하는 중입니다.');
     }
     if (command.type === 'FORFEIT') {
       this.clearPauseExpiryTimer(roomCode);
       this.clearResolutionTimer(roomCode);
+      this.clearTurnPresentationTimer(roomCode);
       if (room.pendingResolution) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingResolution.actionId });
       room.pendingResolution = null;
+      if (room.pendingTurnPresentation) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingTurnPresentation.presentationId });
+      room.pendingTurnPresentation = null;
     }
 
     const beforeState = room.gameStateObject;
@@ -433,6 +569,9 @@ export class LoveLetterService {
       room.pendingResolution.minAdvanceAt = Date.now() + duration + 250;
       room.pendingResolution.maxAdvanceAt = Date.now() + Math.max(duration + 5_000, ACTION_MAX_WAIT_MS);
     }
+    if (!isCardAction && nextState.playPhase === 'TURN_PREPARING') {
+      room.pendingTurnPresentation = this.createTurnPresentation(room, beforeState, nextState, events, 'TURN_DRAW');
+    }
     if (!isCardAction) this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
@@ -450,8 +589,11 @@ export class LoveLetterService {
     } else {
       this.broadcastGameSnapshot(roomCode, room);
       this.broadcastRoomState(this.io, roomCode);
-      this.scheduleTurnTimeout(roomCode, nextState);
-      this.scheduleNextTurnIfBot(roomCode);
+      if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
+      else {
+        this.scheduleTurnTimeout(roomCode, nextState);
+        this.scheduleNextTurnIfBot(roomCode);
+      }
     }
 
     return { nextState, events };
@@ -501,12 +643,27 @@ export class LoveLetterService {
     const { nextState, events } = core.executeCommand(baseState, command);
     this.clearRoundAdvanceTimer(roomCode);
     this.applyGameStateToRoom(room, nextState);
+    if (nextState.playPhase === 'ROUND_START') {
+      // Start from a genuinely empty table for the new round, rather than a
+      // previous round snapshot with different card positions.
+      const dealBefore = JSON.parse(JSON.stringify(nextState));
+      dealBefore.deck = [...nextState.deck, ...nextState.players.flatMap((player) => nextState.secrets[player.id]?.hand || [])];
+      for (const player of dealBefore.players) {
+        player.cardCount = 0;
+        player.discardPile = [];
+      }
+      for (const playerId of Object.keys(dealBefore.secrets)) dealBefore.secrets[playerId].hand = [];
+      room.pendingTurnPresentation = this.createTurnPresentation(room, dealBefore, nextState, events, 'ROUND_DEAL');
+    }
     await roomRepository.saveRoom(room);
     for (const [sequence, event] of events.entries()) this.broadcastGameEvent(roomCode, nextState, { ...event, sequence: event.sequence ?? sequence });
     this.broadcastGameSnapshot(roomCode, room);
     this.broadcastRoomState(this.io, roomCode);
-    this.scheduleTurnTimeout(roomCode, nextState);
-    this.scheduleNextTurnIfBot(roomCode);
+    if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
+    else {
+      this.scheduleTurnTimeout(roomCode, nextState);
+      this.scheduleNextTurnIfBot(roomCode);
+    }
     return { nextState, events };
   }
 
@@ -657,6 +814,17 @@ export class LoveLetterService {
     }
   }
 
+  async restorePendingTurnPresentations() {
+    // Presentation watchdogs are process-local. Re-arm persisted gates after
+    // restart so a TURN_PREPARING room can never remain frozen indefinitely.
+    const rooms = await roomRepository.listRooms();
+    for (const room of rooms) {
+      if (!room?.pendingTurnPresentation || !room.gameStateObject) continue;
+      if (room.isPaused) continue;
+      await this.schedulePendingTurnPresentation(room.code);
+    }
+  }
+
   appendSystemMessage(room, text) {
     if (!room.chatMessages) room.chatMessages = [];
     const message = {
@@ -708,6 +876,7 @@ export class LoveLetterService {
     this.turnCoordinator.clearTurnTimer(roomCode);
     this.clearBotTimer(roomCode);
     this.clearResolutionTimer(roomCode);
+    this.clearTurnPresentationTimer(roomCode);
     const pauseExpiry = room.pauseExpiresAt;
     this.schedulePauseExpiry(roomCode, playerId, pauseExpiry);
     await roomRepository.saveRoom(room);
@@ -720,21 +889,32 @@ export class LoveLetterService {
 
     const now = Date.now();
     this.clearPauseExpiryTimer(roomCode);
+    const hasPresentationGate = !!room.pendingResolution || !!room.pendingTurnPresentation || room.gameStateObject.playPhase !== 'TURN_INPUT';
     const remaining = Math.max(1_000, Number(room.pausedTurnRemainingMs) || room.gameStateObject.config.turnTimeoutSeconds * 1_000);
-    const nextState = {
-      ...room.gameStateObject,
-      turnStartedAt: now,
-      turnExpiresAt: now + remaining,
-      stateVersion: room.gameStateObject.stateVersion + 1,
-    };
+    const nextState = hasPresentationGate
+      ? {
+          ...room.gameStateObject,
+          stateVersion: room.gameStateObject.stateVersion + 1,
+        }
+      : {
+          ...room.gameStateObject,
+          turnStartedAt: now,
+          turnExpiresAt: now + remaining,
+          stateVersion: room.gameStateObject.stateVersion + 1,
+        };
     room.isPaused = false;
     room.pausedPlayerId = null;
     room.pauseExpiresAt = null;
     delete room.pausedTurnRemainingMs;
+    if (room.pendingResolution) room.pendingResolution.stateVersion = nextState.stateVersion;
+    if (room.pendingTurnPresentation) room.pendingTurnPresentation.stateVersion = nextState.stateVersion;
     this.applyGameStateToRoom(room, nextState);
     await roomRepository.saveRoom(room);
     if (room.pendingResolution) {
       await this.schedulePendingResolution(roomCode);
+      this.broadcastGameSnapshot(roomCode, room);
+    } else if (room.pendingTurnPresentation) {
+      await this.schedulePendingTurnPresentation(roomCode);
       this.broadcastGameSnapshot(roomCode, room);
     } else {
       this.broadcastGameSnapshot(roomCode, room);

@@ -69,6 +69,23 @@ async function main() {
     const [initialA, initialB] = await Promise.all([snapA, snapB]);
     assertNoSecrets(initialA, created.userId);
     assertNoSecrets(initialB, joined.userId);
+    assert.equal(initialA.presentation?.kind, 'TURN_PREPARATION', 'initial cards must be presented before the first turn opens');
+    const openingA = once(a, 'game:snapshot');
+    const openingB = once(b, 'game:snapshot');
+    const initialPresentation = initialA.presentation;
+    assert.equal((await emit(a, 'game:presentation-ack', {
+      roomCode: created.roomCode, actionId: initialPresentation.actionId,
+      expectedStateVersion: initialPresentation.stateVersion, roundNumber: initialPresentation.roundNumber,
+      completedPhase: 'TURN_PREPARATION',
+    })).success, true);
+    assert.equal((await emit(b, 'game:presentation-ack', {
+      roomCode: created.roomCode, actionId: initialPresentation.actionId,
+      expectedStateVersion: initialPresentation.stateVersion, roundNumber: initialPresentation.roundNumber,
+      completedPhase: 'TURN_PREPARATION',
+    })).success, true);
+    const [openedA, openedB] = await Promise.all([openingA, openingB]);
+    assert.equal(openedA.publicState.playPhase, 'TURN_INPUT', 'the first turn opens only after every participant acknowledges');
+    assert.equal(openedB.publicState.turnExpiresAt > 0, true, 'the opened turn has an authoritative expiry');
     const mountedTable = once(a, 'game:snapshot');
     a.emit('game:view-ready');
     assertNoSecrets(await mountedTable, created.userId);
@@ -127,7 +144,9 @@ async function main() {
     const turnId = state.currentTurnPlayerId;
     const turnSocket = turnId === created.userId ? a : b;
     const turnSecret = state.secrets[turnId];
-    const card = turnSecret.hand.find((candidate) => candidate.value !== 8) || turnSecret.hand[0];
+    const mustPlayCountess = turnSecret.hand.some((candidate) => candidate.value === 7)
+      && turnSecret.hand.some((candidate) => candidate.value === 5 || candidate.value === 6);
+    const card = (mustPlayCountess ? turnSecret.hand.find((candidate) => candidate.value === 7) : turnSecret.hand.find((candidate) => candidate.value !== 8)) || turnSecret.hand[0];
     const target = state.players.find((player) => player.id !== turnId && !player.isEliminated && !player.isProtected);
     const targetId = [1, 2, 3, 5, 6].includes(card.value) ? target?.id : undefined;
     // The public action must remain readable before the server advances the

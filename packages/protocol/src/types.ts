@@ -9,8 +9,12 @@ import { GameEventEnvelope } from './envelopes';
 
 export interface GameSnapshot {
   presentation?: {
+    kind?: 'CARD_ACTION' | 'TURN_PREPARATION';
     actionId: string;
     stateVersion: number;
+    roundNumber?: number;
+    activePlayerId?: string;
+    actionIds?: string[];
     returnRequested: boolean;
     before: { publicState: PublicGameState; privateState: PrivatePlayerState };
     events: GameEventEnvelope[];
