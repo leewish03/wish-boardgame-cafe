@@ -40,9 +40,27 @@ function updatePlayer(players: PlayerPublic[], playerId: string | undefined, upd
   return players.map((player) => player.id === playerId ? update(player) : player);
 }
 
-function appendDiscard(player: PlayerPublic, card: CardInstance | undefined): PlayerPublic {
+/**
+ * The authoritative pile is chronological: oldest discard is at index zero.
+ * Presentation beats can arrive in a different visual order (for example a
+ * Baron loser reveals their remaining card before the played Baron has moved
+ * from the table), so never use completion order to decide shelf order.
+ */
+function appendDiscard(player: PlayerPublic, card: CardInstance | undefined, canonicalPlayer?: PlayerPublic): PlayerPublic {
   if (!card || (player.discardPile || []).some((item) => item.id === card.id)) return player;
-  return { ...player, discardPile: [...(player.discardPile || []), copyCard(card)] };
+
+  const cardsToShow = [...(player.discardPile || []), copyCard(card)];
+  const wantedIds = new Set(cardsToShow.map((item) => item.id));
+  const canonical = canonicalPlayer?.discardPile || [];
+  const ordered = canonical.filter((item) => wantedIds.delete(item.id)).map(copyCard);
+
+  // Events can briefly precede the matching snapshot. Keep those cards
+  // visible, but once a canonical order exists it always wins.
+  for (const item of cardsToShow) {
+    if (wantedIds.delete(item.id)) ordered.push(item);
+  }
+
+  return { ...player, discardPile: ordered };
 }
 
 function applyEvent(table: VisualTableState, event: any, localUserId: string, latest: VisualTableState): VisualTableState {
@@ -75,12 +93,23 @@ function applyEvent(table: VisualTableState, event: any, localUserId: string, la
       break;
     }
     case 'PLAY_TO_DISCARD':
-      next = { ...next, players: updatePlayer(next.players, event.actorId, player => appendDiscard(player, event.card)) };
+      next = {
+        ...next,
+        players: updatePlayer(next.players, event.actorId, player => appendDiscard(
+          player,
+          event.card,
+          latest.players.find((candidate) => candidate.id === event.actorId),
+        )),
+      };
       break;
     case 'PRINCE_DISCARDED': {
       next = {
         ...next,
-        players: updatePlayer(next.players, event.targetId, (player) => appendDiscard({ ...player, cardCount: Math.max(0, player.cardCount - 1) }, event.discardedCard)),
+        players: updatePlayer(next.players, event.targetId, (player) => appendDiscard(
+          { ...player, cardCount: Math.max(0, player.cardCount - 1) },
+          event.discardedCard,
+          latest.players.find((candidate) => candidate.id === event.targetId),
+        )),
       };
       if (event.targetId === localUserId && event.discardedCard?.id) next = { ...next, myHand: next.myHand.filter((item) => item.id !== event.discardedCard.id) };
       break;
