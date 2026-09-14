@@ -9,7 +9,7 @@ import { GameEventEnvelope } from './envelopes';
 
 export interface GameSnapshot {
   presentation?: {
-    kind?: 'CARD_ACTION' | 'TURN_PREPARATION';
+    kind?: 'CARD_ACTION' | 'TURN_PREPARATION' | 'ROUND_RESULT';
     actionId: string;
     stateVersion: number;
     roundNumber?: number;

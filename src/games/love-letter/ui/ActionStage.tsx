@@ -11,6 +11,11 @@ import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { deriveActionNarrative } from '../presentation/deriveActionNarrative';
 import { playerCopy } from './playerCopy';
 
+const MotionAnchor: React.FC<{kind:'comparison-left'|'comparison-right'|`round-result:${number}`}> = ({kind}) => {
+  const anchor = useTableAnchor('table', kind);
+  return <span ref={anchor} aria-hidden="true"/>;
+};
+
 interface ActionStageProps {
   deckCount: number;
   setAsideCount?: number;
@@ -61,8 +66,12 @@ export const ActionStage: React.FC<ActionStageProps> = ({
     : `${turnPlayerName}의 차례 · 행동을 기다리는 중`;
 
   const isPrivateReview = step?.kind === 'REVIEW';
+  const isComparison = Boolean(step && ['COMPARE_GATHER', 'COMPARE_REVEAL', 'COMPARE_RESULT', 'COMPARE_SETTLE'].includes(step.kind));
+  const isRoundReveal = Boolean(step && ['ROUND_GATHER', 'ROUND_REVEAL', 'ROUND_RESULT'].includes(step.kind));
 
   return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview} $hasControls={Boolean(activeCard)}>
+    <ComparisonAnchors $active={isComparison} aria-hidden="true"><MotionAnchor kind="comparison-left"/><span>VS</span><MotionAnchor kind="comparison-right"/></ComparisonAnchors>
+    <RoundAnchors $active={isRoundReveal} aria-hidden="true">{Array.from({length:6},(_,index)=><MotionAnchor key={index} kind={`round-result:${index}`}/>)}</RoundAnchors>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
     <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
     {/* Private-review controls need their own flow space. Mounting them inside
@@ -73,8 +82,16 @@ export const ActionStage: React.FC<ActionStageProps> = ({
 };
 
 const StageContainer = styled.section<{$reviewing:boolean;$hasControls:boolean}>`
-  width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'270px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+  position:relative;width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'270px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
+`;
+const ComparisonAnchors=styled.div<{$active:boolean}>`
+  position:absolute;left:50%;top:38%;width:min(304px,78vw);height:clamp(151px,43vw,206px);transform:translate(-50%,-50%);display:grid;grid-template-columns:1fr 30px 1fr;align-items:center;gap:8px;pointer-events:none;opacity:${p=>p.$active?1:0};
+  >span:not(:nth-child(2)){display:block;width:100%;height:100%;} >span:nth-child(2){font:900 17px ${THEME.font.serif};color:${THEME.goldAntique};text-align:center;}
+`;
+const RoundAnchors=styled.div<{$active:boolean}>`
+  position:absolute;left:50%;top:38%;width:min(420px,86vw);transform:translate(-50%,-50%);display:grid;grid-template-columns:repeat(3,1fr);gap:7px;pointer-events:none;opacity:${p=>p.$active?1:0};
+  >span{display:block;aspect-ratio:154 / 220;} @media(min-width:700px){grid-template-columns:repeat(6,1fr);}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
 const TableObjects = styled.div`display:flex;align-items:center;justify-content:center;gap:32px;width:100%;min-height:100px;@media(max-height:650px){min-height:72px;} `;

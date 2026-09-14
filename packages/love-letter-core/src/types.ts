@@ -117,6 +117,10 @@ export interface GameOutcome {
   reason: OutcomeReason;
   winnerIds: PlayerId[];
   winnerCards: Record<PlayerId, CardInstance>;
+  /** Explicit alias used by the round-result presentation.  At round end it
+   * contains every surviving hand, while winnerIds remains the authority for
+   * who won. */
+  revealedHands?: Record<PlayerId, CardInstance>;
   scores: Record<PlayerId, number>;
   previousScores?: Record<PlayerId, number>;
   nextStarterId?: PlayerId | null;

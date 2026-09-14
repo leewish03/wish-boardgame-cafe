@@ -515,12 +515,13 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
 
         s.roundWinnerReason = reason;
         const normalizedReason = getActivePlayers(s).length <= 1 ? 'LAST_SURVIVOR' : winners.length === 1 ? 'DECK_EXHAUSTED' : 'TIE_BREAK';
-        s.outcome = { kind: 'ROUND', reason: normalizedReason, winnerIds: s.roundWinnerIds, winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
+        s.outcome = { kind: 'ROUND', reason: normalizedReason, winnerIds: s.roundWinnerIds, winnerCards, revealedHands: winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
 
         events.push({
           type: 'ROUND_ENDED',
           winnerIds: s.roundWinnerIds,
           winnerCards,
+          revealedHands: winnerCards,
           scores,
           reason,
         });
@@ -672,11 +673,12 @@ export function resolveCommand(state: GameState, command: GameCommand): EngineRe
         }
 
         s.roundWinnerReason = '상대 탈락으로 인한 라운드 승리';
-        s.outcome = { kind: 'ROUND', reason: 'FORFEIT', winnerIds: s.roundWinnerIds, winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
+        s.outcome = { kind: 'ROUND', reason: 'FORFEIT', winnerIds: s.roundWinnerIds, winnerCards, revealedHands: winnerCards, scores, previousScores, nextStarterId: s.roundWinnerIds[0] || null, advanceAt: null };
         events.push({
           type: 'ROUND_ENDED',
           winnerIds: s.roundWinnerIds,
           winnerCards,
+          revealedHands: winnerCards,
           scores,
           reason: '상대 탈락으로 인한 라운드 승리',
         });

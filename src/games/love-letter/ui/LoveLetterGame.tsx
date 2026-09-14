@@ -417,6 +417,16 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         currentAction.roundNumber,
       );
     }
+    if (currentAction && isFinalStep && presentationBatch?.kind === 'ROUND_RESULT' && presentationBatch.isFinalAction) {
+      visual.settleToSnapshot();
+      gameSocket.acknowledgePresentation(
+        presentationBatch.id,
+        currentAction.stateVersion,
+        'ROUND_RESULT',
+        undefined,
+        currentAction.roundNumber,
+      );
+    }
     // The final visible beat may be an elimination or a forced discard, which
     // has no actorId of its own. The action summary remains the authority for
     // deciding who is allowed to release the server-side presentation gate.

@@ -12,7 +12,7 @@ export interface GameEventEnvelope {
   /** Groups several physical actions into one server-gated turn preparation. */
   presentationBatch?: {
     id: string;
-    kind: 'TURN_PREPARATION';
+    kind: 'TURN_PREPARATION' | 'ROUND_RESULT';
     isFinalAction: boolean;
   };
   recipientPlayerId?: PlayerId;

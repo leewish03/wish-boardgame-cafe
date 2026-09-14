@@ -53,12 +53,14 @@ try {
     room = await fixture(value);
     await service.handleCommand(room.code,{type:'PLAY_CARD',playerId:'p0',cardId:'played',targetId:[1,3,5,6].includes(value)?'p1':undefined,guessValue:value===1?6:undefined});
     const steps = buildPhysicalSequence(service.presentationForPlayer(room,'p0').events);
-    assert.equal(steps[0].kind,'PLAY'); assert.equal(steps.at(-1).kind,'CLEANUP');
+    assert.equal(steps[0].kind,'PLAY');
     if(value===3) {
-      assert.ok(steps.some(s=>s.kind==='COMPARE_REVIEW'));
+      assert.deepEqual(steps.map(step=>step.kind), ['PLAY','TARGET','COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','CLEANUP','COMPARE_SETTLE']);
       assert.equal(service.presentationForPlayer(room,'p2').events.find(e=>e.event.type==='BARON_COMPARED').event.comparisonHands,undefined);
+      assert.equal(steps.filter(step=>step.kind==='DISCARD_HAND').length,0,'Baron loser settles once through the comparison path');
     }
-    if(value===5) assert.ok(steps.findIndex(s=>s.kind==='DISCARD_HAND')<steps.findIndex(s=>s.kind==='DRAW'));
+    if(value!==3) assert.equal(steps.findIndex(step=>step.kind==='CLEANUP') > steps.findIndex(step=>step.kind==='RESULT_DWELL'),true);
+    if(value===5) assert.ok(steps.findIndex(s=>s.kind==='CLEANUP')<steps.findIndex(s=>s.kind==='DISCARD_HAND') && steps.findIndex(s=>s.kind==='DISCARD_HAND')<steps.findIndex(s=>s.kind==='DRAW'));
     if(value===6) assert.equal(steps.filter(s=>s.kind==='SWAP').length,1);
     if(value===8) assert.equal(room.gameStateObject.secrets.p0.hand.length,0);
   }
@@ -83,8 +85,29 @@ try {
   assert.equal((await service.applyPendingTurnOpening(room.code, fallbackGate.presentationId)).opened, true, 'The bounded fallback opens a turn when an acknowledgement is lost');
   assert.equal(room.gameStateObject.playPhase, 'TURN_INPUT');
   assert.equal((await service.acknowledgePresentation(room.code,'p0',cancelled,undefined,'RETURN_REQUEST')).success,false);
+  // Round results have their own presentation gate: surviving hands travel to
+  // the centre and next-round progress cannot start until every connected
+  // person acknowledges (or the server fallback releases it).
+  room = await fixture(4);
+  const roundState = room.gameStateObject;
+  roundState.matchState = 'ROUND_END';
+  roundState.playPhase = 'ROUND_END';
+  roundState.roundWinnerIds = ['p1'];
+  const revealedHands = { p0: roundState.secrets.p0.hand[1], p1: roundState.secrets.p1.hand[0], p2: roundState.secrets.p2.hand[0] };
+  roundState.outcome = { kind: 'ROUND', reason: 'DECK_EXHAUSTED', winnerIds: ['p1'], winnerCards: revealedHands, revealedHands, scores: { p0: 0, p1: 1, p2: 0 } };
+  service.applyGameStateToRoom(room, roundState);
+  room.pendingRoundPresentation = service.createRoundPresentation(room, room.gameStateObject, roundState, [{ type: 'ROUND_ENDED', winnerIds: ['p1'], winnerCards: revealedHands, revealedHands, scores: roundState.outcome.scores }]);
+  assert.ok(room.pendingRoundPresentation, 'Round end creates a dedicated result gate');
+  const roundView = service.presentationForPlayer(room, 'p2');
+  assert.deepEqual(buildPhysicalSequence(roundView.events).map(step => step.kind), ['ROUND_GATHER','ROUND_REVEAL','ROUND_RESULT']);
+  const gate = room.pendingRoundPresentation;
+  assert.equal((await service.acknowledgePresentation(room.code, 'p0', gate.presentationId, gate.stateVersion, 'ROUND_RESULT', gate.roundNumber)).pending, true);
+  assert.ok(room.pendingRoundPresentation, 'One acknowledgement cannot release the result');
+  await service.acknowledgePresentation(room.code, 'p1', gate.presentationId, gate.stateVersion, 'ROUND_RESULT', gate.roundNumber);
+  await service.acknowledgePresentation(room.code, 'p2', gate.presentationId, gate.stateVersion, 'ROUND_RESULT', gate.roundNumber);
+  assert.equal(room.pendingRoundPresentation, null, 'The last acknowledgement releases the result gate exactly once');
   console.log('Physical presentation: deferred turn, indefinite private review, return authorization/idempotency, privacy and all eight card sequences passed.');
 } finally {
-  service.clearResolutionTimer('PHYSICAL'); service.clearTurnPresentationTimer('PHYSICAL'); service.turnCoordinator.clearTurnTimer('PHYSICAL'); service.clearBotTimer('PHYSICAL');
+  service.clearResolutionTimer('PHYSICAL'); service.clearTurnPresentationTimer('PHYSICAL'); service.clearRoundPresentationTimer('PHYSICAL'); service.clearRoundAdvanceTimer('PHYSICAL'); service.turnCoordinator.clearTurnTimer('PHYSICAL'); service.clearBotTimer('PHYSICAL');
   await roomRepository.deleteRoom('PHYSICAL');
 }

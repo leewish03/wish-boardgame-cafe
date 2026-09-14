@@ -55,6 +55,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const [requesting,setRequesting]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const completed=useRef<string|null>(null);
+  const groupCompletion=useRef<{stepId:string|null; members:Set<string>}>({stepId:null,members:new Set()});
   const callback=useRef(onPhaseComplete);callback.current=onPhaseComplete;
   const finish=()=>{if(step && completed.current!==step.id){completed.current=step.id;callback.current?.();}};
   const played=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='CARD_PLAYED')?.event as any)?.card as CardInstance|undefined;
@@ -64,6 +65,12 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const actorText=playerCopy(players,step?.actorId,localUserId);
   const targetText=playerCopy(players,step?.targetId,localUserId);
   const returned=returnedActionId===currentAction?.actionId;
+  const completeGroup=(member:string,total:number)=>{
+    if(!step)return;
+    if(groupCompletion.current.stepId!==step.id) groupCompletion.current={stepId:step.id,members:new Set()};
+    groupCompletion.current.members.add(member);
+    if(groupCompletion.current.members.size>=total) finish();
+  };
   useLayoutEffect(()=>{
     if(!step) {setGeometry(null);return;}
     const point=(element:HTMLElement|null):Point|null=>{
@@ -85,9 +92,13 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const review=point(registry.get(step.actorId,'review'));
       const targetReview=point(registry.get(step.targetId || step.actorId,'review'));
       const deck=point(registry.get('deck',step.apply?.drawSource==='SET_ASIDE'?'aside':'deck'));
-      const discard=point(registry.get(step.actorId,'discard'));
-      const targetDiscard=point(registry.get(step.targetId || step.actorId,'discard'));
-      const roundHands = Object.fromEntries(Object.keys(step.cards || {}).flatMap(id => { const p = hand(id); return p ? [[`round:${id}`, p]] : []; }));
+      const discardAt=(id:string|undefined, ordinal?:number)=>point(registry.get(id || step.actorId, ordinal == null ? 'discard' : `discard-slot:${ordinal}` as `discard-slot:${number}`)) || point(registry.get(id || step.actorId,'discard'));
+      const discard=discardAt(step.actorId,step.apply?.discardOrdinal);
+      const targetDiscard=discardAt(step.targetId || step.actorId,step.apply?.discardOrdinal);
+      const comparisonDiscard=discardAt(step.apply?.eliminatedId || step.apply?.playerId || step.targetId || step.actorId,step.apply?.discardOrdinal);
+      const comparisonLeft=point(registry.get('table','comparison-left'));
+      const comparisonRight=point(registry.get('table','comparison-right'));
+      const roundHands = Object.fromEntries(Object.keys(step.cards || {}).flatMap((id,index) => { const p = hand(id,step.cards?.[id]); const destination=point(registry.get('table',`round-result:${index}`)); return p && destination ? [[`round:${id}`, p],[`round-destination:${id}`,destination]] : []; }));
       const required: Array<Point | null | undefined> = step.kind === 'DRAW'
         ? [deck, targetHand]
         : step.kind === 'PLAY'
@@ -95,14 +106,16 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
           : step.kind === 'TARGET'
             ? [play, targetHand]
             : step.kind === 'CLEANUP'
-              ? [play, discard]
-              : step.kind === 'ROUND_REVEAL'
+            ? [play, discard]
+            : ['COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','COMPARE_SETTLE'].includes(step.kind)
+              ? [actorHand,targetHand,comparisonLeft,comparisonRight]
+            : ['ROUND_GATHER','ROUND_REVEAL','ROUND_RESULT'].includes(step.kind)
                 ? Object.values(roundHands)
                 : [actorHand];
       if (!required.length || required.some(point => !point)) return false;
       const destination=(r:Point)=>r;
       const fallback: Point = {x:0,y:0,width:1,height:1};
-      const measured = {...roundHands,actorHand:actorHand || fallback,targetHand:targetHand || actorHand || fallback,play:play || fallback,review:review || fallback,targetReview:targetReview || review || fallback,deck:deck || fallback,discard:destination(discard || fallback),targetDiscard:destination(targetDiscard || discard || fallback)};
+      const measured = {...roundHands,actorHand:actorHand || fallback,targetHand:targetHand || actorHand || fallback,play:play || fallback,review:review || fallback,targetReview:targetReview || review || fallback,comparisonLeft:comparisonLeft || fallback,comparisonRight:comparisonRight || fallback,deck:deck || fallback,discard:destination(discard || fallback),targetDiscard:destination(targetDiscard || discard || fallback),comparisonDiscard:destination(comparisonDiscard || targetDiscard || discard || fallback)};
       setGeometry(previous => JSON.stringify(previous) === JSON.stringify(measured) ? previous : measured);
       return true;
     };
@@ -126,9 +139,26 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const review=g.review;
   const privatePhase=['BORROW','REVIEW','CONCEAL','RETURN'].includes(step.kind);
   const handEffect=['REVEAL','DISCARD_HAND','DRAW'].includes(step.kind);
-  const doubleEffect=['COMPARE','COMPARE_REVIEW','RESTORE','SWAP'].includes(step.kind);
+  const doubleEffect=step.kind==='SWAP';
   const resultDwell=step.kind==='RESULT_DWELL';
-  const drivingPlayed=!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect;
+  const comparisonStep=['COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','COMPARE_SETTLE'].includes(step.kind);
+  const roundStep=['ROUND_GATHER','ROUND_REVEAL','ROUND_RESULT'].includes(step.kind);
+  const comparisonActorCard=comparison?.comparisonHands?.[step.actorId];
+  const comparisonTargetCard=comparison?.comparisonHands?.[step.targetId!];
+  const comparisonParty=[step.actorId,step.targetId].includes(localUserId);
+  const comparisonLoserId=comparison?.eliminatedId;
+  const comparisonWinnerId=comparison?.winnerId;
+  const comparisonCard=(id:string|undefined, privateCard?:CardInstance)=>privateCard || (id===comparisonLoserId ? step.card : undefined);
+  const comparisonFace=(id:string, phase:'gather'|'reveal'|'result'|'settle')=>{
+    if(phase==='gather') return id===localUserId;
+    if(phase==='reveal') return comparisonParty;
+    if(phase==='result') return comparisonParty || id===comparisonLoserId;
+    return id===comparisonLoserId || id===localUserId;
+  };
+  // Comparison and round-result stages own their multi-card completion
+  // barrier. The already played card can remain visible, but cannot release
+  // that barrier by itself.
+  const drivingPlayed=!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect&&!comparisonStep&&!roundStep;
   const returnCard=()=>{
     if(requesting)return;setRequesting(true);setError(null);
     onReturnCard(currentAction.actionId,currentAction.stateVersion,result=>{
@@ -136,7 +166,19 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     });
   };
   return <Layer data-physical-step={step.kind}>
-    {step.kind==='ROUND_REVEAL' && (() => { const visible=Object.entries(step.cards || {}).filter(([id])=>g[`round:${id}`]); return visible.map(([id, card], index) => <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={g[`round:${id}`]} to={g[`round:${id}`]} card={card} faceUp duration={step.duration} onComplete={index===visible.length-1?finish:undefined}/>); })()}
+    {comparisonStep && <ComparisonVeil/>}
+    {roundStep && (() => { const visible=Object.entries(step.cards || {}).filter(([id])=>g[`round:${id}`]&&g[`round-destination:${id}`]); return visible.map(([id, card]) => {
+      const to=g[`round-destination:${id}`]; const winner=(step.apply?.winnerIds || []).includes(id);
+      return <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={step.kind==='ROUND_GATHER'?g[`round:${id}`]:to} to={to} toOffset={step.kind==='ROUND_RESULT'&&winner?{x:0,y:-10,scale:1.06}:undefined} card={card} faceUp={step.kind!=='ROUND_GATHER'} duration={step.duration} onComplete={()=>completeGroup(`round:${id}`,visible.length)}/>;
+    }); })()}
+    {comparisonStep && [step.actorId,step.targetId].filter((id):id is string=>Boolean(id)).map((id,index)=>{
+      const isActor=index===0; const privateCard=isActor?comparisonActorCard:comparisonTargetCard; const card=comparisonCard(id,privateCard);
+      const fromHand=isActor?g.actorHand:g.targetHand; const stage=isActor?g.comparisonLeft:g.comparisonRight;
+      const isLoser=id===comparisonLoserId; const isWinner=id===comparisonWinnerId;
+      const to=step.kind==='COMPARE_SETTLE'?(isLoser?g.comparisonDiscard:(isWinner?(isActor?g.actorHand:g.targetHand):fromHand)):stage;
+      const phase=step.kind==='COMPARE_GATHER'?'gather':step.kind==='COMPARE_REVEAL'?'reveal':step.kind==='COMPARE_RESULT'?'result':'settle';
+      return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={step.id} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={()=>completeGroup(`comparison:${id}`,2)}/>;
+    })}
     {played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
       from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
     {privatePhase && geometry && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
@@ -148,9 +190,9 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       card={step.card} faceUp={step.kind!=='DRAW' || step.targetId===localUserId} duration={step.duration} onComplete={finish}/>}
     {doubleEffect && geometry && [0,1].map(index=><TableCard key={`${currentAction.actionId}:exchange:${index}`} identity={`${currentAction.actionId}:exchange:${index}`} stepId={step.id}
       from={index?g.targetHand:g.actorHand}
-      to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):step.kind==='RESTORE'?(index?g.targetHand:g.actorHand):(index?g.targetReview:review)}
+      to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):(index?g.targetReview:review)}
       card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}
-      faceUp={step.kind==='COMPARE_REVIEW' && [step.actorId,step.targetId].includes(localUserId)} duration={step.duration} onComplete={index===1?finish:undefined}/>)}
+      faceUp={false} duration={step.duration} onComplete={index===1?finish:undefined}/>) }
     {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
     {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
       <span>{actorText.subject} {targetText.possessive} 카드를 확인 중</span>
@@ -160,6 +202,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   </Layer>;
 };
 const Layer=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;perspective:900px;`;
+const ComparisonVeil=styled.div`position:absolute;inset:0;background:rgba(14,18,27,.16);backdrop-filter:brightness(.94);`;
 const CardObject=styled.div`position:absolute;left:0;top:0;width:154px;height:220px;transform-origin:center;transform-style:preserve-3d;will-change:transform;`;
 const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;`;
 const Back=styled(Front)`transform:rotateY(180deg);`;

@@ -67,16 +67,19 @@ const HeldSlot: React.FC<{playerId:string;index:number;visible:boolean}> = ({pla
 export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]; local?:boolean; hideLatest?:boolean; onInspect?:()=>void}> = ({playerId,cards,local=false,hideLatest=false,onInspect}) => {
   const anchor = useTableAnchor(playerId, 'discard');
   const latestAnchor = useTableAnchor(playerId, 'discard-latest');
-  const pileAnchor = React.useCallback((element: HTMLSpanElement | null) => {
-    anchor(element);
-    latestAnchor(element);
-  }, [anchor, latestAnchor]);
   const settledCards = hideLatest ? cards.slice(0, -1) : cards;
+  const insertionAnchor = useTableAnchor(playerId, `discard-slot:${settledCards.length}`);
+  const latestCardAnchor = React.useCallback((element: HTMLSpanElement | null) => latestAnchor(element), [latestAnchor]);
+  const nextCardAnchor = React.useCallback((element: HTMLSpanElement | null) => {
+    anchor(element);
+    insertionAnchor(element);
+  }, [anchor, insertionAnchor]);
   return <Shelf type="button" onClick={onInspect} $local={local} aria-label={`공개 버린 패 ${cards.length}장`}>
     {!local && <ShelfLabel>공개 패</ShelfLabel>}
     <Pile $local={local}>
-      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? pileAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <MiniFace><b>{card.value}</b><span>{card.name}</span></MiniFace>}</DiscardCard>)}
-      {settledCards.length===0 && <><DiscardLanding ref={pileAnchor} $local={local}/><NoCards>아직 없음</NoCards></>}
+      {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? latestCardAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <MiniFace><b>{card.value}</b><span>{card.name}</span></MiniFace>}</DiscardCard>)}
+      <DiscardInsertion ref={nextCardAnchor} $local={local} $ordinal={settledCards.length}/>
+      {settledCards.length===0 && <><DiscardLanding $local={local}/><NoCards>아직 없음</NoCards></>}
     </Pile>
   </Shelf>;
 };
@@ -173,6 +176,10 @@ const ShelfLabel=styled.span`position:absolute;left:0;top:0;font-size:9px;color:
 const Pile=styled.span<{$local:boolean}>`
   position:relative;width:100%;min-height:${p=>p.$local?'77px':'52px'};display:flex;flex-wrap:nowrap;align-items:flex-end;gap:${p=>p.$local?'4px':'0'};overflow-x:${p=>p.$local?'auto':'visible'};overflow-y:visible;
   @media(max-width:420px){min-height:${p=>p.$local?'71px':'52px'};}
+`;
+const DiscardInsertion=styled.span<{$local:boolean;$ordinal:number}>`
+  position:absolute;left:${p=>p.$local ? `${p.$ordinal * 58}px` : `${p.$ordinal * 27}px`};bottom:0;width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};pointer-events:none;visibility:hidden;
+  @media(max-width:420px){left:${p=>p.$local ? `${p.$ordinal * 54}px` : `${p.$ordinal * 27}px`};width:${p=>p.$local?'50px':'36px'};height:${p=>p.$local?'71px':'52px'};}
 `;
 const DiscardCard=styled.span<{$local:boolean}>`
   width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;color:${THEME.primary};box-shadow:0 1px 3px rgba(9,13,22,.14);background:transparent;border:0;overflow:hidden;

@@ -88,6 +88,7 @@ export class LoveLetterService {
     this.botTimers = new Map();
     this.resolutionTimers = new Map();
     this.turnPresentationTimers = new Map();
+    this.roundPresentationTimers = new Map();
     this.pauseExpiryTimers = new Map();
     this.roundAdvanceTimers = new Map();
     this.progressRequests = new Map();
@@ -225,6 +226,18 @@ export class LoveLetterService {
 
   async applyPresentationAcknowledgement(roomCode, playerId, actionId, expectedStateVersion, completedPhase, roundNumber) {
     const room = await roomRepository.getRoom(roomCode);
+    const roundPending = room?.pendingRoundPresentation;
+    if (roundPending && completedPhase === 'ROUND_RESULT') {
+      if (roundPending.presentationId !== actionId || (expectedStateVersion != null && roundPending.stateVersion !== expectedStateVersion) || (roundNumber != null && roundPending.roundNumber !== roundNumber)) {
+        return { success: false, stale: true, error: '이전 라운드 결과의 확인입니다.' };
+      }
+      if (!roundPending.requiredPlayerIds.includes(playerId)) return { success: false, error: '현재 결과 확인 대상이 아닙니다.' };
+      if (!roundPending.acknowledgedPlayerIds.includes(playerId)) roundPending.acknowledgedPlayerIds.push(playerId);
+      await roomRepository.saveRoom(room);
+      if (roundPending.requiredPlayerIds.every((id) => roundPending.acknowledgedPlayerIds.includes(id))) return this.releasePendingRoundPresentation(roomCode, roundPending.presentationId);
+      await this.schedulePendingRoundPresentation(roomCode);
+      return { success: true, pending: true };
+    }
     const turnPending = room?.pendingTurnPresentation;
     if (turnPending && completedPhase === 'TURN_PREPARATION') {
       if (turnPending.presentationId !== actionId || (expectedStateVersion != null && turnPending.stateVersion !== expectedStateVersion)) {
@@ -290,13 +303,19 @@ export class LoveLetterService {
     if (gameState.playPhase === 'TURN_PREPARING') {
       room.pendingTurnPresentation = this.createTurnPresentation(room, beforeState, gameState, transitionEvents, 'TURN_DRAW');
     }
+    if (gameState.matchState === 'ROUND_END') {
+      room.pendingRoundPresentation = this.createRoundPresentation(room, beforeState, gameState, transitionEvents);
+    }
     await roomRepository.saveRoom(room);
-    for (const [sequence, event] of transitionEvents.entries()) {
-      this.broadcastGameEvent(roomCode, gameState, { ...event, sequence: event.sequence ?? sequence });
+    if (!room.pendingRoundPresentation) {
+      for (const [sequence, event] of transitionEvents.entries()) {
+        this.broadcastGameEvent(roomCode, gameState, { ...event, sequence: event.sequence ?? sequence });
+      }
     }
     this.broadcastGameSnapshot(roomCode, room);
     this.broadcastRoomState(this.io, roomCode);
-    this.scheduleRoundAdvance(roomCode, room, gameState);
+    if (room.pendingRoundPresentation) await this.schedulePendingRoundPresentation(roomCode);
+    else this.scheduleRoundAdvance(roomCode, room, gameState);
     if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
     else {
       this.scheduleTurnTimeout(roomCode, gameState);
@@ -370,6 +389,61 @@ export class LoveLetterService {
     this.turnPresentationTimers.delete(roomCode);
   }
 
+  clearRoundPresentationTimer(roomCode) {
+    const timer = this.roundPresentationTimers.get(roomCode);
+    if (timer) clearTimeout(timer);
+    this.roundPresentationTimers.delete(roomCode);
+  }
+
+  createRoundPresentation(room, beforeState, gameState, events) {
+    const roundEvent = events.find((event) => event.type === 'ROUND_ENDED');
+    if (!roundEvent || !Object.keys(roundEvent.revealedHands || roundEvent.winnerCards || {}).length) return null;
+    const presentationId = `round_presentation_${gameState.roundNumber}_${gameState.stateVersion}`;
+    const advanceAt = Date.now() + 10_000;
+    if (gameState.outcome) {
+      gameState.outcome.advanceAt = advanceAt;
+      gameState.outcome.canAdvanceAt = Math.max(Date.now(), advanceAt - 7_000);
+    }
+    return {
+      kind: 'ROUND_RESULT', presentationId, roundNumber: gameState.roundNumber, stateVersion: gameState.stateVersion,
+      beforeState, events: [roundEvent],
+      requiredPlayerIds: room.players.filter((player) => !player.isBot && player.socketId && !player.isDisconnected).map((player) => player.id),
+      acknowledgedPlayerIds: [], fallbackAt: Date.now() + ROUND_PRESENTATION_MAX_WAIT_MS, advanceAt,
+    };
+  }
+
+  async schedulePendingRoundPresentation(roomCode) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingRoundPresentation;
+    if (!room || !pending || room.isPaused) return;
+    this.clearRoundPresentationTimer(roomCode);
+    if (!pending.requiredPlayerIds.length || pending.requiredPlayerIds.every((id) => pending.acknowledgedPlayerIds.includes(id))) {
+      await this.releasePendingRoundPresentation(roomCode, pending.presentationId);
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.roundPresentationTimers.delete(roomCode);
+      this.runRoomOperation(roomCode, () => this.releasePendingRoundPresentation(roomCode, pending.presentationId)).catch((error) => console.error('Round presentation fallback failed:', error.message));
+    }, Math.max(25, pending.fallbackAt - Date.now()));
+    timer.unref?.();
+    this.roundPresentationTimers.set(roomCode, timer);
+  }
+
+  async releasePendingRoundPresentation(roomCode, presentationId) {
+    const room = await roomRepository.getRoom(roomCode);
+    const pending = room?.pendingRoundPresentation;
+    if (!room || !pending || pending.presentationId !== presentationId || room.isPaused) return { success: false, stale: true };
+    const allAcknowledged = pending.requiredPlayerIds.every((id) => pending.acknowledgedPlayerIds.includes(id));
+    if (!allAcknowledged && Date.now() < pending.fallbackAt) return { success: false, pending: true };
+    this.clearRoundPresentationTimer(roomCode);
+    room.pendingRoundPresentation = null;
+    await roomRepository.saveRoom(room);
+    this.broadcastGameSnapshot(roomCode, room);
+    this.broadcastRoomState(this.io, roomCode);
+    this.scheduleRoundAdvance(roomCode, room, room.gameStateObject, pending.advanceAt);
+    return { success: true, released: true };
+  }
+
   applyGameStateToRoom(room, gameState) {
     room.gameStateObject = gameState;
     room.gameState = gameState.matchState;
@@ -415,7 +489,7 @@ export class LoveLetterService {
           serverTime: Date.now(),
           publicState,
           privateState: secret,
-          presentation: (room.pendingResolution || room.pendingTurnPresentation) ? this.presentationForPlayer(room, player.id) : null,
+          presentation: (room.pendingResolution || room.pendingTurnPresentation || room.pendingRoundPresentation) ? this.presentationForPlayer(room, player.id) : null,
         };
         this.io.to(player.socketId).emit(SOCKET_EVENTS.GAME_SNAPSHOT, snapshot);
       }
@@ -442,6 +516,7 @@ export class LoveLetterService {
   presentationForPlayer(room, playerId) {
     const pending = room.pendingResolution;
     const turnPending = room.pendingTurnPresentation;
+    const roundPending = room.pendingRoundPresentation;
     if (turnPending) {
       return {
         kind: 'TURN_PREPARATION',
@@ -475,6 +550,23 @@ export class LoveLetterService {
         }),
       };
     }
+    if (roundPending) {
+      return {
+        kind: 'ROUND_RESULT', actionId: roundPending.presentationId, stateVersion: roundPending.stateVersion,
+        roundNumber: roundPending.roundNumber, returnRequested: false,
+        before: {
+          publicState: core.getPublicGameState(roundPending.beforeState),
+          privateState: core.getPrivatePlayerState(roundPending.beforeState, playerId),
+        },
+        events: roundPending.events.map((event, sequence) => ({
+          eventId: `${roundPending.presentationId}:${sequence}:${playerId}`,
+          actionId: roundPending.presentationId, stateVersion: roundPending.stateVersion, roundNumber: roundPending.roundNumber,
+          timestamp: roundPending.fallbackAt, recipientPlayerId: playerId,
+          event: this.projectEventForPlayer(event, room.gameStateObject, playerId), presentation: null,
+          presentationBatch: { id: roundPending.presentationId, kind: 'ROUND_RESULT', isFinalAction: sequence === roundPending.events.length - 1 },
+        })),
+      };
+    }
     if (!pending) return null;
     return {
       kind: 'CARD_ACTION',
@@ -506,17 +598,20 @@ export class LoveLetterService {
     if (room.isPaused && command.type !== 'FORFEIT') {
       throw new Error('재접속을 기다리는 동안 게임이 일시 정지되었습니다.');
     }
-    if ((room.pendingResolution || room.pendingTurnPresentation) && command.type !== 'FORFEIT') {
+    if ((room.pendingResolution || room.pendingTurnPresentation || room.pendingRoundPresentation) && command.type !== 'FORFEIT') {
       throw new Error('이전 카드 행동을 확인하는 중입니다.');
     }
     if (command.type === 'FORFEIT') {
       this.clearPauseExpiryTimer(roomCode);
       this.clearResolutionTimer(roomCode);
       this.clearTurnPresentationTimer(roomCode);
+      this.clearRoundPresentationTimer(roomCode);
       if (room.pendingResolution) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingResolution.actionId });
       room.pendingResolution = null;
       if (room.pendingTurnPresentation) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingTurnPresentation.presentationId });
       room.pendingTurnPresentation = null;
+      if (room.pendingRoundPresentation) this.io.to(roomCode).emit('game:presentation-cancel', { actionId: room.pendingRoundPresentation.presentationId });
+      room.pendingRoundPresentation = null;
     }
 
     const beforeState = room.gameStateObject;
@@ -551,19 +646,25 @@ export class LoveLetterService {
         requiresActorAck: timing.requiresActorAck,
         requiresPrivateReview: timing.requiresPrivateReview,
         beforeState,
-          events: actionEvents.map((event, sequence) => ({
-          ...event, actionId, sequence,
-          ...(event.type === 'PLAYER_ELIMINATED' ? {
-            discardedCards: (nextState.players.find(p => p.id === event.playerId)?.discardPile || []).filter(card =>
+        events: actionEvents.map((event, sequence) => {
+          const augmented = { ...event, actionId, sequence };
+          const discardOrdinal = (playerId, cardId) => (nextState.players.find(p => p.id === playerId)?.discardPile || []).findIndex(card => card.id === cardId);
+          if (event.type === 'CARD_PLAYED') augmented.discardOrdinal = discardOrdinal(event.actorId, event.card.id);
+          if (event.type === 'PRINCE_DISCARDED') augmented.discardOrdinal = discardOrdinal(event.targetId, event.discardedCard.id);
+          if (event.type === 'PLAYER_ELIMINATED') {
+            const discardedCards = (nextState.players.find(p => p.id === event.playerId)?.discardPile || []).filter(card =>
               card.id !== nextState.lastAction.card.id &&
               !(beforeState.players.find(p => p.id === event.playerId)?.discardPile || []).some(old => old.id === card.id) &&
-              !actionEvents.some(e => e.type === 'PRINCE_DISCARDED' && e.discardedCard.id === card.id)),
-          } : {}),
-          ...(event.type === 'BARON_COMPARED' ? { comparisonHands: {
+              !actionEvents.some(e => e.type === 'PRINCE_DISCARDED' && e.discardedCard.id === card.id));
+            augmented.discardedCards = discardedCards;
+            augmented.discardOrdinals = Object.fromEntries(discardedCards.map(card => [card.id, discardOrdinal(event.playerId, card.id)]));
+          }
+          if (event.type === 'BARON_COMPARED') augmented.comparisonHands = {
             [event.actorId]: beforeState.secrets[event.actorId].hand.find(c => c.id !== nextState.lastAction.card.id),
             [event.targetId]: beforeState.secrets[event.targetId].hand[0],
-          } } : {}),
-        })),
+          };
+          return augmented;
+        }),
       };
       const duration = buildPhysicalSequence(room.pendingResolution.events.map(event => ({ event, actionId, presentation: nextState.lastAction }))).reduce((sum, step) => sum + step.duration * 1000, 0);
       room.pendingResolution.minAdvanceAt = Date.now() + duration + 250;
@@ -572,7 +673,10 @@ export class LoveLetterService {
     if (!isCardAction && nextState.playPhase === 'TURN_PREPARING') {
       room.pendingTurnPresentation = this.createTurnPresentation(room, beforeState, nextState, events, 'TURN_DRAW');
     }
-    if (!isCardAction) this.scheduleRoundAdvance(roomCode, room, nextState);
+    if (!isCardAction && nextState.matchState === 'ROUND_END') {
+      room.pendingRoundPresentation = this.createRoundPresentation(room, beforeState, nextState, events);
+    }
+    if (!isCardAction && !room.pendingRoundPresentation) this.scheduleRoundAdvance(roomCode, room, nextState);
     await roomRepository.saveRoom(room);
 
     for (const [sequence, ev] of actionEvents.entries()) {
@@ -589,7 +693,8 @@ export class LoveLetterService {
     } else {
       this.broadcastGameSnapshot(roomCode, room);
       this.broadcastRoomState(this.io, roomCode);
-      if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
+      if (room.pendingRoundPresentation) await this.schedulePendingRoundPresentation(roomCode);
+      else if (room.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
       else {
         this.scheduleTurnTimeout(roomCode, nextState);
         this.scheduleNextTurnIfBot(roomCode);
@@ -673,10 +778,12 @@ export class LoveLetterService {
     this.roundAdvanceTimers.delete(roomCode);
   }
 
-  scheduleRoundAdvance(roomCode, room, gameState) {
+  scheduleRoundAdvance(roomCode, room, gameState, requestedAdvanceAt = null) {
     this.clearRoundAdvanceTimer(roomCode);
     if (gameState.matchState !== 'ROUND_END') return;
-    const advanceAt = Date.now() + 10_000;
+    const now = Date.now();
+    const requested = Number(requestedAdvanceAt);
+    const advanceAt = Number.isFinite(requested) && requested > now ? requested : now + 10_000;
     if (gameState.outcome) {
       gameState.outcome.advanceAt = advanceAt;
       gameState.outcome.canAdvanceAt = advanceAt - 7_000;
@@ -687,7 +794,7 @@ export class LoveLetterService {
       const latest = await roomRepository.getRoom(roomCode);
       if (!latest?.gameStateObject || latest.gameStateObject.matchState !== 'ROUND_END') return;
       try { await this.startMatch(roomCode, latest.hostId); } catch (error) { console.error('Automatic round advance failed:', error.message); }
-    }, 10_000);
+    }, Math.max(0, advanceAt - Date.now()));
     timer.unref?.();
     this.roundAdvanceTimers.set(roomCode, timer);
   }
@@ -716,6 +823,7 @@ export class LoveLetterService {
     if (!room?.gameStateObject) throw new Error('방을 찾을 수 없습니다.');
     if (room.hostId !== hostId) throw new Error('방장만 다음 라운드를 시작할 수 있습니다.');
     if (room.gameStateObject.matchState !== 'ROUND_END') throw new Error('다음 라운드를 시작할 수 있는 상태가 아닙니다.');
+    if (room.pendingRoundPresentation) throw new Error('라운드 결과를 확인하는 중입니다.');
     if (expectedStateVersion != null && expectedStateVersion !== room.gameStateObject.stateVersion) throw new Error('게임 상태가 변경되었습니다. 다시 확인해 주세요.');
     const manualAdvanceAt = Number(room.gameStateObject.outcome?.advanceAt || 0) - 7_000;
     if (manualAdvanceAt > Date.now()) throw new Error('결과를 확인할 시간을 잠시 더 주세요.');

@@ -22,7 +22,7 @@ export interface UseGameSocketReturn {
   gameState: GameState | null;
   myHand: CardInstance[];
   lastAction: any | null;
-  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => void;
+  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
@@ -265,10 +265,12 @@ export function useGameSocket({
         pendingDraws.current.forEach(envelope => onGameEvent?.(envelope));
       }
       pendingDraws.current = [];
+      if (snapshot.presentation?.kind === 'ROUND_RESULT') outcomeVersion.current = snapshot.stateVersion;
       if (!snapshot.presentation && snapshot.publicState.outcome?.winnerCards && outcomeVersion.current !== snapshot.stateVersion && ['ROUND_END','GAME_OVER'].includes(snapshot.publicState.matchState)) {
         outcomeVersion.current = snapshot.stateVersion;
         onGameEvent?.({ eventId: `outcome_${snapshot.stateVersion}`, actionId: `outcome_${snapshot.stateVersion}`, stateVersion: snapshot.stateVersion, timestamp: snapshot.serverTime,
-          event: { type: 'ROUND_ENDED', winnerCards: snapshot.publicState.outcome.winnerCards } } as any);
+          roundNumber: incomingRound,
+          event: { type: 'ROUND_ENDED', winnerCards: snapshot.publicState.outcome.winnerCards, revealedHands: snapshot.publicState.outcome.revealedHands || snapshot.publicState.outcome.winnerCards, winnerIds: snapshot.publicState.outcome.winnerIds || [], scores: snapshot.publicState.outcome.scores || {} } } as any);
       }
       seenRound.current = incomingRound;
       if (snapshot.presentation) {
@@ -326,7 +328,7 @@ export function useGameSocket({
   // Derive GameState & Hand
   const { gameState, myHand } = useMemo(() => adaptRoomStateToGameState(rawRoomState, myUserId), [rawRoomState, myUserId]);
 
-  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => {
+  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => {
     if (!socket?.connected) {
       callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
       return;

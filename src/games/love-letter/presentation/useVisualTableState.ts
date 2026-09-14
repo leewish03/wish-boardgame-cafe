@@ -114,6 +114,23 @@ function applyEvent(table: VisualTableState, event: any, localUserId: string, la
       if (event.targetId === localUserId && event.discardedCard?.id) next = { ...next, myHand: next.myHand.filter((item) => item.id !== event.discardedCard.id) };
       break;
     }
+    case 'COMPARE_SETTLED': {
+      const eliminatedId = event.eliminatedId || event.playerId;
+      next = {
+        ...next,
+        players: updatePlayer(next.players, eliminatedId, (player) => ({
+          ...appendDiscard(
+            { ...player, cardCount: 0, isEliminated: true },
+            event.discardedCard,
+            latest.players.find((candidate) => candidate.id === eliminatedId),
+          ),
+          isEliminated: true,
+          cardCount: 0,
+        })),
+      };
+      if (eliminatedId === localUserId) next = { ...next, myHand: [] };
+      break;
+    }
     case 'PLAYER_PROTECTED':
     case 'HANDMAID_PROTECTED':
       next = { ...next, players: updatePlayer(next.players, event.actorId || event.playerId, (player) => ({ ...player, isProtected: true })) };
