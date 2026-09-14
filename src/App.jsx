@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import styled, { css } from 'styled-components';
 import { THEME } from './shared/theme';
 import {
@@ -30,8 +30,6 @@ import {
   loadSession,
   clearSession,
 } from './shared/useSessionGuard';
-import LoveLetterBoard from './games/love-letter/LoveLetterBoard';
-import LoveLetterGame from './games/love-letter/ui/LoveLetterGame';
 import { RoomVoiceControls } from './games/love-letter/ui/GameMenuDrawer';
 import {
   Coffee,
@@ -53,6 +51,9 @@ import {
   UserPlus,
   Trash2,
 } from 'lucide-react';
+
+const LoveLetterGame = React.lazy(() => import('./games/love-letter/ui/LoveLetterGame'));
+const DalmutiGame = React.lazy(() => import('./games/dalmuti/DalmutiGame'));
 
 // =========================================================================
 // App Container & Layout
@@ -233,6 +234,29 @@ const GameGrid = styled.div`
   @media (max-width: 560px) {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
+  }
+`;
+
+const GameLoadingScreen = styled.div`
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
+  color: ${THEME.foreground};
+
+  div {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    font-family: ${THEME.font.serif};
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
+
+  span {
+    font: 700 11px ${THEME.font.sans};
+    color: ${THEME.mutedForeground};
+    letter-spacing: normal;
   }
 `;
 
@@ -420,6 +444,11 @@ export default function App() {
   const [targetTokens, setTargetTokens] = useState(4);
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
+  const [roundCount, setRoundCount] = useState(10);
+  const [firstDealRevolution, setFirstDealRevolution] = useState(true);
+  const [useStrippedDeck, setUseStrippedDeck] = useState(true);
+  const [philanthropicScoring, setPhilanthropicScoring] = useState(false);
+  const [merchantExchange, setMerchantExchange] = useState(false);
 
   // Chat message in waiting room
   const [chatInput, setChatInput] = useState('');
@@ -659,11 +688,17 @@ export default function App() {
 
   // Open Room Creation Dialog
   const handleOpenCreateDialog = (gameKey) => {
-    if (gameKey !== 'LOVE_LETTER') {
+    if (gameKey !== 'LOVE_LETTER' && gameKey !== 'DALMUTI') {
       setToastMessage('해당 게임은 현재 개발 중입니다! 곧 출시됩니다.');
       return;
     }
     setSelectedGameForCreate(gameKey);
+    if (gameKey === 'DALMUTI') {
+      setMaxPlayers((value) => value < 4 ? 6 : Math.min(8, value));
+      setTurnTimeLimit((value) => value === 60 ? 30 : value);
+    } else {
+      setMaxPlayers((value) => Math.min(6, value));
+    }
     setCreateDialogOpen(true);
   };
 
@@ -684,6 +719,11 @@ export default function App() {
         targetTokens,
         maxPlayers,
         turnTimeLimit,
+        roundCount,
+        firstDealRevolution,
+        useStrippedDeck,
+        philanthropicScoring,
+        merchantExchange,
       },
       (res) => {
         if (res?.success) {
@@ -800,7 +840,7 @@ export default function App() {
     if (!socket) return;
     sfx.playCardPlay();
     socket.emit(
-      'game:start',
+      roomState?.gameType === 'DALMUTI' ? 'dalmuti:start' : 'game:start',
       {
         roomCode: roomState?.code,
         userId: currentUser?.id,
@@ -1056,8 +1096,8 @@ export default function App() {
                     </CardFooter>
                   </Card>
 
-                  {/* Game 2: The Great Dalmuti (Coming Soon) */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('DALMUTI')} style={{ opacity: 0.6 }}>
+                  {/* Game 2: The Great Dalmuti */}
+                  <Card $hoverable onClick={() => handleOpenCreateDialog('DALMUTI')}>
                     <CardHeader>
                       <GameThumbnail $bg="linear-gradient(135deg, #312e81 0%, #090d16 100%)">
                         <span className="emblem-title">THE DALMUTI</span>
@@ -1065,7 +1105,7 @@ export default function App() {
                       </GameThumbnail>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <CardTitle>달무티</CardTitle>
-                        <Badge $variant="outline">COMING SOON</Badge>
+                        <Badge $variant="emerald">LIVE</Badge>
                       </div>
                       <CardDescription>
                         4~8인 · 30분 · 계급 역전 카드 게임
@@ -1077,8 +1117,9 @@ export default function App() {
                       </p>
                     </CardContent>
                     <CardFooter>
-                      <Button $variant="secondary" $size="sm" $fullWidth disabled>
-                        준비 중
+                      <Button $variant="default" $size="sm" $fullWidth>
+                        <Play size={13} />
+                        입장 / 테이블 생성
                       </Button>
                     </CardFooter>
                   </Card>
@@ -1156,7 +1197,7 @@ export default function App() {
                   {openRooms.length === 0 ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.mutedForeground }}>현재 표시할 활성 방이 없습니다.</CardContent></Card> : openRooms.map((room) => (
                     <Card key={room.id} style={{ cursor: 'default' }}>
                       <CardContent style={{ padding: '13px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 러브레터</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '4px' }}>라운드 {room.roundNumber} · 목표 {room.targetTokens} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
+                        <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 {room.gameType === 'DALMUTI' ? '달무티' : '러브레터'}</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '4px' }}>라운드 {room.roundNumber} · {room.gameType === 'DALMUTI' ? `${room.roundCount || 10}라운드제` : `목표 ${room.targetTokens}`} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
                         <div style={{ textAlign: 'right', fontSize: '11px', fontWeight: 800 }}><Badge $variant={room.status === 'PLAYING' ? 'burgundy' : room.status === 'RECONNECTING' ? 'outline' : 'emerald'}>{room.status === 'RECONNECTING' ? '재접속 대기' : room.status}</Badge><div style={{ marginTop: '5px', color: THEME.mutedForeground }}>{room.connectedCount}/{room.playerCount} 연결 · 최대 {room.maxPlayers}</div></div>
                       </CardContent>
                     </Card>
@@ -1176,9 +1217,9 @@ export default function App() {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <CardTitle>러브레터 살롱</CardTitle>
+                  <CardTitle>{roomState?.gameType === 'DALMUTI' ? '달무티 계급 살롱' : '러브레터 살롱'}</CardTitle>
                   <CardDescription>
-                    목표 토큰 {roomState?.targetTokens || 4}개 · 턴 제한시간 {roomState?.turnTimeLimit === 0 ? '무제한' : `${roomState?.turnTimeLimit ?? 60}초`}
+                    {roomState?.gameType === 'DALMUTI' ? `${roomState?.roundCount || 10}라운드 · 4~8인` : `목표 토큰 ${roomState?.targetTokens || 4}개`} · 턴 제한시간 {roomState?.turnTimeLimit === 0 ? '무제한' : `${roomState?.turnTimeLimit ?? 60}초`}
                   </CardDescription>
                 </div>
 
@@ -1192,7 +1233,7 @@ export default function App() {
             <CardContent>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, textTransform: 'uppercase' }}>
-                  PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4})
+                  PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}) · {roomState?.gameType === 'DALMUTI' ? '최소 4인' : '최소 2인'}
                 </div>
                 {isHost && (
                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -1306,7 +1347,7 @@ export default function App() {
                   <Button
                     $variant="gold"
                     onClick={handleStartGame}
-                    disabled={(roomState?.players?.length || 0) < 2 || !allReady}
+                    disabled={(roomState?.players?.length || 0) < (roomState?.gameType === 'DALMUTI' ? 4 : 2) || !allReady}
                   >
                     <Play size={16} />
                     <span>게임 시작</span>
@@ -1318,10 +1359,11 @@ export default function App() {
         )}
 
         {/* ========================================================= */}
-        {/* SCREEN 4: In-Game Board (Love Letter v2 Game Shell) */}
+        {/* SCREEN 4: Game-specific board */}
         {/* ========================================================= */}
         {screen === 'game' && roomState && (
-          <LoveLetterGame
+          <Suspense fallback={<GameLoadingScreen><div>TABLE PREPARING<span>게임 테이블을 준비하고 있습니다</span></div></GameLoadingScreen>}>
+          {roomState.gameType === 'DALMUTI' ? <DalmutiGame
             roomState={roomState}
             currentUser={currentUser}
             socket={socket}
@@ -1330,7 +1372,17 @@ export default function App() {
             chatMessages={roomState?.chatMessages || []}
             onSendChat={handleSendChat}
             onLeave={handleLeaveRoom}
-          />
+          /> : <LoveLetterGame
+            roomState={roomState}
+            currentUser={currentUser}
+            socket={socket}
+            webrtc={webrtc}
+            stt={stt}
+            chatMessages={roomState?.chatMessages || []}
+            onSendChat={handleSendChat}
+            onLeave={handleLeaveRoom}
+          />}
+          </Suspense>
         )}
       </MainContent>
 
@@ -1339,12 +1391,12 @@ export default function App() {
       {/* ========================================================= */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogHeader>
-          <DialogTitle>러브레터 살롱 테이블 생성</DialogTitle>
-          <DialogDescription>게임 목표 토큰 및 규칙을 설정하세요.</DialogDescription>
+          <DialogTitle>{selectedGameForCreate === 'DALMUTI' ? '달무티 계급 살롱 테이블 생성' : '러브레터 살롱 테이블 생성'}</DialogTitle>
+          <DialogDescription>{selectedGameForCreate === 'DALMUTI' ? '라운드 수와 공식 선택 규칙을 설정하세요.' : '게임 목표 토큰 및 규칙을 설정하세요.'}</DialogDescription>
         </DialogHeader>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '16px 0' }}>
-          <div>
+          {selectedGameForCreate === 'LOVE_LETTER' && <div>
             <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               VICTORY TARGET (승리 목표 토큰): {targetTokens}개
             </label>
@@ -1362,14 +1414,23 @@ export default function App() {
                 </Button>
               ))}
             </div>
-          </div>
+          </div>}
+
+          {selectedGameForCreate === 'DALMUTI' && <div>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+              MATCH ROUNDS (매치 라운드): {roundCount}
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[5, 10, 20].map((num) => <Button key={num} type="button" $variant={roundCount === num ? 'default' : 'secondary'} $size="sm" onClick={() => setRoundCount(num)} style={{ flex: 1 }}>{num}라운드</Button>)}
+            </div>
+          </div>}
 
           <div>
             <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               MAX PLAYERS (최대 플레이 인원): {maxPlayers}명
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
-              {[2, 3, 4, 5, 6].map((num) => (
+              {(selectedGameForCreate === 'DALMUTI' ? [4, 5, 6, 7, 8] : [2, 3, 4, 5, 6]).map((num) => (
                 <Button
                   key={num}
                   type="button"
@@ -1403,6 +1464,17 @@ export default function App() {
               ))}
             </div>
           </div>
+
+          {selectedGameForCreate === 'DALMUTI' && <div style={{ display: 'grid', gap: '8px' }}>
+            {[
+              ['첫 판 자동 혁명', firstDealRevolution, setFirstDealRevolution],
+              ['4·5인 축소 덱', useStrippedDeck, setUseStrippedDeck],
+              ['자선 점수', philanthropicScoring, setPhilanthropicScoring],
+              ['상인 무작위 교환', merchantExchange, setMerchantExchange],
+            ].map(([label, checked, setter]) => <label key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '9px 11px', border: `1px solid ${checked ? THEME.gold : THEME.border}`, borderRadius: THEME.radius.md, background: checked ? '#fffdf3' : '#fff', fontSize: '12px', fontWeight: 750, cursor: 'pointer' }}>
+              <span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => setter(event.target.checked)}/>
+            </label>)}
+          </div>}
         </div>
 
         <DialogFooter>

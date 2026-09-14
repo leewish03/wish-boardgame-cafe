@@ -72,10 +72,18 @@ export const socketToUser = {}; // key: socketId -> { roomCode, userId }
 // The lobby remains deliberately game-agnostic.  The active Love Letter
 // runtime injects these hooks so reconnect/disconnect handling never calls
 // the retired mutable rule engine for a core-backed room.
-let coreGameLifecycle = null;
+const gameLifecycles = new Map();
 
 export function configureCoreGameLifecycle(handlers) {
-  coreGameLifecycle = handlers;
+  gameLifecycles.set('LOVE_LETTER', handlers);
+}
+
+export function configureGameLifecycle(gameType, handlers) {
+  gameLifecycles.set(String(gameType || '').toUpperCase(), handlers);
+}
+
+function lifecycleForRoom(room) {
+  return gameLifecycles.get(room?.gameType || 'LOVE_LETTER') || null;
 }
 
 export function generateRoomCode() {
@@ -134,6 +142,11 @@ export function resolveRoomAndUser(socket, payload = {}) {
 
 export function getPublicRoomState(room, requestUserId = null) {
   if (!room) return null;
+
+  const lifecycle = lifecycleForRoom(room);
+  if (room.gameStateObject && lifecycle?.projectPublicState) {
+    return lifecycle.projectPublicState(room, requestUserId);
+  }
 
   if (room.gameStateObject) {
     const game = room.gameStateObject;
@@ -285,6 +298,7 @@ function openRoomSummary(room) {
     connectedCount: (room.players || []).filter((player) => !player.isDisconnected).length,
     maxPlayers: game?.config?.maxPlayers || room.maxPlayers || 4,
     targetTokens: game?.config?.targetTokens || room.targetTokens || 4,
+    roundCount: game?.config?.roundCount || room.roundCount || null,
     roundNumber: game?.roundNumber || room.roundNumber || 1,
     status: room.isPaused ? 'RECONNECTING' : (game?.matchState || room.gameState || 'LOBBY'),
     updatedAt: room.updatedAt || room.createdAt || Date.now(),
@@ -307,8 +321,14 @@ export async function handlePauseExpired(io, roomCode, userId) {
   room.stateVersion = (room.stateVersion || 0) + 1;
 
   if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
-    if (room.gameStateObject && coreGameLifecycle?.forfeit) {
-      await coreGameLifecycle.forfeit(roomCode, userId);
+    const lifecycle = lifecycleForRoom(room);
+    if (room.gameStateObject && lifecycle?.disconnectExpired) {
+      await lifecycle.disconnectExpired(roomCode, userId);
+      emitSystemMessage(io, roomCode, room, `${player.nickname}님의 자리를 AI가 이어받았습니다.`);
+      await roomRepository.saveRoom(room);
+      broadcastRoomState(io, roomCode);
+    } else if (room.gameStateObject && lifecycle?.forfeit) {
+      await lifecycle.forfeit(roomCode, userId);
       room.players = room.players.filter((candidate) => candidate.id !== userId);
       emitSystemMessage(io, roomCode, room, `${player.nickname}님이 재접속하지 않아 퇴장했습니다.`);
       if (room.hostId === userId && room.players.length) {
@@ -353,6 +373,11 @@ export function initRoomManager(io) {
           targetTokens = 4,
           maxPlayers = 4,
           turnTimeLimit = 60,
+          roundCount = 10,
+          firstDealRevolution = true,
+          useStrippedDeck = true,
+          philanthropicScoring = false,
+          merchantExchange = false,
         } = payload || {};
 
         const roomCode = generateRoomCode();
@@ -394,6 +419,11 @@ export function initRoomManager(io) {
           // truthy fallback here or the waiting room and authoritative engine
           // silently disagree about the rule the host selected.
           turnTimeLimit: Number.isFinite(Number(turnTimeLimit)) ? Number(turnTimeLimit) : 60,
+          roundCount: [5, 10, 20].includes(Number(roundCount)) ? Number(roundCount) : 10,
+          firstDealRevolution: firstDealRevolution !== false,
+          useStrippedDeck: useStrippedDeck !== false,
+          philanthropicScoring: !!philanthropicScoring,
+          merchantExchange: !!merchantExchange,
           players: [player],
           deck: [],
           setAsideSecretCard: null,
@@ -547,6 +577,11 @@ export function initRoomManager(io) {
           return;
         }
 
+        if (player.takenOverByBot) {
+          if (typeof callback === 'function') callback({ success: false, error: '재접속 제한시간이 지나 AI가 이 자리를 이어받았습니다.' });
+          return;
+        }
+
         if (player.sessionToken && sessionToken && player.sessionToken !== sessionToken) {
           if (typeof callback === 'function') {
             callback({ success: false, error: '세션 토큰이 유효하지 않습니다.' });
@@ -575,8 +610,9 @@ export function initRoomManager(io) {
             room.pauseTimeout = null;
           }
           room.stateVersion = (room.stateVersion || 0) + 1;
-          if (room.gameStateObject && coreGameLifecycle?.resume) {
-            await coreGameLifecycle.resume(code);
+          const lifecycle = lifecycleForRoom(room);
+          if (room.gameStateObject && lifecycle?.resume) {
+            await lifecycle.resume(code);
           } else {
             resumeGameTimer(io, room, pausedId);
           }
@@ -631,6 +667,11 @@ export function initRoomManager(io) {
           return;
         }
 
+        if (player.takenOverByBot) {
+          if (typeof callback === 'function') callback({ success: false, error: 'AI가 이어받은 자리입니다.' });
+          return;
+        }
+
         if (sessionToken && player.sessionToken && player.sessionToken !== sessionToken) {
           if (typeof callback === 'function') callback({ success: false, error: '인증 실패' });
           return;
@@ -662,8 +703,9 @@ export function initRoomManager(io) {
             room.pauseTimeout = null;
           }
           room.stateVersion = (room.stateVersion || 0) + 1;
-          if (room.gameStateObject && coreGameLifecycle?.resume) {
-            await coreGameLifecycle.resume(code);
+          const lifecycle = lifecycleForRoom(room);
+          if (room.gameStateObject && lifecycle?.resume) {
+            await lifecycle.resume(code);
           } else {
             resumeGameTimer(io, room, pausedId);
           }
@@ -837,8 +879,9 @@ export function initRoomManager(io) {
           delete room.pausedTurnRemainingMs;
         }
 
-        if (room.gameStateObject && coreGameLifecycle?.forfeit) {
-          await coreGameLifecycle.forfeit(code, uId);
+        const lifecycle = lifecycleForRoom(room);
+        if (room.gameStateObject && lifecycle?.forfeit) {
+          await lifecycle.forfeit(code, uId);
           // Core keeps the round outcome for history; the room roster must not
           // deal the departed player into the following round.
           room.players = room.players.filter((player) => player.id !== uId);
@@ -965,8 +1008,9 @@ export function initRoomManager(io) {
       // If in PLAYING or ROUND_END state: DO NOT REMOVE PLAYER!
       // Pause game only long enough for a normal mobile foreground return.
       if (room.gameState === 'PLAYING' || room.gameState === 'ROUND_END') {
-        if (room.gameStateObject && coreGameLifecycle?.pause) {
-          await coreGameLifecycle.pause(roomCode, userId);
+        const lifecycle = lifecycleForRoom(room);
+        if (room.gameStateObject && lifecycle?.pause) {
+          await lifecycle.pause(roomCode, userId);
           return;
         }
         if (!room.isPaused) {

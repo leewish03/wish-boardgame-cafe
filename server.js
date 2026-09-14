@@ -7,13 +7,15 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-import { configureCoreGameLifecycle, initRoomManager } from './server/shared/roomManager.js';
+import { configureCoreGameLifecycle, configureGameLifecycle, initRoomManager } from './server/shared/roomManager.js';
 import { initWebRTCSignaling } from './server/shared/webrtcSignaling.js';
 import { initSTTBroadcast } from './server/shared/sttBroadcast.js';
 import { registerLoveLetterController } from './server/games/loveLetterController.js';
+import { registerDalmutiController } from './server/games/dalmutiController.js';
 import { broadcastRoomState } from './server/shared/roomManager.js';
 import { createLoveLetterService } from './server/core/LoveLetterService.js';
 import { initializeRoomRepository } from './server/core/RoomRepository.js';
+import { createDalmutiService } from './server/core/DalmutiService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,6 +75,7 @@ if (fs.existsSync(distPath)) {
 // -------------------------------------------------------------
 
 export const loveLetterService = createLoveLetterService(io, { broadcastRoomState });
+export const dalmutiService = createDalmutiService(io);
 
 async function startServer() {
   await initializeRoomRepository();
@@ -82,11 +85,19 @@ async function startServer() {
     resume: (roomCode) => loveLetterService.resumeRoom(roomCode),
     forfeit: (roomCode, playerId) => loveLetterService.handleCommand(roomCode, { type: 'FORFEIT', playerId }),
   });
+  configureGameLifecycle('DALMUTI', {
+    pause: (roomCode, playerId) => dalmutiService.pauseRoom(roomCode, playerId),
+    resume: (roomCode) => dalmutiService.resumeRoom(roomCode),
+    disconnectExpired: (roomCode, playerId) => dalmutiService.disconnectExpired(roomCode, playerId),
+    projectPublicState: (room, playerId) => dalmutiService.projectRoomState(room, playerId),
+  });
   await loveLetterService.restorePausedRooms();
   await loveLetterService.restorePendingTurnPresentations();
+  await dalmutiService.restoreRooms();
   initWebRTCSignaling(io);
   initSTTBroadcast(io);
   registerLoveLetterController(io, loveLetterService);
+  registerDalmutiController(io, dalmutiService);
 
   server.listen(PORT, () => {
     console.log(`====================================================`);

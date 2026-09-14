@@ -14,7 +14,7 @@ export interface RoomPlayer {
   tokens: number;
 }
 
-export interface Room {
+export interface Room<TGameState = GameState> {
   id: string; // room code
   code: string;
   hostId: string;
@@ -23,7 +23,14 @@ export interface Room {
   players: RoomPlayer[];
   targetTokens: number;
   turnTimeLimit: number;
-  game?: GameState;
+  gameType?: 'LOVE_LETTER' | 'DALMUTI';
+  roundCount?: 5 | 10 | 20;
+  maxPlayers?: 4 | 5 | 6 | 7 | 8;
+  firstDealRevolution?: boolean;
+  useStrippedDeck?: boolean;
+  philanthropicScoring?: boolean;
+  merchantExchange?: boolean;
+  game?: TGameState;
   createdAt: number;
   updatedAt: number;
   isPaused: boolean;
@@ -31,9 +38,9 @@ export interface Room {
   pauseExpiresAt?: number;
 }
 
-export interface RoomRepository {
-  getRoom(id: string): Promise<Room | null>;
-  saveRoom(room: Room): Promise<void>;
+export interface RoomRepository<TGameState = GameState> {
+  getRoom(id: string): Promise<Room<TGameState> | null>;
+  saveRoom(room: Room<TGameState>): Promise<void>;
   deleteRoom(id: string): Promise<void>;
-  listRooms?(): Promise<Room[]>;
+  listRooms?(): Promise<Room<TGameState>[]>;
 }
