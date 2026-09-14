@@ -61,6 +61,7 @@ try {
     }
     if(value!==3) assert.equal(steps.findIndex(step=>step.kind==='CLEANUP') > steps.findIndex(step=>step.kind==='RESULT_DWELL'),true);
     if(value===5) assert.ok(steps.findIndex(s=>s.kind==='CLEANUP')<steps.findIndex(s=>s.kind==='DISCARD_HAND') && steps.findIndex(s=>s.kind==='DISCARD_HAND')<steps.findIndex(s=>s.kind==='DRAW'));
+    if(value===4) assert.deepEqual(steps.map(step=>step.kind), ['PLAY','RESULT_DWELL','CLEANUP','PROTECT'], 'Handmaid protection follows the discard without replaying the used card');
     if(value===6) assert.equal(steps.filter(s=>s.kind==='SWAP').length,1);
     if(value===8) assert.equal(room.gameStateObject.secrets.p0.hand.length,0);
   }

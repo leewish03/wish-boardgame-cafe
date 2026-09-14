@@ -141,6 +141,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const handEffect=['REVEAL','DISCARD_HAND','DRAW'].includes(step.kind);
   const doubleEffect=step.kind==='SWAP';
   const resultDwell=step.kind==='RESULT_DWELL';
+  const passiveEffect=['PROTECT','HOLD'].includes(step.kind);
   const comparisonStep=['COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','COMPARE_SETTLE'].includes(step.kind);
   const roundStep=['ROUND_GATHER','ROUND_REVEAL','ROUND_RESULT'].includes(step.kind);
   const comparisonActorCard=comparison?.comparisonHands?.[step.actorId];
@@ -158,7 +159,12 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   // Comparison and round-result stages own their multi-card completion
   // barrier. The already played card can remain visible, but cannot release
   // that barrier by itself.
-  const drivingPlayed=!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect&&!comparisonStep&&!roundStep;
+  const cleanupIndex=steps.findIndex(candidate=>candidate.kind==='CLEANUP');
+  // A played card is one physical object. Once CLEANUP has put it in the
+  // public pile, later effect beats (such as Handmaid's protection) must not
+  // render the same overlay from the pile back to the play slot.
+  const showPlayed=Boolean(played) && (cleanupIndex < 0 || (currentAction.presentationIndex ?? 0) <= cleanupIndex);
+  const drivingPlayed=showPlayed&&!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect&&!comparisonStep&&!roundStep;
   const returnCard=()=>{
     if(requesting)return;setRequesting(true);setError(null);
     onReturnCard(currentAction.actionId,currentAction.stateVersion,result=>{
@@ -179,7 +185,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const phase=step.kind==='COMPARE_GATHER'?'gather':step.kind==='COMPARE_REVEAL'?'reveal':step.kind==='COMPARE_RESULT'?'result':'settle';
       return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={step.id} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={()=>completeGroup(`comparison:${id}`,2)}/>;
     })}
-    {played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
+    {showPlayed && played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
       from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
     {privatePhase && geometry && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
       from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} toOffset={step.kind==='RETURN'?undefined:{x:5,y:-5,scale:.94}} card={priest?.revealedCard}
@@ -194,6 +200,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}
       faceUp={false} duration={step.duration} onComplete={index===1?finish:undefined}/>) }
     {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
+    {passiveEffect && <ResultDwell duration={step.duration} onComplete={finish}/>}
     {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
       <span>{actorText.subject} {targetText.possessive} 카드를 확인 중</span>
       {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
