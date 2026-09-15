@@ -70,6 +70,25 @@ assert.equal(jokerPlays.some((play) => play.rank === 8), false);
 assert.equal(chooseTimeoutCommand(jokerState, 'p0').type, 'PASS', 'response timeout passes');
 jokerState.trick.requiredCount = null; jokerState.trick.topRank = null;
 assert.deepEqual(chooseTimeoutCommand(jokerState, 'p0'), { type:'PLAY_SET', playerId:'p0', rank:13, count:1, jesterCount:1 }, 'lead timeout plays weakest singleton');
+assert.ok(getLegalPlays(jokerState, 'p0').some((play) => play.rank === 7 && play.count === 2 && play.jesterCount === 1), 'the leader can choose multiple cards with a joker');
+const botLead = chooseBotCommand(jokerState, 'p0');
+assert.notEqual(botLead.rank, 13, 'bots do not automatically lead with a jester when natural cards exist');
+
+// A Jester is both playable and wild: alone it is rank 13, with a natural
+// card it takes that card's rank. The leader may choose either legal set.
+let mixedJesterState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 29);
+mixedJesterState.matchState = 'PLAYING'; mixedJesterState.playPhase = 'TURN_INPUT'; mixedJesterState.currentTurnPlayerId = 'p0';
+mixedJesterState.secrets.p0.hand = [{ id:'six', rank:6 }, { id:'j1', rank:13 }, { id:'j2', rank:13 }];
+({ nextState: mixedJesterState } = executeCommand(mixedJesterState, { type:'PLAY_SET', playerId:'p0', rank:6, count:2, jesterCount:1 }));
+assert.equal(mixedJesterState.trick.topRank, 6);
+assert.equal(mixedJesterState.trick.requiredCount, 2);
+assert.equal(mixedJesterState.trick.sets[0].jesterCount, 1);
+let loneJesterState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 31);
+loneJesterState.matchState = 'PLAYING'; loneJesterState.playPhase = 'TURN_INPUT'; loneJesterState.currentTurnPlayerId = 'p0';
+loneJesterState.secrets.p0.hand = [{ id:'j1', rank:13 }, { id:'j2', rank:13 }];
+({ nextState: loneJesterState } = executeCommand(loneJesterState, { type:'PLAY_SET', playerId:'p0', rank:13, count:2, jesterCount:2 }));
+assert.equal(loneJesterState.trick.topRank, 13);
+assert.equal(loneJesterState.trick.requiredCount, 2);
 
 // A great revolution is identified before reversing the hierarchy and preserves the declaring actor.
 let revolutionState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 17);

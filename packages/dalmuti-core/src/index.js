@@ -464,7 +464,15 @@ export function chooseBotCommand(state, playerId) {
   if (state.playPhase === 'TURN_INPUT' && state.currentTurnPlayerId === playerId) {
     const plays = getLegalPlays(state, playerId);
     if (!plays.length) return { type: 'PASS', playerId };
-    const selected = [...plays].sort((a, b) => b.rank - a.rank || b.count - a.count || a.jesterCount - b.jesterCount)[0];
+    // Jesters are a useful escape valve, not an automatic opening. A bot only
+    // leads with one when it has no natural-card option at all.
+    const naturalPlays = plays.filter((play) => play.rank !== 13 && play.jesterCount === 0);
+    const candidates = naturalPlays.length ? naturalPlays : plays;
+    const selected = [...candidates].sort((a, b) =>
+      b.rank - a.rank
+      || (state.trick.requiredCount == null ? a.count - b.count : 0)
+      || a.jesterCount - b.jesterCount,
+    )[0];
     return { type: 'PLAY_SET', playerId, ...selected };
   }
   return null;

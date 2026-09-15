@@ -164,8 +164,8 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
           </HandRail>
           <PlayTray>
             <SelectionText>{selection ? <><b>{selection.count}× {selection.rank === 13 ? 'J' : selection.rank}</b><span>{selection.jesterCount ? `어릿광대 ${selection.jesterCount}장 포함` : '일반 카드 구성'}</span></> : <span>{isMyTurn ? '낼 계급 묶음을 선택하세요' : '상대의 행동을 기다리는 중'}</span>}</SelectionText>
-            {selection && countOptions.length > 1 && <OptionRow>{countOptions.map((count) => <Option key={count} $active={selection.count === count} onClick={() => setSelection(legalPlays.find((play) => play.rank === selection.rank && play.count === count))}>{count}장</Option>)}</OptionRow>}
-            {selection && compositionOptions.length > 1 && <OptionRow>{compositionOptions.map((play) => <Option key={play.jesterCount} $active={selection.jesterCount === play.jesterCount} onClick={() => setSelection(play)}>{play.jesterCount ? `J ${play.jesterCount}` : 'J 없음'}</Option>)}</OptionRow>}
+            {selection && countOptions.length > 1 && <OptionRow aria-label="낼 카드 장수 선택">{countOptions.map((count) => <Option key={count} $active={selection.count === count} onClick={() => setSelection(legalPlays.find((play) => play.rank === selection.rank && play.count === count))}>{count}장</Option>)}</OptionRow>}
+            {selection && compositionOptions.length > 1 && <OptionRow aria-label="어릿광대 조합 선택">{compositionOptions.map((play) => <Option key={play.jesterCount} $active={selection.jesterCount === play.jesterCount} onClick={() => setSelection(play)}>{play.jesterCount ? `J ${play.jesterCount}` : 'J 없음'}</Option>)}</OptionRow>}
             <ButtonRow><Secondary disabled={!canPass} onClick={() => send({ type:'PASS' })}>패스</Secondary><Primary disabled={!selection || !isMyTurn} onClick={() => send({ type:'PLAY_SET', ...selection })}>중앙에 내기</Primary></ButtonRow>
           </PlayTray>
         </>}
@@ -211,10 +211,10 @@ const RankStack=styled.button`width:66px;height:87px;flex:0 0 66px;border:1px so
 const CardNumber=styled.b`font:900 25px ${THEME.font.serif};line-height:1;`;
 const CardName=styled.span`font-size:8px;font-weight:850;color:${THEME.burgundy};margin-top:3px;`;
 const CountBadge=styled.i`font-size:9px;font-style:normal;font-weight:900;color:${THEME.goldAntique};margin-top:5px;`;
-const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(120px,1fr) auto auto;align-items:center;gap:6px;min-height:43px;@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;.options{display:none;}}`;
+const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(120px,1fr) auto auto;align-items:center;gap:6px;min-height:43px;@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;gap:4px;.options{grid-column:1/-1;display:flex;max-width:100%;overflow-x:auto;padding-bottom:1px;}}`;
 const SelectionText=styled.div`min-width:0;display:flex;flex-direction:column;b{font:900 12px ${THEME.font.serif};}span{font-size:9px;color:${THEME.mutedForeground};}`;
 const OptionRow=styled.div.attrs({className:'options'})`display:flex;gap:3px;`;
-const Option=styled.button`height:26px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:8px;font-weight:850;cursor:pointer;`;
+const Option=styled.button`height:26px;flex:0 0 auto;padding:0 7px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:8px;font-weight:850;cursor:pointer;`;
 const ButtonRow=styled.div`display:flex;gap:5px;`;
 const Secondary=styled.button`height:36px;padding:0 12px;border:1px solid ${THEME.border};border-radius:8px;background:#fff;color:${THEME.foreground};font-size:10px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
 const Primary=styled.button`height:36px;padding:0 16px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.obsidianButton};color:#fff;font:900 10px ${THEME.font.serif};cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
