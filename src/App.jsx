@@ -30,6 +30,7 @@ import {
   loadSession,
   clearSession,
 } from './shared/useSessionGuard';
+import { useVisualViewportRect } from './shared/useVisualViewportRect';
 import { RoomVoiceControls } from './games/love-letter/ui/GameMenuDrawer';
 import {
   Coffee,
@@ -79,6 +80,9 @@ const AppContainer = styled.div`
   font-family: ${THEME.font.sans};
   position: relative;
   overflow-x: hidden;
+  ${({ $entryViewportHeight }) => $entryViewportHeight && css`
+    min-height: ${$entryViewportHeight}px;
+  `}
 `;
 
 const AppHeader = styled.header`
@@ -210,6 +214,12 @@ const MainContent = styled.main`
   min-width: 0;
   box-sizing: border-box;
   margin: 0 auto;
+  ${({ $isEntry, $entryViewportHeight }) => $isEntry && css`
+    min-height: ${$entryViewportHeight || '100dvh'}px;
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+  `}
   ${({ $isGame }) =>
     $isGame &&
     css`
@@ -428,9 +438,19 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('games');
   const [openRooms, setOpenRooms] = useState([]);
   const [roomsUpdatedAt, setRoomsUpdatedAt] = useState(0);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsLoaded, setRoomsLoaded] = useState(false);
+  const [roomsError, setRoomsError] = useState('');
   const reconnectInFlightRef = useRef(false);
   const reconnectTimeoutRef = useRef(null);
-  const [reconnectOffer, setReconnectOffer] = useState(null);
+  const queuedReconnectRef = useRef(null);
+  const roomListQueuedRef = useRef(false);
+  // Do not wait for Socket.IO's first connection to show the recovery route.
+  // A reload must always present the saved room choice immediately.
+  const [reconnectOffer, setReconnectOffer] = useState(() => {
+    const saved = loadSession();
+    return saved?.roomCode && saved?.userId && saved?.sessionToken ? saved : null;
+  });
 
   // Room State from Server
   const [roomState, setRoomState] = useState(null);
@@ -456,6 +476,7 @@ export default function App() {
   // WebRTC and STT Hooks
   const webrtc = useWebRTC(socket, roomState?.code, currentUser?.id, currentUser?.sessionToken);
   const stt = useSTT(socket, roomState?.code, currentUser?.id);
+  const visualViewport = useVisualViewportRect(screen === 'entry' || profileModalOpen);
 
   const avatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${avatarSeed}&backgroundColor=090d16,1e293b,3b0b17,047857`;
 
@@ -465,6 +486,8 @@ export default function App() {
     (session) => {
       if (!socket || !session?.roomCode || !session?.userId || !session?.sessionToken || reconnectInFlightRef.current) return;
       if (!socket.connected) {
+        queuedReconnectRef.current = session;
+        setReconnectOffer(session);
         socket.connect();
         return;
       }
@@ -487,6 +510,8 @@ export default function App() {
           reconnectTimeoutRef.current = null;
           reconnectInFlightRef.current = false;
           if (res?.success) {
+            queuedReconnectRef.current = null;
+            setReconnectOffer(null);
             const restoredUser = {
               id: session.userId,
               sessionToken: session.sessionToken,
@@ -502,11 +527,10 @@ export default function App() {
             }
             if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 다시 접속했습니다.');
           } else {
-            // Only clear room info, preserve nickname & avatar
-            saveSession({
-              nickname: session.nickname,
-              avatarUrl: session.avatarUrl,
-            });
+            // Keep the route visible until the player explicitly chooses to
+            // abandon it. A transient reconnect failure is not a departure.
+            setReconnectOffer(session);
+            setToastMessage(res?.error || '이전 방에 다시 접속하지 못했습니다. 다시 시도해 주세요.');
             if (session.nickname) {
               setNickname(session.nickname);
               setCurrentUser({
@@ -527,6 +551,13 @@ export default function App() {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!connected || !queuedReconnectRef.current) return;
+    const queued = queuedReconnectRef.current;
+    queuedReconnectRef.current = null;
+    handleReconnectRequest(queued);
+  }, [connected, handleReconnectRequest]);
+
   // Screen Wake Lock, beforeunload & visibilitychange guard hook
   useSessionGuard({
     socket,
@@ -535,15 +566,14 @@ export default function App() {
     onReconnectRequest: handleReconnectRequest,
   });
 
-  // A previous room is a deliberate choice, not an automatic navigation. This
-  // also prevents a cancelled refresh dialog from looking like a reconnect.
+  // Recover sessions saved by older builds as well. The dialog deliberately
+  // remains a choice; this never navigates back to the table on its own.
   useEffect(() => {
-    if (!socket || !connected) return;
     const session = loadSession();
     if (session && session.roomCode && session.userId && session.sessionToken) {
       setReconnectOffer((previous) => previous || session);
     }
-  }, [socket, connected]);
+  }, []);
 
   const handleDeclineReconnect = useCallback(() => {
     const saved = reconnectOffer;
@@ -560,21 +590,45 @@ export default function App() {
   }, [reconnectOffer, socket]);
 
   const refreshOpenRooms = useCallback(() => {
-    if (!socket?.connected) return;
-    socket.emit('room:list', {}, (result) => {
-      if (result?.success) {
+    if (!socket) return;
+    const requestList = () => {
+      roomListQueuedRef.current = false;
+      setRoomsLoading(true);
+      setRoomsError('');
+      socket.emit('room:list', {}, (result) => {
+        setRoomsLoading(false);
+        setRoomsLoaded(true);
+        if (!result?.success) {
+          setRoomsError(result?.error || '방 현황을 불러오지 못했습니다.');
+          return;
+        }
         setOpenRooms(Array.isArray(result.rooms) ? result.rooms : []);
         setRoomsUpdatedAt(Date.now());
+      });
+    };
+    if (!socket.connected) {
+      setRoomsLoading(true);
+      if (!roomListQueuedRef.current) {
+        roomListQueuedRef.current = true;
+        socket.once('connect', requestList);
+        socket.connect();
       }
-    });
+      return;
+    }
+    requestList();
   }, [socket]);
 
   useEffect(() => {
-    if (screen !== 'lobby' || activeTab !== 'rooms') return undefined;
+    if (screen !== 'lobby') return undefined;
     refreshOpenRooms();
     const interval = window.setInterval(refreshOpenRooms, 5000);
     return () => window.clearInterval(interval);
-  }, [screen, activeTab, refreshOpenRooms]);
+  }, [screen, refreshOpenRooms]);
+
+  const keepInputVisible = useCallback((event) => {
+    const input = event.currentTarget;
+    window.setTimeout(() => input?.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'smooth' }), 180);
+  }, []);
 
   // Listen for room:state and room:resumed broadcast
   useEffect(() => {
@@ -680,7 +734,8 @@ export default function App() {
     setNickname(trimmed);
     setAvatarSeed(editAvatarSeed);
     setCurrentUser(updatedUser);
-    saveSession(updatedUser);
+    // Editing a profile must not erase an active room's recovery token.
+    saveSession({ ...(loadSession() || {}), ...updatedUser });
     setProfileModalOpen(false);
     setToastMessage('프로필이 성공적으로 변경되었습니다.');
     sfx.playCardDraw();
@@ -919,7 +974,7 @@ export default function App() {
   const allReady = roomState?.players?.every((p) => p.id === roomState.hostId || p.isReady);
 
   return (
-    <AppContainer $isGame={screen === 'game'}>
+    <AppContainer $isGame={screen === 'game'} $entryViewportHeight={screen === 'entry' ? visualViewport.height : null}>
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
@@ -957,7 +1012,7 @@ export default function App() {
         </AppHeader>
       )}
 
-      <MainContent $isGame={screen === 'game'} $isEntry={screen === 'entry'}>
+      <MainContent $isGame={screen === 'game'} $isEntry={screen === 'entry'} $entryViewportHeight={visualViewport.height}>
         {/* ========================================================= */}
         {/* SCREEN 1: Entry / Nickname Input */}
         {/* ========================================================= */}
@@ -1019,6 +1074,7 @@ export default function App() {
                     onChange={(e) => setNickname(e.target.value)}
                     maxLength={12}
                     autoFocus
+                    onFocus={keepInputVisible}
                   />
                 </div>
 
@@ -1071,7 +1127,7 @@ export default function App() {
                   {/* Game 1: Love Letter (Live) */}
                   <Card $hoverable onClick={() => handleOpenCreateDialog('LOVE_LETTER')}>
                     <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #1e1b4b 0%, #090d16 100%)">
+                      <GameThumbnail $bg="linear-gradient(135deg, #791a30 0%, #3b0b17 54%, #090d16 100%)">
                         <span className="emblem-title">LOVE LETTER</span>
                         <span className="emblem-sub">ROYAL COURT</span>
                       </GameThumbnail>
@@ -1194,7 +1250,10 @@ export default function App() {
                     <div><CardTitle>열린 방 현황</CardTitle><CardDescription>방 코드는 숨겨지며 여기서 입장할 수 없습니다.</CardDescription></div>
                     <Button $variant="secondary" $size="sm" onClick={refreshOpenRooms}>새로고침</Button>
                   </div>
-                  {openRooms.length === 0 ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.mutedForeground }}>현재 표시할 활성 방이 없습니다.</CardContent></Card> : openRooms.map((room) => (
+                  {roomsLoading && !roomsLoaded ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.mutedForeground }}>열린 방 현황을 불러오는 중입니다…</CardContent></Card> : null}
+                  {roomsError ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.burgundy }}>{roomsError}</CardContent></Card> : null}
+                  {roomsLoaded && !roomsLoading && !roomsError && openRooms.length === 0 ? <Card><CardContent style={{ padding: '24px', textAlign: 'center', color: THEME.mutedForeground }}>현재 표시할 활성 방이 없습니다.</CardContent></Card> : null}
+                  {openRooms.map((room) => (
                     <Card key={room.id} style={{ cursor: 'default' }}>
                       <CardContent style={{ padding: '13px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '10px' }}>
                         <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 {room.gameType === 'DALMUTI' ? '달무티' : '러브레터'}</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '4px' }}>라운드 {room.roundNumber} · {room.gameType === 'DALMUTI' ? `${room.roundCount || 10}라운드제` : `목표 ${room.targetTokens}`} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
@@ -1539,6 +1598,7 @@ export default function App() {
               onChange={(e) => setEditNickname(e.target.value)}
               maxLength={12}
               autoFocus
+              onFocus={keepInputVisible}
             />
           </div>
 
@@ -1555,3 +1615,4 @@ export default function App() {
     </AppContainer>
   );
 }
+
