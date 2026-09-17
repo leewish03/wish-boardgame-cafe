@@ -248,11 +248,18 @@ const GameGrid = styled.div`
 `;
 
 const GameLoadingScreen = styled.div`
-  min-height: 100dvh;
+  width: min(400px, calc(100% - 32px));
+  min-height: 168px;
+  margin: auto;
+  padding: 24px;
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   background: ${THEME.gradients.marbleTextureUrl}, ${THEME.gradients.marbleSlab};
   color: ${THEME.foreground};
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.lg};
+  box-shadow: ${THEME.shadows.marbleSlab};
 
   div {
     display: grid;
@@ -267,6 +274,12 @@ const GameLoadingScreen = styled.div`
     font: 700 11px ${THEME.font.sans};
     color: ${THEME.mutedForeground};
     letter-spacing: normal;
+  }
+
+  @media (max-width: 420px) {
+    width: calc(100% - 24px);
+    min-height: 142px;
+    padding: 18px;
   }
 `;
 
