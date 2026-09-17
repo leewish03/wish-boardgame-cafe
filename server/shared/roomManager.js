@@ -374,7 +374,6 @@ export function initRoomManager(io) {
           maxPlayers = 4,
           turnTimeLimit = 60,
           roundCount = 10,
-          firstDealRevolution = true,
           useStrippedDeck = true,
           philanthropicScoring = false,
           merchantExchange = false,
@@ -420,7 +419,6 @@ export function initRoomManager(io) {
           // silently disagree about the rule the host selected.
           turnTimeLimit: Number.isFinite(Number(turnTimeLimit)) ? Number(turnTimeLimit) : 60,
           roundCount: [5, 10, 20].includes(Number(roundCount)) ? Number(roundCount) : 10,
-          firstDealRevolution: firstDealRevolution !== false,
           useStrippedDeck: useStrippedDeck !== false,
           philanthropicScoring: !!philanthropicScoring,
           merchantExchange: !!merchantExchange,
@@ -857,7 +855,7 @@ export function initRoomManager(io) {
     // 6. Explicit Forfeit / Leave Room
     const handleForfeit = async (payload, callback) => {
       try {
-        const { room, roomCode: code, userId: uId } = resolveRoomAndUser(socket, payload);
+        let { room, roomCode: code, userId: uId } = resolveRoomAndUser(socket, payload);
         if (!room) {
           if (typeof callback === 'function') callback({ success: true });
           return;
@@ -882,6 +880,10 @@ export function initRoomManager(io) {
         const lifecycle = lifecycleForRoom(room);
         if (room.gameStateObject && lifecycle?.forfeit) {
           await lifecycle.forfeit(code, uId);
+          // Lifecycle services may persist a fresh state transition.  Read it
+          // back before touching room metadata so an old room object cannot
+          // overwrite the new turn/result state after a departure.
+          room = (await roomRepository.getRoom(code)) || room;
           // Core keeps the round outcome for history; the room roster must not
           // deal the departed player into the following round.
           room.players = room.players.filter((player) => player.id !== uId);

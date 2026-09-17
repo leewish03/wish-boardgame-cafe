@@ -31,6 +31,9 @@ export function useActionTimeline() {
   const queueRef = useRef<PresentationAction[]>([]);
   const currentRef = useRef<PresentationAction | null>(null);
   const processedEventIdsRef = useRef<Set<string>>(new Set());
+  // Event ids dedupe exact packets. This tombstone also rejects a delayed
+  // packet belonging to an action that the player has already watched.
+  const completedActionKeysRef = useRef<Set<string>>(new Set());
   const scheduledStartRef = useRef(false);
   const phaseRef = useRef<PresentationPhase>('IDLE');
   const currentRoundRef = useRef<number | null>(null);
@@ -70,6 +73,7 @@ export function useActionTimeline() {
       if (incomingRound < currentRoundRef.current) return;
       if (incomingRound > currentRoundRef.current) {
         processedEventIdsRef.current.clear();
+        completedActionKeysRef.current.clear();
         queueRef.current = [];
         currentRef.current = null;
         setCurrentAction(null);
@@ -80,6 +84,7 @@ export function useActionTimeline() {
     if (incomingRound != null) currentRoundRef.current = incomingRound;
     processedEventIdsRef.current.add(envelope.eventId);
     const key = actionKey(envelope);
+    if (completedActionKeysRef.current.has(key)) return;
 
     if (currentRef.current && actionKey(currentRef.current) === key) {
       const updated = appendTo(currentRef.current, envelope);
@@ -114,6 +119,7 @@ export function useActionTimeline() {
     }
 
     currentRef.current = null;
+    completedActionKeysRef.current.add(actionKey(current));
     setCurrentAction(null);
     setIsActionPlaying(false);
     setPresentationPhase('IDLE');
@@ -122,6 +128,7 @@ export function useActionTimeline() {
 
   const resetTimeline = useCallback((roundNumber?: number) => {
     processedEventIdsRef.current.clear();
+    completedActionKeysRef.current.clear();
     queueRef.current = [];
     currentRef.current = null;
     setCurrentAction(null);

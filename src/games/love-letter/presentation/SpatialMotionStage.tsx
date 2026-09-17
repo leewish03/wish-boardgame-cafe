@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { createPortal } from 'react-dom';
 import { motion, useAnimation, useReducedMotion } from 'framer-motion';
 import { CardInstance, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
 import { PresentationAction } from './useActionTimeline';
@@ -15,6 +14,7 @@ interface Props {
   currentAction: PresentationAction | null; onPhaseComplete?:()=>void;
   localUserId: string; players: PlayerPublic[]; returnedActionId?:string|null;
   onReturnCard: (actionId:string, version:number, callback:(result:{success:boolean;error?:string})=>void)=>void;
+  onReviewVisible?: (actionId:string, version:number)=>void;
 }
 
 /** The visible card drives completion; there is no independent hidden clock. */
@@ -47,7 +47,7 @@ function ResultDwell({duration,onComplete}:{duration:number;onComplete:()=>void}
     style={{position:'fixed',width:1,height:1,pointerEvents:'none'}}/>;
 }
 
-export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,players,returnedActionId,onReturnCard,onPhaseComplete})=>{
+export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,players,returnedActionId,onReturnCard,onReviewVisible,onPhaseComplete})=>{
   const registry=useTableAnchorRegistry();
   const steps=buildPhysicalSequence(currentAction?.presentationEvents || []);
   const step=steps[currentAction?.presentationIndex || 0];
@@ -56,6 +56,8 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const [error,setError]=useState<string|null>(null);
   const completed=useRef<string|null>(null);
   const groupCompletion=useRef<{stepId:string|null; members:Set<string>}>({stepId:null,members:new Set()});
+  const comparisonRoute=useRef<{actionId:string;geometry:Record<string,Point>}|null>(null);
+  const reviewVisible=useRef<string|null>(null);
   const callback=useRef(onPhaseComplete);callback.current=onPhaseComplete;
   const finish=()=>{if(step && completed.current!==step.id){completed.current=step.id;callback.current?.();}};
   const played=(currentAction?.presentationEvents.find(e=>(e.event as any).type==='CARD_PLAYED')?.event as any)?.card as CardInstance|undefined;
@@ -89,8 +91,8 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
         ? point(registry.get(step.targetId!, (step.apply?.handSlot === 0 || step.apply?.handSlot === 1) ? (`hand-slot-${step.apply.handSlot}` as 'hand-slot-0' | 'hand-slot-1') : ((players.find(p => p.id === step.targetId)?.cardCount || 0) > 0 ? 'hand-slot-1' : 'hand-slot-0')))
         : hand(step.targetId,step.card);
       const play=point(registry.get(step.actorId,'play'));
-      const review=point(registry.get(step.actorId,'review'));
-      const targetReview=point(registry.get(step.targetId || step.actorId,'review'));
+      const review=point(registry.get('table','priest-review'));
+      const targetReview=review;
       const deck=point(registry.get('deck',step.apply?.drawSource==='SET_ASIDE'?'aside':'deck'));
       const discardAt=(id:string|undefined, ordinal?:number)=>point(registry.get(id || step.actorId, ordinal == null ? 'discard' : `discard-slot:${ordinal}` as `discard-slot:${number}`)) || point(registry.get(id || step.actorId,'discard'));
       const discard=discardAt(step.actorId,step.apply?.discardOrdinal);
@@ -116,6 +118,13 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const destination=(r:Point)=>r;
       const fallback: Point = {x:0,y:0,width:1,height:1};
       const measured = {...roundHands,actorHand:actorHand || fallback,targetHand:targetHand || actorHand || fallback,play:play || fallback,review:review || fallback,targetReview:targetReview || review || fallback,comparisonLeft:comparisonLeft || fallback,comparisonRight:comparisonRight || fallback,deck:deck || fallback,discard:destination(discard || fallback),targetDiscard:destination(targetDiscard || discard || fallback),comparisonDiscard:destination(comparisonDiscard || targetDiscard || discard || fallback)};
+      const isComparison=['COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','COMPARE_SETTLE'].includes(step.kind);
+      const frozenRoute = comparisonRoute.current;
+      if (isComparison && frozenRoute && frozenRoute.actionId === currentAction?.actionId) {
+        setGeometry(frozenRoute.geometry);
+        return true;
+      }
+      if (isComparison && currentAction) comparisonRoute.current={actionId:currentAction.actionId,geometry:measured};
       setGeometry(previous => JSON.stringify(previous) === JSON.stringify(measured) ? previous : measured);
       return true;
     };
@@ -125,12 +134,14 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       // then settle rather than allowing a missing anchor to lock the game.
       frameA=window.requestAnimationFrame(()=>{ if (!measure()) frameB=window.requestAnimationFrame(()=>{ if (!measure()) finish(); }); });
     }
-    window.addEventListener('resize',measure);window.addEventListener('scroll',measure,true);
+    // Scroll must not bend an in-flight card route.  The board has its own
+    // scroll viewport; real viewport resize is the only geometry invalidator.
+    window.addEventListener('resize',measure);
     const observer = new window.ResizeObserver(measure);
     const controls = registry.get('table','review-controls');
     if (controls?.parentElement) observer.observe(controls.parentElement);
-    return()=>{window.cancelAnimationFrame(frameA);window.cancelAnimationFrame(frameB);observer.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);};
-  },[step?.id,registry,players,played?.id]);
+    return()=>{window.cancelAnimationFrame(frameA);window.cancelAnimationFrame(frameB);observer.disconnect();window.removeEventListener('resize',measure);};
+  },[step?.id,registry,players,played?.id,currentAction?.actionId]);
   useEffect(()=>{setRequesting(false);setError(null);},[currentAction?.actionId]);
   useEffect(()=>{if(step?.kind==='REVIEW' && returned) finish();},[step?.id,returned]);
   if(!step || !currentAction)return null;
@@ -172,7 +183,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     });
   };
   return <Layer data-physical-step={step.kind}>
-    {comparisonStep && <ComparisonVeil/>}
+    {(comparisonStep || privatePhase) && <ComparisonVeil/>}
     {roundStep && (() => { const visible=Object.entries(step.cards || {}).filter(([id])=>g[`round:${id}`]&&g[`round-destination:${id}`]); return visible.map(([id, card]) => {
       const to=g[`round-destination:${id}`]; const winner=(step.apply?.winnerIds || []).includes(id);
       return <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={step.kind==='ROUND_GATHER'?g[`round:${id}`]:to} to={to} toOffset={step.kind==='ROUND_RESULT'&&winner?{x:0,y:-10,scale:1.06}:undefined} card={card} faceUp={step.kind!=='ROUND_GATHER'} duration={step.duration} onComplete={()=>completeGroup(`round:${id}`,visible.length)}/>;
@@ -190,7 +201,12 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     {privatePhase && geometry && <TableCard key={`${currentAction.actionId}:borrowed`} identity={`${currentAction.actionId}:borrowed`} stepId={step.id}
       from={g.targetHand} to={step.kind==='RETURN'?g.targetHand:review} toOffset={step.kind==='RETURN'?undefined:{x:5,y:-5,scale:.94}} card={priest?.revealedCard}
       faceUp={step.kind==='REVIEW' && localUserId===step.actorId} duration={step.duration}
-      onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot ? undefined : finish}/>}
+      onComplete={step.kind==='REVIEW' && !returned && !actor?.isBot
+        ? (localUserId===step.actorId ? ()=>{
+            const key=`${currentAction.actionId}:${step.id}`;
+            if(reviewVisible.current!==key){reviewVisible.current=key;onReviewVisible?.(currentAction.actionId,currentAction.stateVersion);}
+          } : undefined)
+        : finish}/>}
     {handEffect && geometry && <TableCard key={`${currentAction.actionId}:${step.id}:${step.targetId}:${step.card?.id || 'back'}`} identity={`${currentAction.actionId}:${step.id}:${step.targetId}`} stepId={step.id}
       from={step.kind==='DRAW'?g.deck:g.targetHand} to={step.kind==='DISCARD_HAND'?g.targetDiscard:g.targetHand}
       card={step.card} faceUp={step.kind!=='DRAW' || step.targetId===localUserId} duration={step.duration} onComplete={finish}/>}
@@ -201,11 +217,11 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       faceUp={false} duration={step.duration} onComplete={index===1?finish:undefined}/>) }
     {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
     {passiveEffect && <ResultDwell duration={step.duration} onComplete={finish}/>}
-    {step.kind==='REVIEW' && !returned && !actor?.isBot && registry.get('table','review-controls') && createPortal(<ReviewControls>
+    {step.kind==='REVIEW' && !returned && !actor?.isBot && localUserId===step.actorId && review && <ReviewControls style={{left:review.x+review.width/2,top:review.y+review.height+12}}>
       <span>{actorText.subject} {targetText.possessive} 카드를 확인 중</span>
       {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
       {error && <span role="alert">{error}</span>}
-    </ReviewControls>, registry.get('table','review-controls')!)}
+    </ReviewControls>}
   </Layer>;
 };
 const Layer=styled.div`position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;perspective:900px;`;
@@ -214,7 +230,7 @@ const CardObject=styled.div`position:absolute;left:0;top:0;width:154px;height:22
 const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;`;
 const Back=styled(Front)`transform:rotateY(180deg);`;
 const ReviewControls=styled.div`
-  position:relative;width:100%;display:grid;justify-items:center;gap:7px;margin-top:2px;text-align:center;color:${THEME.primary};font-size:10px;
+  position:absolute;transform:translateX(-50%);width:min(220px,72vw);display:grid;justify-items:center;gap:7px;text-align:center;color:${THEME.primary};font-size:10px;pointer-events:auto;
   span{color:${THEME.mutedForeground};}
   button{pointer-events:auto;width:min(220px,100%);min-height:40px;padding:0 18px;border:1px solid ${THEME.goldAntique};border-radius:9px;background:${THEME.gradients.obsidianButton};color:white;font:900 12px ${THEME.font.serif};cursor:pointer;box-shadow:0 4px 10px rgba(9,13,22,.14);}
   button:disabled{opacity:.6;cursor:wait;}

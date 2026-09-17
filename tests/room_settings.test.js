@@ -22,22 +22,26 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 initRoomManager(io);
 
-server.listen(0, async () => {
-  const client = ClientIO(`http://localhost:${server.address().port}`, { transports: ['websocket'] });
-  try {
-    await once(client, 'connect');
-    const created = await new Promise(resolve => client.emit('room:create', {
-      gameType: 'LOVE_LETTER',
-      nickname: '무제한 방장',
-      turnTimeLimit: 0,
-    }, resolve));
+await new Promise(resolve => server.listen(0, resolve));
+const client = ClientIO(`http://localhost:${server.address().port}`, { transports: ['websocket'] });
+try {
+  await once(client, 'connect');
+  const created = await new Promise(resolve => client.emit('room:create', {
+    gameType: 'LOVE_LETTER',
+    nickname: '무제한 방장',
+    turnTimeLimit: 0,
+  }, resolve));
 
-    assert.equal(created.success, true, 'room creation should succeed');
-    assert.equal(rooms[created.roomCode].turnTimeLimit, 0, 'untimed tables must preserve zero on the authoritative room');
-    console.log('✅ Untimed room setting stays at 0 seconds.');
-  } finally {
-    client.close();
-    await new Promise(resolve => io.close(resolve));
-    await new Promise(resolve => server.close(resolve));
-  }
-});
+  assert.equal(created.success, true, 'room creation should succeed');
+  assert.equal(rooms[created.roomCode].turnTimeLimit, 0, 'untimed tables must preserve zero on the authoritative room');
+  console.log('✅ Untimed room setting stays at 0 seconds.');
+} finally {
+  client.close();
+  // This short process owns no persistent resource.  Do not await Socket.IO's
+  // close callback: with a just-closed websocket it can wait for the engine
+  // transport's idle cleanup and hold the aggregate suite indefinitely.
+  io.disconnectSockets(true);
+  io.close();
+  if (server.listening) server.close();
+}
+process.exit(0);

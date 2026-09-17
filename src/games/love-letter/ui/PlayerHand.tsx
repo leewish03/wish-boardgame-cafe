@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { motion } from 'framer-motion';
 import { GameCard } from './GameCard';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { useTableAnchor } from '../presentation/TableAnchorRegistry';
@@ -35,13 +36,13 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn
       const start = index === 0 ? 3 : 2;
       if (!card) return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index}/></HandCell>;
       const countessLocked = hasCountess && hasPrinceOrKing && card.value !== 7;
-      return <HandCell key={index} $column={start}><HandSlot playerId={playerId} index={index} cardId={card.id}><GameCard id={card.id} value={card.value as CardValue} name={card.name} isSelected={selectedCardId===card.id} isDisabled={countessLocked} isInteractive={canSelectCards && !countessLocked} disabledReason={countessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined} onClick={() => canSelectCards && !countessLocked && onSelectCard(card)} /></HandSlot></HandCell>;
+      return <HandCell as={motion.div} layout="position" layoutId={`hand-card:${card.id}`} transition={{type:'spring',stiffness:360,damping:31,mass:.72}} key={card.id} $column={start}><HandSlot playerId={playerId} index={index} cardId={card.id}><GameCard id={card.id} value={card.value as CardValue} name={card.name} isSelected={selectedCardId===card.id} isDisabled={countessLocked} isInteractive={canSelectCards && !countessLocked} disabledReason={countessLocked ? '백작부인을 먼저 사용해야 합니다' : undefined} onClick={() => canSelectCards && !countessLocked && onSelectCard(card)} /></HandSlot></HandCell>;
     })}</CardsRow>
   </HandContainer>;
 };
 const HandContainer = styled.section<{$eliminated?:boolean}>`width:100%;height:100%;min-height:${p=>p.$eliminated?'190px':'0'};padding:4px 8px max(12px, env(safe-area-inset-bottom));box-sizing:border-box;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:${p=>p.$eliminated?'stretch':'flex-end'};gap:4px;`;
 const HandHeader = styled.div`display:flex; align-items:center; gap:7px; min-height:20px; color:#5f1d2c; font-size:11px; font-weight:850;`;
-const CardsRow = styled.div`--decision-card:clamp(106px,29vw,154px);display:grid;grid-template-columns:repeat(3,var(--decision-card));align-items:flex-end;justify-content:center;gap:clamp(4px,2vw,12px);width:100%;@media(max-width:340px){--decision-card:96px;}@media(max-height:650px){--decision-card:96px;}`;
+const CardsRow = styled.div`--decision-card:var(--local-decision-card,clamp(106px,29vw,154px));--decision-gap:var(--local-decision-gap,clamp(4px,2vw,12px));display:grid;grid-template-columns:repeat(3,var(--decision-card));align-items:flex-end;justify-content:center;gap:var(--decision-gap);width:100%;@media(max-width:340px){--decision-card:96px;}@media(max-height:650px){--decision-card:96px;}`;
 const HandCell=styled.div<{$column:number}>`grid-column:${p=>p.$column};min-width:0;display:flex;justify-content:center;`;
 const ActionSlot=styled.div`grid-column:1;min-width:0;width:100%;aspect-ratio:154 / 220;display:flex;align-items:flex-end;justify-content:center;`;
 const Slot = styled.div<{$empty:boolean}>`min-width:0;width:100%;aspect-ratio:154 / 220;justify-self:center;display:flex;justify-content:center;align-items:flex-end;visibility:${p=>p.$empty?'hidden':'visible'};`;

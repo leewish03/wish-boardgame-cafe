@@ -136,9 +136,27 @@ export class LoveLetterService {
     const pending = room?.pendingResolution;
     if (!room || !pending || room.isPaused) return;
     this.clearResolutionTimer(roomCode);
-    // A connected human's private review is not an animation timeout.
-    if (pending.requiresPrivateReview && pending.requiresActorAck && !pending.returnRequestedAt && !pending.acknowledgedAt) return;
     const now = Date.now();
+    // Priest review is deliberately bounded.  The five seconds start only once
+    // the acting client has actually revealed the card; a second server-side
+    // deadline keeps a backgrounded or lost client from holding the room.
+    if (pending.requiresPrivateReview && !pending.returnRequestedAt && !pending.acknowledgedAt) {
+      const dueAt = pending.autoReturnAt || pending.privateReviewFallbackAt || (now + 8_000);
+      const timer = setTimeout(async () => {
+        this.resolutionTimers.delete(roomCode);
+        await this.runRoomOperation(roomCode, async () => {
+          const latest = await roomRepository.getRoom(roomCode);
+          const current = latest?.pendingResolution;
+          if (!latest || !current || current.actionId !== pending.actionId || latest.isPaused || current.returnRequestedAt) return;
+          if (Date.now() >= (current.autoReturnAt || current.privateReviewFallbackAt || 0)) {
+            await this.applyPresentationAcknowledgement(roomCode, current.actorId, current.actionId, current.stateVersion, 'RETURN_REQUEST');
+          }
+        });
+      }, Math.max(25, dueAt - now));
+      timer.unref?.();
+      this.resolutionTimers.set(roomCode, timer);
+      return;
+    }
     const canSettle = !pending.requiresActorAck || pending.acknowledgedAt;
     const dueAt = canSettle ? Math.max(now, pending.minAdvanceAt) : Math.max(now, pending.maxAdvanceAt);
     const timer = setTimeout(async () => {
@@ -179,7 +197,7 @@ export class LoveLetterService {
   }
 
   async schedulePendingTurnPresentation(roomCode) {
-    const room = await roomRepository.getRoom(roomCode);
+    let room = await roomRepository.getRoom(roomCode);
     const pending = room?.pendingTurnPresentation;
     if (!room || !pending || room.isPaused) return;
     this.clearTurnPresentationTimer(roomCode);
@@ -272,6 +290,15 @@ export class LoveLetterService {
         pending.maxAdvanceAt = Date.now() + 10_000;
         await roomRepository.saveRoom(room);
         this.io.to(roomCode).emit('game:presentation-return', { actionId, stateVersion: pending.stateVersion });
+        await this.schedulePendingResolution(roomCode);
+      }
+      return { success: true, pending: true };
+    }
+    if (completedPhase === 'PRIVATE_REVIEW_VISIBLE' && pending.requiresPrivateReview) {
+      if (!pending.reviewVisibleAt) {
+        pending.reviewVisibleAt = Date.now();
+        pending.autoReturnAt = pending.reviewVisibleAt + 5_000;
+        await roomRepository.saveRoom(room);
         await this.schedulePendingResolution(roomCode);
       }
       return { success: true, pending: true };
@@ -645,6 +672,9 @@ export class LoveLetterService {
         maxAdvanceAt: 0,
         requiresActorAck: timing.requiresActorAck,
         requiresPrivateReview: timing.requiresPrivateReview,
+        reviewVisibleAt: null,
+        autoReturnAt: null,
+        privateReviewFallbackAt: timing.requiresPrivateReview ? Date.now() + 8_000 : null,
         beforeState,
         events: actionEvents.map((event, sequence) => {
           const augmented = { ...event, actionId, sequence };
@@ -933,6 +963,14 @@ export class LoveLetterService {
     }
   }
 
+  async restorePendingRoundPresentations() {
+    const rooms = await roomRepository.listRooms();
+    for (const room of rooms) {
+      if (!room?.pendingRoundPresentation || !room.gameStateObject || room.isPaused) continue;
+      await this.schedulePendingRoundPresentation(room.code);
+    }
+  }
+
   appendSystemMessage(room, text) {
     if (!room.chatMessages) room.chatMessages = [];
     const message = {
@@ -947,7 +985,7 @@ export class LoveLetterService {
   }
 
   async expirePausedPlayer(roomCode, playerId, expectedExpiry) {
-    const room = await roomRepository.getRoom(roomCode);
+    let room = await roomRepository.getRoom(roomCode);
     if (!room?.isPaused || room.pausedPlayerId !== playerId || room.pauseExpiresAt !== expectedExpiry) return;
     const player = room.players.find((candidate) => candidate.id === playerId);
     if (!player?.isDisconnected) return;
@@ -956,7 +994,10 @@ export class LoveLetterService {
     room.pausedPlayerId = null;
     room.pauseExpiresAt = null;
     delete room.pausedTurnRemainingMs;
-    await this.handleCommand(roomCode, { type: 'FORFEIT', playerId });
+    await roomRepository.saveRoom(room);
+    await this.finalizeDeparture(roomCode, playerId);
+    room = await roomRepository.getRoom(roomCode);
+    if (!room) return;
 
     // The disconnected member is no longer eligible to rejoin a finished
     // table. Bots have already been removed by handleCommand if humans fell
@@ -985,6 +1026,7 @@ export class LoveLetterService {
     this.clearBotTimer(roomCode);
     this.clearResolutionTimer(roomCode);
     this.clearTurnPresentationTimer(roomCode);
+    this.clearRoundPresentationTimer(roomCode);
     const pauseExpiry = room.pauseExpiresAt;
     this.schedulePauseExpiry(roomCode, playerId, pauseExpiry);
     await roomRepository.saveRoom(room);
@@ -997,7 +1039,7 @@ export class LoveLetterService {
 
     const now = Date.now();
     this.clearPauseExpiryTimer(roomCode);
-    const hasPresentationGate = !!room.pendingResolution || !!room.pendingTurnPresentation || room.gameStateObject.playPhase !== 'TURN_INPUT';
+    const hasPresentationGate = !!room.pendingResolution || !!room.pendingTurnPresentation || !!room.pendingRoundPresentation || room.gameStateObject.playPhase !== 'TURN_INPUT';
     const remaining = Math.max(1_000, Number(room.pausedTurnRemainingMs) || room.gameStateObject.config.turnTimeoutSeconds * 1_000);
     const nextState = hasPresentationGate
       ? {
@@ -1016,6 +1058,7 @@ export class LoveLetterService {
     delete room.pausedTurnRemainingMs;
     if (room.pendingResolution) room.pendingResolution.stateVersion = nextState.stateVersion;
     if (room.pendingTurnPresentation) room.pendingTurnPresentation.stateVersion = nextState.stateVersion;
+    if (room.pendingRoundPresentation) room.pendingRoundPresentation.stateVersion = nextState.stateVersion;
     this.applyGameStateToRoom(room, nextState);
     await roomRepository.saveRoom(room);
     if (room.pendingResolution) {
@@ -1024,12 +1067,67 @@ export class LoveLetterService {
     } else if (room.pendingTurnPresentation) {
       await this.schedulePendingTurnPresentation(roomCode);
       this.broadcastGameSnapshot(roomCode, room);
+    } else if (room.pendingRoundPresentation) {
+      await this.schedulePendingRoundPresentation(roomCode);
+      this.broadcastGameSnapshot(roomCode, room);
+      this.broadcastRoomState(this.io, roomCode);
     } else {
       this.broadcastGameSnapshot(roomCode, room);
       this.broadcastRoomState(this.io, roomCode);
       this.scheduleTurnTimeout(roomCode, nextState);
       this.scheduleNextTurnIfBot(roomCode);
     }
+  }
+
+  /**
+   * A departure is a game transition, not just a chat line.  Keeping it here
+   * makes explicit leave and reconnect-expiry follow the same liveness rules.
+   */
+  async finalizeDeparture(roomCode, playerId) {
+    return this.runRoomOperation(roomCode, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      const departed = room?.players?.find((player) => player.id === playerId);
+      if (!room || !departed) return { success: false, stale: true };
+
+      await this.applyCommand(roomCode, { type: 'FORFEIT', playerId });
+      const latest = await roomRepository.getRoom(roomCode);
+      if (!latest) return { success: true };
+      latest.players = latest.players.filter((player) => player.id !== playerId);
+
+      for (const pending of [latest.pendingResolution, latest.pendingTurnPresentation, latest.pendingRoundPresentation]) {
+        if (!pending) continue;
+        pending.requiredPlayerIds = (pending.requiredPlayerIds || []).filter((id) => id !== playerId);
+        pending.acknowledgedPlayerIds = (pending.acknowledgedPlayerIds || []).filter((id) => id !== playerId);
+      }
+
+      const humans = latest.players.filter((player) => !player.isBot);
+      if (humans.length < 2) {
+        this.clearResolutionTimer(roomCode);
+        this.clearTurnPresentationTimer(roomCode);
+        this.clearRoundPresentationTimer(roomCode);
+        this.clearRoundAdvanceTimer(roomCode);
+        this.turnCoordinator.clearTurnTimer(roomCode);
+        this.clearBotTimer(roomCode);
+        latest.pendingResolution = null;
+        latest.pendingTurnPresentation = null;
+        latest.pendingRoundPresentation = null;
+        this.io.to(roomCode).emit('game:terminated', { reason: 'INSUFFICIENT_PLAYERS', departedPlayerId: playerId });
+      }
+
+      await roomRepository.saveRoom(latest);
+      this.broadcastGameSnapshot(roomCode, latest);
+      this.broadcastRoomState(this.io, roomCode);
+      if (humans.length >= 2) {
+        if (latest.pendingResolution) await this.schedulePendingResolution(roomCode);
+        else if (latest.pendingTurnPresentation) await this.schedulePendingTurnPresentation(roomCode);
+        else if (latest.pendingRoundPresentation) await this.schedulePendingRoundPresentation(roomCode);
+        else {
+          this.scheduleTurnTimeout(roomCode, latest.gameStateObject);
+          this.scheduleNextTurnIfBot(roomCode);
+        }
+      }
+      return { success: true, departed, terminated: humans.length < 2 };
+    });
   }
 
   async scheduleNextTurnIfBot(roomCode) {

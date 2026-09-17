@@ -4,14 +4,14 @@ import { Menu, Wifi, WifiOff } from 'lucide-react';
 import { THEME } from '../../../shared/theme';
 
 export type ClockMode = 'RUNNING' | 'PRESENTING' | 'PAUSED' | 'DISCONNECTED' | 'HIDDEN';
-interface GameHudProps { roundNumber:number; myTokens:number; targetTokens:number; turnPlayerNickname:string; isMyTurn:boolean; isConnected?:boolean; statusLabel:string; turnExpiresAt?:number; turnTimeoutSeconds?:number; serverClockOffsetMs?:number; clockMode?:ClockMode; onOpenSettings:()=>void; }
+interface GameHudProps { roundNumber:number; myTokens?:number; targetTokens?:number; turnPlayerNickname:string; isMyTurn:boolean; isConnected?:boolean; statusLabel:string; leftLabel?:React.ReactNode; turnExpiresAt?:number; turnTimeoutSeconds?:number; serverClockOffsetMs?:number; clockMode?:ClockMode; onOpenSettings:()=>void; }
 
 export const remainingSeconds = (turnExpiresAt?:number, turnTimeoutSeconds?:number, serverClockOffsetMs=0) => {
   if (!turnExpiresAt || !turnTimeoutSeconds || turnTimeoutSeconds <= 0) return null;
   return Math.min(turnTimeoutSeconds, Math.max(0, Math.ceil((turnExpiresAt - (Date.now() + serverClockOffsetMs)) / 1000)));
 };
 
-export const GameHud: React.FC<GameHudProps> = ({ roundNumber, targetTokens, statusLabel, turnExpiresAt, turnTimeoutSeconds, serverClockOffsetMs=0, clockMode='RUNNING', isConnected=true, onOpenSettings }) => {
+export const GameHud: React.FC<GameHudProps> = ({ roundNumber, targetTokens, statusLabel, leftLabel, turnExpiresAt, turnTimeoutSeconds, serverClockOffsetMs=0, clockMode='RUNNING', isConnected=true, onOpenSettings }) => {
   const [secondsLeft, setSecondsLeft] = useState(() => remainingSeconds(turnExpiresAt, turnTimeoutSeconds, serverClockOffsetMs));
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export const GameHud: React.FC<GameHudProps> = ({ roundNumber, targetTokens, sta
   const clockText = clockMode === 'PRESENTING' ? '연출 중' : clockMode === 'PAUSED' ? '일시 정지' : clockMode === 'DISCONNECTED' ? '—' : clockMode === 'HIDDEN' ? '—' : hasTimeLimit ? `${secondsLeft ?? 0}초` : '∞';
 
   return <HudContainer>
-    <RoundInfo>라운드 {roundNumber} <span>· 목표 {targetTokens}</span></RoundInfo><TurnStatus>{statusLabel}</TurnStatus>
+    <RoundInfo>{leftLabel || <>라운드 {roundNumber} <span>· 목표 {targetTokens}</span></>}</RoundInfo><TurnStatus>{statusLabel}</TurnStatus>
     <TurnClock $urgent={clockMode === 'RUNNING' && hasTimeLimit && (secondsLeft ?? 0) <= 10} title={timerLabel} aria-label={timerLabel}>{clockText}</TurnClock>
     <RightGroup title={isConnected ? '실시간 연결됨' : '연결 끊김'}>{isConnected ? <Wifi size={14}/> : <WifiOff size={14}/>}<MenuButton type="button" onClick={onOpenSettings} aria-label="게임 메뉴"><Menu size={17}/></MenuButton></RightGroup>
   </HudContainer>;

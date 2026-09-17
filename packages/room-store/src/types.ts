@@ -26,7 +26,6 @@ export interface Room<TGameState = GameState> {
   gameType?: 'LOVE_LETTER' | 'DALMUTI';
   roundCount?: 5 | 10 | 20;
   maxPlayers?: 4 | 5 | 6 | 7 | 8;
-  firstDealRevolution?: boolean;
   useStrippedDeck?: boolean;
   philanthropicScoring?: boolean;
   merchantExchange?: boolean;

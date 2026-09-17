@@ -27,10 +27,9 @@ try {
   assert.equal(room.gameStateObject.deck.length,deckBefore,'No next-turn draw before return');
   let pending = room.pendingResolution;
   const args = [room.code,'p0',pending.actionId,pending.stateVersion];
-  assert.equal(service.resolutionTimers.has(room.code),false,'Human review has no expiry timer');
-  pending.maxAdvanceAt = Date.now()-20_000;
-  await service.schedulePendingResolution(room.code);
-  assert.equal(service.resolutionTimers.has(room.code),false,'Even a passed legacy deadline cannot expire private review');
+  assert.equal(service.resolutionTimers.has(room.code),true,'Private review has a bounded safety return timer');
+  assert.equal((await service.acknowledgePresentation(...args,'PRIVATE_REVIEW_VISIBLE')).success,true);
+  assert.ok(pending.autoReturnAt >= Date.now()+4_900,'Five seconds begin after the card is visibly revealed');
   assert.equal((await service.acknowledgePresentation(...args,'PRIVATE_REVIEW')).success,false);
   assert.equal((await service.acknowledgePresentation(room.code,'p1',pending.actionId,pending.stateVersion,'RETURN_REQUEST')).success,false);
   await assert.rejects(service.handleCommand(room.code,{type:'PLAY_CARD',playerId:'p0',cardId:'held0'}));
@@ -49,6 +48,17 @@ try {
   await service.finalizePendingResolution(room.code,pending.actionId);
   assert.equal(room.gameStateObject.currentTurnPlayerId,'p1');
   assert.equal(room.gameStateObject.deck.length,deckBefore-1);
+
+  // The client normally marks the card visible before this deadline.  A
+  // backgrounded client still receives the same idempotent return transition.
+  room = await fixture(2);
+  await service.handleCommand(room.code,{ type:'PLAY_CARD',playerId:'p0',cardId:'played',targetId:'p1' });
+  pending = room.pendingResolution;
+  await service.acknowledgePresentation(room.code,'p0',pending.actionId,pending.stateVersion,'PRIVATE_REVIEW_VISIBLE');
+  pending.autoReturnAt = Date.now() - 1;
+  await service.schedulePendingResolution(room.code);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.ok(room.pendingResolution.returnRequestedAt,'Expired Priest review automatically requests its return');
   for (const value of [1,3,4,5,6,7,8]) {
     room = await fixture(value);
     await service.handleCommand(room.code,{type:'PLAY_CARD',playerId:'p0',cardId:'played',targetId:[1,3,5,6].includes(value)?'p1':undefined,guessValue:value===1?6:undefined});
@@ -107,7 +117,38 @@ try {
   await service.acknowledgePresentation(room.code, 'p1', gate.presentationId, gate.stateVersion, 'ROUND_RESULT', gate.roundNumber);
   await service.acknowledgePresentation(room.code, 'p2', gate.presentationId, gate.stateVersion, 'ROUND_RESULT', gate.roundNumber);
   assert.equal(room.pendingRoundPresentation, null, 'The last acknowledgement releases the result gate exactly once');
-  console.log('Physical presentation: deferred turn, indefinite private review, return authorization/idempotency, privacy and all eight card sequences passed.');
+
+  // A round-result gate is persisted while a player reconnects.  Resuming
+  // must re-arm its watchdog instead of leaving the room at ROUND_END.
+  room = await fixture(4);
+  room.isPaused = true;
+  room.pausedPlayerId = 'p1';
+  room.pauseExpiresAt = Date.now() + 90_000;
+  room.pendingRoundPresentation = {
+    kind: 'ROUND_RESULT', presentationId: 'resume_round_gate', roundNumber: room.gameStateObject.roundNumber,
+    stateVersion: room.gameStateObject.stateVersion, beforeState: room.gameStateObject, events: [],
+    requiredPlayerIds: ['p0'], acknowledgedPlayerIds: [], fallbackAt: Date.now() + 2_000, advanceAt: Date.now() + 10_000,
+  };
+  await roomRepository.saveRoom(room);
+  await service.resumeRoom(room.code);
+  assert.equal((await roomRepository.getRoom(room.code)).isPaused, false, 'Reconnect resumes the room state');
+  assert.equal(service.roundPresentationTimers.has(room.code), true, 'Reconnect re-arms the pending round-result watchdog');
+  service.clearRoundPresentationTimer(room.code);
+
+  // Departure is an authoritative game transition.  With no viable game it
+  // terminates the room instead of leaving the surviving client paused.
+  room = await fixture(4);
+  const departure = await service.finalizeDeparture(room.code, 'p2');
+  assert.equal(departure.terminated, false, 'A three-player table remains playable after one departure');
+  assert.equal((await roomRepository.getRoom(room.code)).players.some(player => player.id === 'p2'), false, 'The departed seat is removed from the room');
+  room = await fixture(4);
+  const finalDeparture = await service.finalizeDeparture(room.code, 'p1');
+  // fixture contains three players; remove a second player to reach the
+  // terminal case and prove the client receives a deterministic leave event.
+  await service.finalizeDeparture(room.code, 'p2');
+  assert.equal(finalDeparture.terminated, false);
+  assert.ok(emitted.some(entry => entry.name === 'game:terminated'), 'Insufficient players emit a terminal room event');
+  console.log('Physical presentation: deferred turn, bounded private review, return authorization/idempotency, privacy and all eight card sequences passed.');
 } finally {
   service.clearResolutionTimer('PHYSICAL'); service.clearTurnPresentationTimer('PHYSICAL'); service.clearRoundPresentationTimer('PHYSICAL'); service.clearRoundAdvanceTimer('PHYSICAL'); service.turnCoordinator.clearTurnTimer('PHYSICAL'); service.clearBotTimer('PHYSICAL');
   await roomRepository.deleteRoom('PHYSICAL');

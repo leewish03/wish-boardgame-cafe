@@ -48,9 +48,16 @@ try {
     assert.ok((await emit(clients[index], 'room:ready', { roomCode:created.roomCode })).success);
   }
 
+  const openingEvents = [];
+  const captureOpeningEvent = (envelope) => openingEvents.push(envelope?.event?.type);
+  clients[0].on('dalmuti:event', captureOpeningEvent);
+  const openingReady = waitForMatching(clients[0], 'dalmuti:event', (envelope) => envelope?.event?.type === 'OPENING_READY');
   const nextSnapshot = waitFor(clients[0], 'room:state');
   const started = await emit(clients[0], 'dalmuti:start', { roomCode:created.roomCode });
   assert.ok(started.success, started.error);
+  await openingReady;
+  clients[0].off('dalmuti:event', captureOpeningEvent);
+  assert.deepEqual(openingEvents.slice(0, 2), ['ROUND_DEALT', 'OPENING_READY'], 'the opening clears the presentation before enabling the first lead');
   const hostView = await nextSnapshot;
   assert.equal(hostView.gameType, 'DALMUTI');
   assert.equal(hostView.mySecret.hand.length > 0, true);
@@ -94,6 +101,10 @@ try {
   service.clearTimers(created.roomCode);
   await service.disconnectExpired(created.roomCode, ids[1]);
   assert.equal(rooms[created.roomCode].players.find((player) => player.id === ids[1]).isBot, true, 'expired seat becomes a bot');
+  assert.ok(
+    ['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'].includes(rooms[created.roomCode].gameStateObject.players.find((player) => player.id === ids[1]).botProfile),
+    'an expired seat receives a strategy profile before its bot turn is scheduled',
+  );
   const lateReconnect = await emit(clients[1], 'room:reconnect', { roomCode:created.roomCode, ...credentials[1] });
   assert.equal(lateReconnect.success, false, 'a bot-taken seat cannot be reclaimed late');
   console.log('Dalmuti Socket.IO start, private projection and command routing passed.');

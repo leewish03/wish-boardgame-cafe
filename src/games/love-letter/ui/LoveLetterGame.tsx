@@ -22,6 +22,7 @@ import { calculateRemainingCards } from '../../../../packages/love-letter-core/s
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { PhysicalTableContext } from '../presentation/PhysicalTableContext';
+import { PresentationStagePlane } from '../presentation/PresentationStagePlane';
 import { playerCopy } from './playerCopy';
 
 export interface LoveLetterGameProps {
@@ -74,6 +75,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const activeUserId = currentUser?.id || propMyUserId || '';
   const handleLeaveCallback = onLeave || propOnLeaveRoom || propOnForfeit || (() => {});
   const [chatOpen, setChatOpen] = useState(false);
+  const tableViewportRef = useRef<HTMLElement>(null);
   const handleChatOpenChange = useCallback((open: boolean) => setChatOpen(open), []);
 
   // Presentation timeline
@@ -505,10 +507,11 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         players={visual.visualTable.players}
         returnedActionId={gameSocket.returnedActionId}
         onReturnCard={(actionId,version,callback)=>gameSocket.acknowledgePresentation(actionId,version,'RETURN_REQUEST',callback)}
+        onReviewVisible={(actionId,version)=>gameSocket.acknowledgePresentation(actionId,version,'PRIVATE_REVIEW_VISIBLE')}
         onPhaseComplete={handlePresentationComplete}
       />
 
-      <TableViewport>
+      <TableViewport ref={tableViewportRef}>
       {/* 2. OPPONENT RAIL (Section 3 Tier 2) */}
       <OpponentRail
         opponents={visual.visualTable.players.filter(p => p.id !== activeUserId)}
@@ -528,7 +531,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         setAsideCount={visual.visualTable.setAsideCount}
         players={visual.visualTable.players}
         localUserId={activeUserId}
-        lastAction={isActionPlaying ? (gameState.lastAction || gameSocket.lastAction) : null}
         presentationAction={currentAction}
         presentationPhase={phase}
         interactionState={interactionState}
@@ -543,6 +545,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onCancelAction={handleCancelAction}
       />
       </TableViewport>
+      <PresentationStagePlane viewportRef={tableViewportRef}/>
 
       {/* My public discard shelf is physically attached directly above my hand. */}
       {visual.visualTable.players.find(p => p.id === activeUserId) && (

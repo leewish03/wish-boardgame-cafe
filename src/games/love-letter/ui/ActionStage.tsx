@@ -1,27 +1,19 @@
 import React from 'react';
 import styled from 'styled-components';
 import { DeckSlot } from './DeckSlot';
-import { CardInstance, GameEventSummary, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
+import { CardInstance, PlayerPublic } from '../../../../packages/love-letter-core/src/types';
 import { PresentationPhase } from '../machines/presentationMachine';
 import { PresentationAction } from '../presentation/useActionTimeline';
 import { THEME } from '../../../shared/theme';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
-import { useTableAnchor } from '../presentation/TableAnchorRegistry';
-import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { deriveActionNarrative } from '../presentation/deriveActionNarrative';
 import { playerCopy } from './playerCopy';
-
-const MotionAnchor: React.FC<{kind:'comparison-left'|'comparison-right'|`round-result:${number}`}> = ({kind}) => {
-  const anchor = useTableAnchor('table', kind);
-  return <span ref={anchor} aria-hidden="true"/>;
-};
 
 interface ActionStageProps {
   deckCount: number;
   setAsideCount?: number;
   players?: PlayerPublic[];
   localUserId: string;
-  lastAction: GameEventSummary | null;
   interactionState?: string;
   actionError?: string | null;
   activeCard?: CardInstance | null;
@@ -42,7 +34,6 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   setAsideCount = 0,
   players = [],
   localUserId,
-  lastAction,
   presentationAction,
   presentationPhase,
   interactionState,
@@ -56,8 +47,6 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   isMyTurn = false,
   turnPlayerName = '상대',
 }) => {
-  const step = buildPhysicalSequence(presentationAction?.presentationEvents || [])[presentationAction?.presentationIndex || 0];
-  const controlsAnchor = useTableAnchor('table','review-controls');
   const narrative = deriveActionNarrative(presentationAction, players, localUserId, targetPlayerId);
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name}의 대상을 선택하세요` : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' && activeCard ? `${activeCard.name} 사용 준비 완료` : null;
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
@@ -65,37 +54,19 @@ export const ActionStage: React.FC<ActionStageProps> = ({
     ? '카드를 선택해 행동을 준비하세요'
     : `${turnPlayerName}의 차례 · 행동을 기다리는 중`;
 
-  const isPrivateReview = step?.kind === 'REVIEW';
-  const isComparison = Boolean(step && ['COMPARE_GATHER', 'COMPARE_REVEAL', 'COMPARE_RESULT', 'COMPARE_SETTLE'].includes(step.kind));
-  const isRoundReveal = Boolean(step && ['ROUND_GATHER', 'ROUND_REVEAL', 'ROUND_RESULT'].includes(step.kind));
-
-  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $reviewing={isPrivateReview} $hasControls={Boolean(activeCard)}>
-    <ComparisonAnchors $active={isComparison} aria-hidden="true"><MotionAnchor kind="comparison-left"/><span>VS</span><MotionAnchor kind="comparison-right"/></ComparisonAnchors>
-    <RoundAnchors $active={isRoundReveal} aria-hidden="true">{Array.from({length:6},(_,index)=><MotionAnchor key={index} kind={`round-result:${index}`}/>)}</RoundAnchors>
+  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $hasControls={Boolean(activeCard)}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
     <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
-    {/* Private-review controls need their own flow space. Mounting them inside
-        the narration card made the grid compress and overlap the local area. */}
-    <ReviewControlsAnchor ref={controlsAnchor}/>
     {activeCard && <ActionControls><CancelButton type="button" onClick={onCancelAction} disabled={interactionState === 'SUBMITTING'}>취소</CancelButton><ConfirmButton type="button" disabled={!canConfirm} onClick={onConfirmAction}>{interactionState === 'SUBMITTING' ? '전달 중…' : '이 카드 사용'}</ConfirmButton></ActionControls>}
   </StageContainer>;
 };
 
-const StageContainer = styled.section<{$reviewing:boolean;$hasControls:boolean}>`
-  position:relative;width:100%; min-width:0; min-height:${p=>p.$reviewing?'242px':p.$hasControls?'270px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+const StageContainer = styled.section<{$hasControls:boolean}>`
+  position:relative;width:100%; min-width:0; min-height:${p=>p.$hasControls?'270px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
-`;
-const ComparisonAnchors=styled.div<{$active:boolean}>`
-  position:absolute;left:50%;top:38%;width:min(304px,78vw);height:clamp(151px,43vw,206px);transform:translate(-50%,-50%);display:grid;grid-template-columns:1fr 30px 1fr;align-items:center;gap:8px;pointer-events:none;opacity:${p=>p.$active?1:0};
-  >span:not(:nth-child(2)){display:block;width:100%;height:100%;} >span:nth-child(2){font:900 17px ${THEME.font.serif};color:${THEME.goldAntique};text-align:center;}
-`;
-const RoundAnchors=styled.div<{$active:boolean}>`
-  position:absolute;left:50%;top:38%;width:min(420px,86vw);transform:translate(-50%,-50%);display:grid;grid-template-columns:repeat(3,1fr);gap:7px;pointer-events:none;opacity:${p=>p.$active?1:0};
-  >span{display:block;aspect-ratio:154 / 220;} @media(min-width:700px){grid-template-columns:repeat(6,1fr);}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
 const TableObjects = styled.div`display:flex;align-items:center;justify-content:center;gap:32px;width:100%;min-height:100px;@media(max-height:650px){min-height:72px;} `;
-const ReviewPlace = styled.div`width:86px;height:124px;`;
 const Narration = styled.div`
   width:100%; min-width:0; min-height:52px; max-width:460px; padding:10px 13px; box-sizing:border-box;
   text-align:center; display:flex; flex-direction:column; justify-content:center; gap:4px;
@@ -104,9 +75,6 @@ const Narration = styled.div`
   strong{font-weight:900;} span{color:${THEME.mutedForeground};} em{font-style:normal;color:${THEME.burgundy};font-weight:800;}
   @media(max-width:360px){min-height:48px;padding:8px 10px;font-size:10px;border-radius:10px;}
   @media(max-height:650px){min-height:44px;padding:7px 10px;}
-`;
-const ReviewControlsAnchor = styled.div`
-  width:min(460px, 100%); min-width:0;
 `;
 const SelectionCard = styled.div`
   width:min(460px, 100%); padding:9px 12px; box-sizing:border-box; display:flex; flex-direction:column; gap:3px; text-align:center;

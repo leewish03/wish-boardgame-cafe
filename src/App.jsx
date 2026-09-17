@@ -283,6 +283,150 @@ const GameLoadingScreen = styled.div`
   }
 `;
 
+// The room lobby is shared by Love Letter and Dalmuti.  It deliberately has
+// its own bounded layout: participants are a table resource, not a page-long
+// feed, and chat opens as a sheet rather than permanently consuming height.
+const WaitingRoomCard = styled(Card)`
+  width: 100%;
+  max-width: 960px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 112px);
+
+  @media (max-width: 640px) {
+    max-height: calc(100dvh - 88px);
+  }
+`;
+
+const WaitingRoomHeader = styled(CardHeader)`
+  flex: 0 0 auto;
+  padding: 20px 22px 14px;
+
+  @media (max-width: 640px) {
+    padding: 15px 16px 10px;
+  }
+`;
+
+const WaitingRoomContent = styled(CardContent)`
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(238px, 0.68fr);
+  gap: 16px;
+  padding: 0 22px 14px;
+
+  @media (max-width: 640px) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 14px 10px;
+  }
+`;
+
+const WaitingRoomRoster = styled.section`
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+`;
+
+const WaitingRoomRosterHeader = styled.div`
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+
+  @media (max-width: 420px) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+`;
+
+const PlayerGrid = styled.div`
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding: 1px 3px 3px 1px;
+  scrollbar-gutter: stable;
+
+  @media (max-width: 640px) {
+    flex: 0 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: min(34dvh, 280px);
+  }
+`;
+
+const WaitingPlayer = styled.div`
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  border-radius: ${THEME.radius.md};
+  border: 1px solid ${({ $isMe, $isBot }) => ($isMe ? THEME.gold : $isBot ? 'rgba(197, 160, 89, 0.4)' : '#e2e8f0')};
+  box-shadow: 0 1px 4px rgba(9, 13, 22, 0.04);
+
+  > div:first-child, > div:first-child > div { min-width: 0; }
+  > div:first-child > div > div:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 400px) {
+    padding: 7px;
+    min-height: 52px;
+  }
+`;
+
+const WaitingRoomUtilityRail = styled.aside`
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid ${THEME.border};
+  border-radius: ${THEME.radius.md};
+  background: rgba(255, 255, 255, 0.74);
+
+  @media (max-width: 640px) {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px;
+  }
+`;
+
+const WaitingRoomUtilityLabel = styled.div`
+  min-width: 0;
+  font: 800 11px ${THEME.font.sans};
+  color: ${THEME.mutedForeground};
+  line-height: 1.4;
+
+  @media (max-width: 420px) { display: none; }
+`;
+
+const WaitingRoomFooter = styled(CardFooter)`
+  flex: 0 0 auto;
+  border-top: 1px solid ${THEME.border};
+  padding: 13px 22px 18px;
+
+  @media (max-width: 640px) {
+    padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+  }
+`;
+
 const LobbySegmentedNav = styled.nav`
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -478,7 +622,6 @@ export default function App() {
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
   const [roundCount, setRoundCount] = useState(10);
-  const [firstDealRevolution, setFirstDealRevolution] = useState(true);
   const [useStrippedDeck, setUseStrippedDeck] = useState(true);
   const [philanthropicScoring, setPhilanthropicScoring] = useState(false);
   const [merchantExchange, setMerchantExchange] = useState(false);
@@ -788,7 +931,6 @@ export default function App() {
         maxPlayers,
         turnTimeLimit,
         roundCount,
-        firstDealRevolution,
         useStrippedDeck,
         philanthropicScoring,
         merchantExchange,
@@ -1182,7 +1324,7 @@ export default function App() {
                     </CardHeader>
                     <CardContent>
                       <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
-                        대달무티부터 농노까지 치열한 계급 투쟁이 펼쳐지는 명작 보드게임.
+                        달무티부터 농노까지 치열한 계급 투쟁이 펼쳐지는 명작 보드게임.
                       </p>
                     </CardContent>
                     <CardFooter>
@@ -1285,8 +1427,8 @@ export default function App() {
         {/* SCREEN 3: Waiting Room */}
         {/* ========================================================= */}
         {screen === 'waitingRoom' && (
-          <Card style={{ maxWidth: '640px', width: '100%' }}>
-            <CardHeader>
+          <WaitingRoomCard>
+            <WaitingRoomHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <CardTitle>{roomState?.gameType === 'DALMUTI' ? '달무티 계급 살롱' : '러브레터 살롱'}</CardTitle>
@@ -1300,10 +1442,11 @@ export default function App() {
                   <span style={{ fontWeight: 800, letterSpacing: '1px' }}>{roomState?.code || '------'}</span>
                 </Button>
               </div>
-            </CardHeader>
+            </WaitingRoomHeader>
 
-            <CardContent>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <WaitingRoomContent>
+              <WaitingRoomRoster aria-label="참가자 목록">
+              <WaitingRoomRosterHeader>
                 <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, textTransform: 'uppercase' }}>
                   PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}) · {roomState?.gameType === 'DALMUTI' ? '최소 4인' : '최소 2인'}
                 </div>
@@ -1332,26 +1475,18 @@ export default function App() {
                     )}
                   </div>
                 )}
-              </div>
+              </WaitingRoomRosterHeader>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <PlayerGrid>
                 {(roomState?.players || []).map((p) => {
                   const isPlayerHost = p.id === roomState?.hostId;
                   const isMe = p.id === currentUser?.id;
 
                   return (
-                    <div
+                    <WaitingPlayer
                       key={p.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 14px',
-                        backgroundColor: '#ffffff',
-                        borderRadius: THEME.radius.md,
-                        border: `1px solid ${isMe ? THEME.gold : p.isBot ? 'rgba(197, 160, 89, 0.4)' : '#e2e8f0'}`,
-                        boxShadow: '0 1px 4px rgba(9, 13, 22, 0.04)',
-                      }}
+                      $isMe={isMe}
+                      $isBot={p.isBot}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <img
@@ -1389,17 +1524,22 @@ export default function App() {
                           <Badge $variant="outline">WAITING</Badge>
                         )}
                       </div>
-                    </div>
+                    </WaitingPlayer>
                   );
                 })}
-              </div>
+              </PlayerGrid>
+              </WaitingRoomRoster>
 
-              <div style={{ marginTop: '12px' }}><RoomVoiceControls voice={webrtc} compact /></div>
+              <WaitingRoomUtilityRail aria-label="대기실 도구">
+                <div style={{ minWidth: 0, flex: 1 }}><RoomVoiceControls voice={webrtc} compact /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
+                  <WaitingRoomUtilityLabel>채팅은 화면을 가리지 않는 시트로 열립니다.</WaitingRoomUtilityLabel>
+                  <RoomChat messages={roomState?.chatMessages || []} onSend={handleSendChat} mode="sheet" currentUserId={currentUser?.id} launcherPlacement="inline" />
+                </div>
+              </WaitingRoomUtilityRail>
+            </WaitingRoomContent>
 
-              <RoomChat messages={roomState?.chatMessages || []} onSend={handleSendChat} />
-            </CardContent>
-
-            <CardFooter style={{ borderTop: `1px solid ${THEME.border}`, paddingTop: '16px' }}>
+            <WaitingRoomFooter>
               <Button $variant="destructive" $size="sm" onClick={handleLeaveRoom}>
                 <LogOut size={15} />
                 <span>나가기</span>
@@ -1426,8 +1566,8 @@ export default function App() {
                   </Button>
                 )}
               </div>
-            </CardFooter>
-          </Card>
+            </WaitingRoomFooter>
+          </WaitingRoomCard>
         )}
 
         {/* ========================================================= */}
@@ -1539,7 +1679,6 @@ export default function App() {
 
           {selectedGameForCreate === 'DALMUTI' && <div style={{ display: 'grid', gap: '8px' }}>
             {[
-              ['첫 판 자동 혁명', firstDealRevolution, setFirstDealRevolution],
               ['4·5인 축소 덱', useStrippedDeck, setUseStrippedDeck],
               ['자선 점수', philanthropicScoring, setPhilanthropicScoring],
               ['상인 무작위 교환', merchantExchange, setMerchantExchange],
@@ -1628,4 +1767,3 @@ export default function App() {
     </AppContainer>
   );
 }
-

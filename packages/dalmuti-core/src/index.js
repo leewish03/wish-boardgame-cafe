@@ -1,18 +1,17 @@
 export const DALMUTI_RANKS = Object.freeze({
-  1: '대달무티', 2: '대주교', 3: '시종장', 4: '남작부인', 5: '수녀원장',
+  1: '달무티', 2: '대주교', 3: '시종장', 4: '남작부인', 5: '수녀원장',
   6: '기사', 7: '재봉사', 8: '석공', 9: '요리사', 10: '양치기',
   11: '광부', 12: '농노', 13: '어릿광대',
 });
 
 export const ROLE_NAMES = Object.freeze([
-  '대달무티', '소달무티', '상인', '상인', '상인', '상인', '소농노', '대농노',
+  '달무티', '총리대신', '상인', '상인', '상인', '상인', '소작농', '농노',
 ]);
 
 export const DEFAULT_CONFIG = Object.freeze({
   roundCount: 10,
   maxPlayers: 8,
   turnTimeoutSeconds: 30,
-  firstDealRevolution: true,
   useStrippedDeck: true,
   philanthropicScoring: false,
   merchantExchange: false,
@@ -54,10 +53,10 @@ export function shuffle(cards, random = Math.random) {
 }
 
 function roleForIndex(index, count) {
-  if (index === 0) return '대달무티';
-  if (index === 1) return '소달무티';
-  if (index === count - 2) return '소농노';
-  if (index === count - 1) return '대농노';
+  if (index === 0) return '달무티';
+  if (index === 1) return '총리대신';
+  if (index === count - 2) return '소작농';
+  if (index === count - 1) return '농노';
   return '상인';
 }
 
@@ -72,33 +71,16 @@ function refreshPlayers(state) {
   });
 }
 
-function drawInitialHierarchy(players, random) {
-  const drawLog = [];
-  const resolveGroup = (playerIds) => {
-    const groups = new Map();
-    for (const id of playerIds) {
-      const drawn = 1 + Math.floor(random() * 13);
-      drawLog.push({ playerId: id, rank: drawn });
-      if (!groups.has(drawn)) groups.set(drawn, []);
-      groups.get(drawn).push(id);
-    }
-    return [...groups.entries()]
-      .sort(([rankA], [rankB]) => rankA - rankB)
-      .flatMap(([, ids]) => (ids.length === 1 ? ids : resolveGroup(ids)));
-  };
-  return {
-    hierarchy: resolveGroup(players.map((player) => player.id)),
-    draws: drawLog,
-  };
-}
-
 export function createInitialState(players, partialConfig = {}, seed = Date.now()) {
   if (!Array.isArray(players) || players.length < 4 || players.length > 8) {
     throw new Error('달무티는 4명부터 8명까지 플레이할 수 있습니다.');
   }
   const config = { ...DEFAULT_CONFIG, ...partialConfig };
   const random = makeSeededRandom(seed);
-  const rankDraw = drawInitialHierarchy(players, random);
+  // The Korean edition's common first-round convention is a random table,
+  // then the player who was actually dealt the lone Dalmuti (rank 1) takes
+  // the first lead.  Keep this seat order until the deal reveals that owner.
+  const initialSeatOrder = shuffle(players.map((player) => player.id), random);
   const state = {
     gameType: 'DALMUTI',
     matchState: 'LOBBY',
@@ -107,12 +89,14 @@ export function createInitialState(players, partialConfig = {}, seed = Date.now(
     config,
     players: players.map((player) => ({
       id: player.id, nickname: player.nickname, avatarUrl: player.avatarUrl || player.avatar,
-      isHost: !!player.isHost, isBot: !!player.isBot, score: 0, roleIndex: 0,
+      isHost: !!player.isHost, isBot: !!player.isBot,
+      botProfile: player.isBot ? ['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'][players.filter((candidate) => candidate.isBot).findIndex((candidate) => candidate.id === player.id) % 3] : null,
+      score: 0, roleIndex: 0,
       role: '상인', handCount: 0, finishedPosition: null, passed: false,
     })),
     secrets: Object.fromEntries(players.map((player) => [player.id, { hand: [] }])),
-    hierarchy: rankDraw.hierarchy,
-    rankDraw: rankDraw.draws,
+    hierarchy: initialSeatOrder,
+    initialSeatOrder,
     currentTurnPlayerId: null,
     turnStartedAt: 0,
     turnExpiresAt: 0,
@@ -127,6 +111,9 @@ export function createInitialState(players, partialConfig = {}, seed = Date.now(
     stateVersion: 1,
     actionSerial: 0,
     randomSeed: Number(seed) >>> 0,
+    // This is deliberately a public-action journal, not a second copy of
+    // hidden hands.  Bots consume a profile-limited tail of it as memory.
+    botMemory: { publicEvents: [] },
   };
   refreshPlayers(state);
   return state;
@@ -173,6 +160,11 @@ function startTurnPlay(state, actorId = state.hierarchy[0], actionType = 'PLAY_S
   state.lastAction = { id: makeId('action', state), type: actionType, actorId, timestamp: Date.now() };
 }
 
+function rotateHierarchyToLeader(hierarchy, leaderId) {
+  const index = hierarchy.indexOf(leaderId);
+  return index <= 0 ? [...hierarchy] : [...hierarchy.slice(index), ...hierarchy.slice(0, index)];
+}
+
 function maybeStartMerchantExchange(state) {
   if (!state.config.merchantExchange) return false;
   const merchants = state.hierarchy.slice(2, -2);
@@ -191,7 +183,7 @@ function setupTax(state) {
   ];
   for (const pair of pairs) {
     const hand = state.secrets[pair.peonId].hand;
-    pair.offered = [...hand].sort((a, b) => a.rank - b.rank).slice(0, pair.count);
+    pair.offered = hand.filter((card) => card.rank !== 13).sort((a, b) => a.rank - b.rank).slice(0, pair.count);
     pair.returned = null;
     const offeredIds = new Set(pair.offered.map((card) => card.id));
     state.secrets[pair.peonId].hand = hand.filter((card) => !offeredIds.has(card.id));
@@ -199,6 +191,7 @@ function setupTax(state) {
   state.tax = { pairs, currentDalmutiId: pairs[0].dalmutiId };
   state.playPhase = 'TAX_RETURN';
   setTurn(state, pairs[0].dalmutiId);
+  state.lastAction = { id: makeId('tax-request', state), type: 'TAX_REQUESTED', actorId: pairs[0].dalmutiId, timestamp: Date.now() };
 }
 
 function beginRound(state) {
@@ -209,6 +202,7 @@ function beginRound(state) {
   state.outcome = null;
   state.trick = { requiredCount: null, topRank: null, lastPlayerId: null, passPlayerIds: [], sets: [], completedCount: 0 };
   state.discardedCards = [];
+  state.botMemory = { publicEvents: [] };
   state.players.forEach((player) => { player.finishedPosition = null; player.passed = false; });
   const random = randomForState(state);
   const deck = shuffle(createDeck(state.config, state.players.length), random);
@@ -218,24 +212,49 @@ function beginRound(state) {
     state.secrets[id].hand.push(card);
   });
   Object.values(state.secrets).forEach((secret) => secret.hand.sort((a, b) => a.rank - b.rank));
+  const dealtEvent = { id: makeId('deal', state), type: 'ROUND_DEALT', roundNumber: state.roundNumber, timestamp: Date.now() };
+  recordPublicBotEvent(state, dealtEvent);
   const revolution = state.hierarchy.find((id) => state.secrets[id].hand.filter((card) => card.rank === 13).length === 2) || null;
   state.revolutionCandidateId = revolution;
-  state.lastAction = { id: makeId('deal', state), type: 'ROUND_DEALT', roundNumber: state.roundNumber, timestamp: Date.now() };
 
-  if (state.roundNumber === 1 && state.config.firstDealRevolution) {
-    if (revolution === state.hierarchy[state.hierarchy.length - 1]) {
-      state.playPhase = 'REVOLUTION_DECISION';
-      setTurn(state, revolution);
-    } else {
-      startTurnPlay(state, state.hierarchy[0], 'FIRST_DEAL_REVOLUTION');
-    }
+  if (state.roundNumber === 1) {
+    const openingLeaderId = state.hierarchy.find((id) => state.secrets[id].hand.some((card) => card.rank === 1));
+    state.hierarchy = rotateHierarchyToLeader(state.hierarchy, openingLeaderId);
+    // First-round positions are not earned yet: no tax and no revolution.
+    state.revolutionCandidateId = null;
+    startTurnPlay(state, openingLeaderId, 'OPENING_READY');
+    state.pendingEvents = [dealtEvent, state.lastAction];
   } else if (revolution) {
     state.playPhase = 'REVOLUTION_DECISION';
     setTurn(state, revolution);
+    state.lastAction = dealtEvent;
+    state.pendingEvents = [dealtEvent];
   } else {
     setupTax(state);
+    state.pendingEvents = [dealtEvent, state.lastAction];
   }
   refreshPlayers(state);
+}
+
+function recordPublicBotEvent(state, event) {
+  if (!event?.id || !event?.type) return;
+  const journal = state.botMemory || (state.botMemory = { publicEvents: [] });
+  if (journal.publicEvents.some((entry) => entry.id === event.id)) return;
+  const entry = {
+    id: event.id,
+    type: event.type,
+    actorId: event.actorId || null,
+    targetId: event.targetId || null,
+    rank: event.rank ?? null,
+    count: event.count ?? null,
+    jesterCount: event.jesterCount ?? 0,
+    roundNumber: state.roundNumber,
+    serial: state.actionSerial,
+  };
+  journal.publicEvents.push(entry);
+  // Keep enough history for the best-memory profile without making room
+  // persistence grow for a long-running match.
+  if (journal.publicEvents.length > 96) journal.publicEvents.splice(0, journal.publicEvents.length - 96);
 }
 
 function selectCards(hand, selection) {
@@ -443,37 +462,323 @@ export function executeCommand(input, command) {
     default: throw new Error('지원하지 않는 달무티 명령입니다.');
   }
   state.stateVersion += 1;
+  recordPublicBotEvent(state, state.lastAction);
   refreshPlayers(state);
-  return { nextState: state, events: state.lastAction && state.lastAction.id !== previousActionId ? [state.lastAction] : [] };
+  const pendingEvents = state.pendingEvents;
+  delete state.pendingEvents;
+  return {
+    nextState: state,
+    events: pendingEvents || (state.lastAction && state.lastAction.id !== previousActionId ? [state.lastAction] : []),
+  };
+}
+
+const BOT_PROFILES = Object.freeze({
+  CAUTIOUS: {
+    memoryLimit: 16, shedWeight: 7, finishBonus: 950, jesterPenalty: 46,
+    leadControlWeight: 52, chainWeight: 7, responseThreshold: 24, blockNearFinish: 25,
+    gambleChance: 0.12, nearBestMargin: 14, gambleTemperature: 8, controlTolerance: 0.07,
+  },
+  BALANCED: {
+    memoryLimit: 32, shedWeight: 10, finishBonus: 1200, jesterPenalty: 30,
+    leadControlWeight: 66, chainWeight: 10, responseThreshold: 7, blockNearFinish: 38,
+    gambleChance: 0.25, nearBestMargin: 28, gambleTemperature: 16, controlTolerance: 0.11,
+  },
+  AGGRESSIVE: {
+    memoryLimit: 48, shedWeight: 13, finishBonus: 1500, jesterPenalty: 18,
+    leadControlWeight: 82, chainWeight: 13, responseThreshold: -6, blockNearFinish: 58,
+    gambleChance: 0.38, nearBestMargin: 46, gambleTemperature: 24, controlTolerance: 0.16,
+  },
+});
+
+const BOT_PROFILE_NAMES = Object.freeze(['CAUTIOUS', 'BALANCED', 'AGGRESSIVE']);
+
+function stableBotProfileIndex(playerId) {
+  return [...String(playerId || '')].reduce((hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0, 17) % BOT_PROFILE_NAMES.length;
+}
+
+export function assignBotProfile(state, playerId) {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) return null;
+  player.isBot = true;
+  if (!BOT_PROFILES[player.botProfile]) player.botProfile = BOT_PROFILE_NAMES[stableBotProfileIndex(playerId)];
+  return player.botProfile;
+}
+
+function botProfileFor(state, playerId) {
+  const profileName = state.players.find((player) => player.id === playerId)?.botProfile || 'BALANCED';
+  return BOT_PROFILES[profileName] || BOT_PROFILES.BALANCED;
+}
+
+function handCounts(hand) {
+  return hand.reduce((counts, card) => counts.set(card.rank, (counts.get(card.rank) || 0) + 1), new Map());
+}
+
+function publicHandCount(state, playerId) {
+  return state.players.find((player) => player.id === playerId)?.handCount || 0;
+}
+
+function subtractCounts(total, cards) {
+  const result = new Map(total);
+  for (const card of cards) result.set(card.rank, Math.max(0, (result.get(card.rank) || 0) - 1));
+  return result;
+}
+
+function observationCounts(events) {
+  const counts = new Map();
+  events.filter((event) => event.type === 'SET_PLAYED').forEach((event) => {
+    const naturalCount = Math.max(0, Number(event.count || 0) - Number(event.jesterCount || 0));
+    if (naturalCount) counts.set(event.rank, (counts.get(event.rank) || 0) + naturalCount);
+    if (event.jesterCount) counts.set(13, (counts.get(13) || 0) + event.jesterCount);
+  });
+  return counts;
+}
+
+function withoutPlayedCards(hand, play) {
+  let natural = play.rank === 13 ? 0 : play.count - play.jesterCount;
+  let jokers = play.jesterCount;
+  return hand.filter((card) => {
+    if (card.rank === 13 && jokers > 0) { jokers -= 1; return false; }
+    if (card.rank === play.rank && natural > 0) { natural -= 1; return false; }
+    return true;
+  });
+}
+
+function chanceAtLeast(draws, successes, population, needed) {
+  if (needed <= 0) return 1;
+  if (draws < needed || successes < needed || population <= 0) return 0;
+  // Small deck sizes make this stable sequential dynamic programming clearer
+  // than factorial-based hypergeometric arithmetic.
+  const maxDraws = Math.min(draws, population);
+  let distribution = [1];
+  for (let draw = 0; draw < maxDraws; draw += 1) {
+    const next = Array(draw + 2).fill(0);
+    const remainingPopulation = population - draw;
+    for (let found = 0; found < distribution.length; found += 1) {
+      const probability = distribution[found] || 0;
+      const remainingSuccesses = Math.max(0, successes - found);
+      next[found + 1] += probability * (remainingSuccesses / remainingPopulation);
+      next[found] += probability * Math.max(0, (remainingPopulation - remainingSuccesses) / remainingPopulation);
+    }
+    distribution = next;
+  }
+  return distribution.reduce((sum, probability, found) => sum + (found >= needed ? probability : 0), 0);
+}
+
+function playerAggression(events, playerId) {
+  const ownEvents = events.filter((event) => event.actorId === playerId && event.type === 'SET_PLAYED');
+  if (!ownEvents.length) return 0.5;
+  const multiRate = ownEvents.filter((event) => event.count >= 2).length / ownEvents.length;
+  const averageRank = ownEvents.reduce((sum, event) => sum + Number(event.rank || 13), 0) / ownEvents.length;
+  // High-number early dumps and multi-card pressure both indicate a player
+  // more likely to contest a weak lead.
+  return Math.max(0.15, Math.min(1, 0.35 + multiRate * 0.4 + averageRank / 40));
+}
+
+function chanceOpponentBeats(view, playerId, play) {
+  if (play.rank <= 1) return 0;
+  const active = view.players.filter((player) => player.id !== playerId && player.handCount > 0);
+  const required = play.count;
+  let nobodyCanBeat = 1;
+  for (const opponent of active) {
+    const draws = opponent.handCount;
+    let anyRankCanBeat = 0;
+    for (let rank = 1; rank < play.rank; rank += 1) {
+      const rankCount = view.unknownCounts.get(rank) || 0;
+      const chance = chanceAtLeast(draws, rankCount, view.unknownCardTotal, required);
+      // Approximate a union of mutually competing same-rank groups.
+      anyRankCanBeat = 1 - (1 - anyRankCanBeat) * (1 - chance);
+    }
+    const tendency = playerAggression(view.memory, opponent.id);
+    const adjusted = Math.min(0.98, anyRankCanBeat * (0.65 + tendency * 0.5));
+    nobodyCanBeat *= 1 - adjusted;
+  }
+  return 1 - nobodyCanBeat;
+}
+
+function forecastLeadRun(view, playerId, hand, depth = 2) {
+  if (depth <= 0 || !hand.length) return 0;
+  const counts = handCounts(hand);
+  const groups = [...counts.entries()]
+    .filter(([rank]) => rank !== 13)
+    .flatMap(([rank, count]) => count > 1
+      ? [{ rank, count }, { rank, count: 1 }]
+      : [{ rank, count }])
+    .sort((a, b) => (b.count * 12 + b.rank) - (a.count * 12 + a.rank))
+    .slice(0, 4);
+  if (!groups.length) return hand.filter((card) => card.rank === 13).length * 2;
+  // This is a bounded two-lead expectimax-style plan. It does not invent opponent
+  // cards: each future lead is weighted by the probability that public card
+  // counts say the table cannot overtake it. The depth cap keeps a bot turn
+  // inexpensive even with a large hand.
+  return Math.max(...groups.map((group) => {
+    const virtualPlay = { ...group, jesterCount: 0 };
+    const holdLeadChance = 1 - chanceOpponentBeats(view, playerId, virtualPlay);
+    const after = withoutPlayedCards(hand, virtualPlay);
+    const immediateDump = group.count * 14 + group.rank * 1.5;
+    return immediateDump + holdLeadChance * forecastLeadRun(view, playerId, after, depth - 1);
+  }));
+}
+
+export function getBotPerspective(state, playerId) {
+  const profile = botProfileFor(state, playerId);
+  const memory = (state.botMemory?.publicEvents || []).slice(-profile.memoryLimit);
+  const ownHand = clone(state.secrets[playerId]?.hand || []);
+  const deckCounts = handCounts(createDeck(state.config, state.players.length));
+  const seenCounts = observationCounts(memory);
+  const unknownCounts = subtractCounts(subtractCounts(deckCounts, ownHand), [...seenCounts.entries()]
+    .flatMap(([rank, count]) => Array.from({ length: count }, () => ({ rank }))));
+  const unknownCardTotal = [...unknownCounts.values()].reduce((sum, count) => sum + count, 0);
+  return {
+    playerId,
+    profile,
+    ownHand,
+    players: state.players.map((player) => ({ id: player.id, handCount: player.handCount, roleIndex: player.roleIndex, score: player.score })),
+    hierarchy: [...state.hierarchy],
+    trick: { requiredCount: state.trick.requiredCount, topRank: state.trick.topRank, lastPlayerId: state.trick.lastPlayerId, passPlayerIds: [...state.trick.passPlayerIds] },
+    finishOrder: [...state.finishOrder],
+    memory: clone(memory),
+    unknownCounts,
+    unknownCardTotal,
+  };
+}
+
+function evaluateBotPlay(view, playerId, play, profile) {
+  const hand = view.ownHand;
+  const counts = handCounts(hand);
+  const naturalCount = play.rank === 13 ? 0 : play.count - play.jesterCount;
+  const remaining = hand.length - play.count;
+  const isLead = view.trick.requiredCount == null;
+  const rankDiscardValue = play.rank === 13 ? -18 : play.rank * 4;
+  const clearsNaturalGroup = naturalCount > 0 && naturalCount === counts.get(play.rank);
+  const jesterOnly = play.rank === 13;
+  const remainingHand = withoutPlayedCards(hand, play);
+  const opponentThreat = chanceOpponentBeats(view, playerId, play);
+  const leadChance = 1 - opponentThreat;
+  const nearFinishers = view.players.filter((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 3).length;
+  let score = rankDiscardValue + play.count * profile.shedWeight;
+  if (clearsNaturalGroup) score += 22;
+  if (remaining === 0) score += profile.finishBonus;
+  score += leadChance * profile.leadControlWeight;
+  score += leadChance * forecastLeadRun(view, playerId, remainingHand) * (profile.chainWeight / 10);
+  if (isLead) score += (play.count - 1) * profile.chainWeight;
+  // Low ranks and Jesters make future control/escape combinations. Spend
+  // them only when the current set materially improves the hand.
+  if (play.rank <= 3) score -= (4 - play.rank) * 13;
+  score -= play.jesterCount * profile.jesterPenalty;
+  if (jesterOnly && remaining > 0) score -= 120;
+  if (!isLead) {
+    const pressure = Math.max(0, view.trick.topRank - play.rank) * 8;
+    score += pressure + nearFinishers * profile.blockNearFinish;
+    // A risky response that is unlikely to survive the circuit is usually a
+    // waste of a control card; aggressive bots tolerate that risk more.
+    score -= opponentThreat * (profile === BOT_PROFILES.CAUTIOUS ? 36 : profile === BOT_PROFILES.BALANCED ? 20 : 8);
+  }
+  return { score, controlChance: leadChance };
+}
+
+function chooseTaxReturn(state, playerId, count) {
+  const hand = state.secrets[playerId].hand;
+  const counts = handCounts(hand);
+  const chosen = hand.filter((card) => card.rank !== 13)
+    .sort((a, b) => {
+      const score = (card) => card.rank * 16 - Math.max(0, (counts.get(card.rank) || 0) - 1) * 7 - (card.rank === 13 ? 1000 : 0);
+      return score(b) - score(a);
+    })
+    .slice(0, count);
+  const selected = new Map();
+  chosen.forEach((card) => selected.set(card.rank, (selected.get(card.rank) || 0) + 1));
+  return [...selected].map(([rank, selectedCount]) => ({ rank, count: selectedCount }));
+}
+
+function chooseMerchantTarget(view, playerId) {
+  const candidates = view.players.filter((player) => player.id !== playerId && player.handCount > 0);
+  return [...candidates].sort((a, b) => {
+    const aggressionGap = playerAggression(view.memory, b.id) - playerAggression(view.memory, a.id);
+    if (aggressionGap) return aggressionGap;
+    // When cards are exchanged blindly, taking a chance against the player
+    // closest to empty is the only strategically meaningful default.
+    return a.handCount - b.handCount || a.roleIndex - b.roleIndex;
+  })[0]?.id || null;
+}
+
+function decisionRandom(state, playerId) {
+  const playerHash = [...String(playerId || '')]
+    .reduce((hash, char) => ((hash * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
+  let seed = (state.randomSeed + state.stateVersion * 104729 + state.actionSerial * 8191 + playerHash) >>> 0;
+  // Consecutive room seeds must not produce nearly identical first draws.
+  seed ^= seed >>> 16;
+  seed = Math.imul(seed, 0x7feb352d) >>> 0;
+  seed ^= seed >>> 15;
+  seed = Math.imul(seed, 0x846ca68b) >>> 0;
+  seed ^= seed >>> 16;
+  return makeSeededRandom(seed >>> 0);
+}
+
+function chooseHumanLikeCandidate(state, view, playerId, rankedCandidates, profile) {
+  const best = rankedCandidates[0];
+  if (!best || rankedCandidates.length < 2) return best;
+  // Finishing and urgent blocking are tactical facts, not gambling moments.
+  const isFinishing = best.play.count === view.ownHand.length;
+  const urgentBlock = view.trick.requiredCount != null
+    && view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 2);
+  if (isFinishing || urgentBlock) return best;
+  const nearBest = rankedCandidates.filter((candidate) => {
+    const scoreGap = best.score - candidate.score;
+    const similarlyContested = Math.abs(best.controlChance - candidate.controlChance) <= profile.controlTolerance;
+    return scoreGap <= profile.nearBestMargin
+      || (similarlyContested && scoreGap <= profile.nearBestMargin * 2);
+  });
+  if (nearBest.length < 2) return best;
+  const random = decisionRandom(state, playerId);
+  if (random() >= profile.gambleChance) return best;
+  const weights = nearBest.map((candidate) => Math.exp((candidate.score - best.score) / profile.gambleTemperature));
+  const target = random() * weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = 0;
+  for (let index = 0; index < nearBest.length; index += 1) {
+    cursor += weights[index];
+    if (target <= cursor) return nearBest[index];
+  }
+  return best;
+}
+
+function rankBotDecisionOptions(state, playerId) {
+  if (state.playPhase !== 'TURN_INPUT' || state.currentTurnPlayerId !== playerId) return [];
+  const profile = botProfileFor(state, playerId);
+  const view = getBotPerspective(state, playerId);
+  const plays = getLegalPlays(state, playerId);
+  const naturalLeadExists = state.trick.requiredCount == null && plays.some((play) => play.rank !== 13 && play.jesterCount === 0);
+  const candidates = naturalLeadExists ? plays.filter((play) => play.rank !== 13) : plays;
+  return [...candidates]
+    .map((play) => ({ play, ...evaluateBotPlay(view, playerId, play, profile) }))
+    .sort((a, b) => b.score - a.score || b.play.count - a.play.count || b.play.rank - a.play.rank);
 }
 
 export function chooseBotCommand(state, playerId) {
+  const profile = botProfileFor(state, playerId);
+  const view = getBotPerspective(state, playerId);
   if (state.playPhase === 'REVOLUTION_DECISION' && state.revolutionCandidateId === playerId) {
     const role = state.hierarchy.indexOf(playerId);
-    return { type: role <= 1 ? 'DECLINE_REVOLUTION' : 'DECLARE_REVOLUTION', playerId };
+    const reversedRole = state.hierarchy.length - 1 - role;
+    const positionGain = role - reversedRole;
+    const leadersNearFinish = view.players.filter((player) => player.roleIndex < role && player.handCount <= 3).length;
+    const wantsRevolution = positionGain > 0
+      && (profile !== BOT_PROFILES.CAUTIOUS || positionGain >= 3 || leadersNearFinish > 0);
+    return { type: wantsRevolution ? 'DECLARE_REVOLUTION' : 'DECLINE_REVOLUTION', playerId };
   }
   if (state.playPhase === 'TAX_RETURN' && state.tax.currentDalmutiId === playerId) {
     const pair = state.tax.pairs.find((candidate) => candidate.dalmutiId === playerId);
-    const cards = [...state.secrets[playerId].hand].sort((a, b) => b.rank - a.rank).slice(0, pair.count);
-    const counts = new Map(); cards.forEach((card) => counts.set(card.rank, (counts.get(card.rank) || 0) + 1));
-    return { type: 'SELECT_TAX_RETURN', playerId, selection: [...counts].map(([rank, count]) => ({ rank, count })) };
+    return { type: 'SELECT_TAX_RETURN', playerId, selection: chooseTaxReturn(state, playerId, pair.count) };
   }
   if (state.playPhase === 'MERCHANT_EXCHANGE' && state.merchantExchange.actorId === playerId) {
-    return { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId, targetId: state.merchantExchange.eligibleTargetIds[0] };
+    const targetId = chooseMerchantTarget(view, playerId);
+    return { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId, targetId: state.merchantExchange.eligibleTargetIds.includes(targetId) ? targetId : state.merchantExchange.eligibleTargetIds[0] };
   }
   if (state.playPhase === 'TURN_INPUT' && state.currentTurnPlayerId === playerId) {
-    const plays = getLegalPlays(state, playerId);
-    if (!plays.length) return { type: 'PASS', playerId };
-    // Jesters are a useful escape valve, not an automatic opening. A bot only
-    // leads with one when it has no natural-card option at all.
-    const naturalPlays = plays.filter((play) => play.rank !== 13 && play.jesterCount === 0);
-    const candidates = naturalPlays.length ? naturalPlays : plays;
-    const selected = [...candidates].sort((a, b) =>
-      b.rank - a.rank
-      || (state.trick.requiredCount == null ? a.count - b.count : 0)
-      || a.jesterCount - b.jesterCount,
-    )[0];
-    return { type: 'PLAY_SET', playerId, ...selected };
+    const rankedCandidates = rankBotDecisionOptions(state, playerId);
+    if (!rankedCandidates.length) return { type: 'PASS', playerId };
+    const selected = chooseHumanLikeCandidate(state, view, playerId, rankedCandidates, profile);
+    if (state.trick.requiredCount != null && selected.score < profile.responseThreshold) return { type: 'PASS', playerId };
+    return { type: 'PLAY_SET', playerId, ...selected.play };
   }
   return null;
 }
@@ -505,7 +810,7 @@ export function getPublicView(state) {
   return {
     gameType: state.gameType, matchState: state.matchState, playPhase: state.playPhase,
     roundNumber: state.roundNumber, config: clone(state.config), players: clone(state.players),
-    hierarchy: [...state.hierarchy], rankDraw: state.roundNumber <= 1 ? clone(state.rankDraw) : [],
+    hierarchy: [...state.hierarchy], initialSeatOrder: state.roundNumber <= 1 ? clone(state.initialSeatOrder) : [],
     currentTurnPlayerId: state.currentTurnPlayerId, turnStartedAt: state.turnStartedAt,
     turnExpiresAt: state.turnExpiresAt, trick: clone(state.trick), finishOrder: [...state.finishOrder],
     revolutionCandidateId: state.revolutionCandidateId,

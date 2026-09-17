@@ -78,7 +78,6 @@ export class DalmutiService {
             roundCount: room.roundCount,
             maxPlayers: room.maxPlayers,
             turnTimeoutSeconds: room.turnTimeLimit,
-            firstDealRevolution: room.firstDealRevolution,
             useStrippedDeck: room.useStrippedDeck,
             philanthropicScoring: room.philanthropicScoring,
             merchantExchange: room.merchantExchange,
@@ -300,7 +299,7 @@ export class DalmutiService {
     const gamePlayer = room?.gameStateObject?.players.find((candidate) => candidate.id === playerId);
     if (!room || !player || !gamePlayer) return;
     player.isBot = true; player.takenOverByBot = true; player.isDisconnected = false; player.socketId = null;
-    gamePlayer.isBot = true;
+    core.assignBotProfile(room.gameStateObject, playerId);
     room.isPaused = false; room.pausedPlayerId = null; room.pauseExpiresAt = null;
     if (room.hostId === playerId) {
       const nextHost = room.players.find((candidate) => !candidate.isBot && candidate.socketId);

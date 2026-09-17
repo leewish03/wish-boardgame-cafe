@@ -22,7 +22,7 @@ export interface UseGameSocketReturn {
   gameState: GameState | null;
   myHand: CardInstance[];
   lastAction: any | null;
-  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => void;
+  acknowledgePresentation: (actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'PRIVATE_REVIEW_VISIBLE' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => void;
   isPaused: boolean;
   pausedPlayerName: string | null;
   playCard: (cardId: string, targetId?: string, guessValue?: number, callback?: (result: { success: boolean; error?: string }) => void) => void;
@@ -310,7 +310,11 @@ export function useGameSocket({
     socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
     socket.on(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
     const handleReturn = (data: { actionId: string }) => setReturnedActionId(data.actionId);
+    const handleTerminated = (data: { reason?: string }) => {
+      if (data?.reason === 'INSUFFICIENT_PLAYERS') onLeaveRoom?.();
+    };
     socket.on('game:presentation-return', handleReturn);
+    socket.on('game:terminated', handleTerminated);
     if (onPresentationCancel) socket.on('game:presentation-cancel', onPresentationCancel);
     if (socket.connected) socket.emit(SOCKET_EVENTS.GAME_VIEW_READY);
 
@@ -321,14 +325,15 @@ export function useGameSocket({
       socket.off(SOCKET_EVENTS.GAME_SNAPSHOT, handleGameSnapshot);
       socket.off(SOCKET_EVENTS.GAME_EVENT, handleGameEvent);
       socket.off('game:presentation-return', handleReturn);
+      socket.off('game:terminated', handleTerminated);
       if (onPresentationCancel) socket.off('game:presentation-cancel', onPresentationCancel);
     };
-  }, [socket, onGameEvent, onPresentationCancel, roomCode]);
+  }, [socket, onGameEvent, onPresentationCancel, roomCode, onLeaveRoom]);
 
   // Derive GameState & Hand
   const { gameState, myHand } = useMemo(() => adaptRoomStateToGameState(rawRoomState, myUserId), [rawRoomState, myUserId]);
 
-  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => {
+  const acknowledgePresentation = useCallback((actionId: string, expectedStateVersion: number, completedPhase: 'PUBLIC_SEQUENCE' | 'PRIVATE_REVIEW' | 'PRIVATE_REVIEW_VISIBLE' | 'RETURN_REQUEST' | 'TURN_PREPARATION' | 'ROUND_RESULT', callback?: (result: { success: boolean; error?: string }) => void, roundNumber?: number) => {
     if (!socket?.connected) {
       callback?.({ success: false, error: '게임 서버에 연결되어 있지 않습니다.' });
       return;

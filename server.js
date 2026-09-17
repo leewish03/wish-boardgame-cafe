@@ -83,7 +83,7 @@ async function startServer() {
   configureCoreGameLifecycle({
     pause: (roomCode, playerId) => loveLetterService.pauseRoom(roomCode, playerId),
     resume: (roomCode) => loveLetterService.resumeRoom(roomCode),
-    forfeit: (roomCode, playerId) => loveLetterService.handleCommand(roomCode, { type: 'FORFEIT', playerId }),
+    forfeit: (roomCode, playerId) => loveLetterService.finalizeDeparture(roomCode, playerId),
   });
   configureGameLifecycle('DALMUTI', {
     pause: (roomCode, playerId) => dalmutiService.pauseRoom(roomCode, playerId),
@@ -93,6 +93,7 @@ async function startServer() {
   });
   await loveLetterService.restorePausedRooms();
   await loveLetterService.restorePendingTurnPresentations();
+  await loveLetterService.restorePendingRoundPresentations();
   await dalmutiService.restoreRooms();
   initWebRTCSignaling(io);
   initSTTBroadcast(io);

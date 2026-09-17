@@ -74,9 +74,13 @@ export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]
     anchor(element);
     insertionAnchor(element);
   }, [anchor, insertionAnchor]);
-  return <Shelf type="button" onClick={onInspect} $local={local} aria-label={`공개 버린 패 ${cards.length}장`}>
+  // An empty local discard must not reserve a card-sized void.  During a
+  // cleanup beat hideLatest still reserves the destination, so a travelling
+  // card always has its physical landing slot.
+  const hasLanding = settledCards.length > 0 || hideLatest;
+  return <Shelf type="button" onClick={onInspect} $local={local} $hasLanding={hasLanding} aria-label={`공개 버린 패 ${cards.length}장`}>
     {!local && <ShelfLabel>공개 패</ShelfLabel>}
-    <Pile $local={local}>
+    <Pile $local={local} $hasLanding={hasLanding}>
       {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? latestCardAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <MiniFace><b>{card.value}</b><span>{card.name}</span></MiniFace>}</DiscardCard>)}
       <DiscardInsertion ref={nextCardAnchor} $local={local} $ordinal={settledCards.length}/>
       {settledCards.length===0 && <><DiscardLanding $local={local}/><NoCards>아직 없음</NoCards></>}
@@ -112,7 +116,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
     return hand;
   })().slice(0, 2);
   return <LocalZoneRoot>
-    <LocalDiscard><DiscardHeader><span>내 공개 버린 패</span><RoomChat messages={chatMessages as never[]} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/></DiscardHeader><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
+    <LocalDiscard><DiscardHeader><span>내 공개 버린 패</span><LocalMetaRail><RoomChat messages={chatMessages as never[]} onSend={onSendChat} mode="sheet" currentUserId={identity.player.id} onOpenChange={onChatOpenChange} launcherPlacement="inline"/><TokenMeta><Heart size={10} fill="currentColor"/> 호감도 {identity.player.tokens}</TokenMeta></LocalMetaRail></DiscardHeader><PublicDiscardShelf playerId={identity.player.id} cards={identity.player.discardPile || []} local hideLatest={projected.hideLatestDiscard} onInspect={onInspect}/></LocalDiscard>
     <LocalHand><PlayerHand playerId={identity.player.id} hand={visualHand} isMyTurn={isMyTurn} canSelectCards={canSelectCards} selectedCardId={selectedCardId} interactionState={interactionState} presentationMessage={presentationMessage} onSelectCard={onSelectCard} onValidDrop={onSelectCard} onCancelSelection={onCancelSelection} isEliminated={identity.player.isEliminated} actionSlot={(
       <SelfTarget
         as={motion.button}
@@ -143,9 +147,18 @@ const PlayDock=styled.div<{$local?:boolean}>`
 const ReviewSpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
-const LocalZoneRoot=styled.section`width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr);gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;`;
+const LocalZoneRoot=styled.section`
+  --local-decision-card:clamp(106px,29vw,154px);--local-decision-gap:clamp(4px,2vw,12px);
+  width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr);gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;
+  @media(max-width:340px){--local-decision-card:96px;} @media(max-height:650px){--local-decision-card:96px;}
+`;
 const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;
-const DiscardHeader=styled.div`height:40px;display:flex;align-items:center;justify-content:space-between;color:${THEME.mutedForeground};font-size:9px;font-weight:750;`;
+const DiscardHeader=styled.div`
+  height:72px;display:grid;grid-template-columns:repeat(3,var(--local-decision-card));column-gap:var(--local-decision-gap);justify-content:center;align-items:start;padding-top:1px;box-sizing:border-box;color:${THEME.mutedForeground};font-size:9px;font-weight:750;
+  >span{grid-column:1;justify-self:start;}
+`;
+const LocalMetaRail=styled.div`grid-column:3;justify-self:end;width:40px;display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:14px;`;
+const TokenMeta=styled.span`display:flex;align-items:center;justify-content:center;gap:2px;white-space:nowrap;color:${THEME.burgundy};font-size:8px;font-weight:850;line-height:11px;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
   position:relative;width:100%;height:100%;min-width:0;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
   cursor:${p=>p.$targetable?'pointer':'default'};
@@ -168,14 +181,14 @@ const HeldCards=styled.span`height:100%;display:flex;align-items:flex-start;just
 const HeldBack=styled.span<{$hidden?:boolean}>`display:block;width:29px;height:41px;flex-shrink:0;box-shadow:1px 2px 3px rgba(9,13,22,.18);visibility:${p=>p.$hidden?'hidden':'visible'};`;
 const Count=styled.span`position:absolute;right:-5px;bottom:-2px;min-width:12px;height:12px;display:grid;place-items:center;border-radius:7px;background:${THEME.primary};color:#fff;font-size:7px;font-weight:900;`;
 const Empty=styled.span`font-size:6px;color:${THEME.mutedForeground};white-space:nowrap;position:absolute;left:50%;top:8px;transform:translateX(-50%);`;
-const Shelf=styled.button<{$local:boolean}>`
-  position:relative;width:100%;min-height:${p=>p.$local?'77px':'72px'};min-width:0;margin:0 auto;padding:${p=>p.$local?'0':'15px 0 0'};border:0;
+const Shelf=styled.button<{$local:boolean;$hasLanding:boolean}>`
+  position:relative;width:100%;min-height:${p=>p.$local?(p.$hasLanding?'77px':'20px'):'72px'};min-width:0;margin:0 auto;padding:${p=>p.$local?'0':'15px 0 0'};border:0;
   background:transparent;color:${THEME.foreground};font:inherit;cursor:pointer;text-align:left;box-sizing:border-box;overflow:visible;
 `;
 const ShelfLabel=styled.span`position:absolute;left:0;top:0;font-size:9px;color:${THEME.mutedForeground};font-weight:750;`;
-const Pile=styled.span<{$local:boolean}>`
-  position:relative;width:100%;min-height:${p=>p.$local?'77px':'52px'};display:flex;flex-wrap:nowrap;align-items:flex-end;gap:${p=>p.$local?'4px':'0'};overflow-x:${p=>p.$local?'auto':'visible'};overflow-y:visible;
-  @media(max-width:420px){min-height:${p=>p.$local?'71px':'52px'};}
+const Pile=styled.span<{$local:boolean;$hasLanding:boolean}>`
+  position:relative;width:100%;min-height:${p=>p.$local?(p.$hasLanding?'77px':'20px'):'52px'};display:flex;flex-wrap:nowrap;align-items:flex-end;gap:${p=>p.$local?'4px':'0'};overflow-x:${p=>p.$local?'auto':'visible'};overflow-y:visible;
+  @media(max-width:420px){min-height:${p=>p.$local?(p.$hasLanding?'71px':'20px'):'52px'};}
 `;
 const DiscardInsertion=styled.span<{$local:boolean;$ordinal:number}>`
   position:absolute;left:${p=>p.$local ? `${p.$ordinal * 58}px` : `${p.$ordinal * 27}px`};bottom:0;width:${p=>p.$local?'54px':'36px'};height:${p=>p.$local?'77px':'52px'};pointer-events:none;visibility:hidden;
