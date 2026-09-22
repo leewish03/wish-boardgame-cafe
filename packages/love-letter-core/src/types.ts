@@ -64,7 +64,6 @@ export interface PlayerPublic {
   eliminationReason?: string;
   eliminatedBy?: PlayerId;
   personality?: string;
-  memory?: Record<string, any>;
   hand?: CardInstance[];
 }
 

@@ -17,7 +17,6 @@ export function createInitialGameState(
     isBot?: boolean;
     tokens?: number;
     personality?: string;
-    memory?: Record<string, any>;
   }[],
   configOverrides?: Partial<MatchConfig>
 ): GameState {
@@ -42,7 +41,6 @@ export function createInitialGameState(
     cardCount: 0,
     discardPile: [],
     personality: p.personality,
-    memory: p.memory,
   }));
 
   const secrets: Record<PlayerId, PlayerSecret> = {};
@@ -87,8 +85,21 @@ export function getPublicGameState(state: GameState): PublicGameState {
     roundNumber: state.roundNumber,
     config: state.config,
     players: state.players.map(p => ({
-      ...p,
-      hand: undefined,
+      id: p.id,
+      nickname: p.nickname,
+      avatar: p.avatar,
+      avatarUrl: p.avatarUrl,
+      tokens: p.tokens,
+      isReady: p.isReady,
+      isHost: p.isHost,
+      isBot: p.isBot,
+      isEliminated: p.isEliminated,
+      isProtected: p.isProtected,
+      cardCount: p.cardCount,
+      discardPile: p.discardPile,
+      eliminationReason: p.eliminationReason,
+      eliminatedBy: p.eliminatedBy,
+      personality: p.personality,
     })),
     deckCount: state.deck.length,
     setAsideCardCount: state.setAsideCard ? 1 : 0,

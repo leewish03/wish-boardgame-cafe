@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { roomRepository } from './RoomRepository.js';
 import { TurnCoordinator } from './TurnCoordinator.js';
-import { decideBotAction } from './AiBotController.js';
+import { buildBotObservation, createBotKnowledge, decideBotAction, observeBotEvents } from './AiBotController.js';
 import { RECONNECT_GRACE_MS } from '../shared/reconnectPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -326,6 +326,7 @@ export class LoveLetterService {
     room.pendingResolution = null;
     const beforeState = room.gameStateObject;
     const { nextState: gameState, events: transitionEvents } = core.executeCommand(room.gameStateObject, { type: 'FINALIZE_ACTION' });
+    observeBotEvents(room, beforeState, gameState, transitionEvents);
     this.applyGameStateToRoom(room, gameState);
     if (gameState.playPhase === 'TURN_PREPARING') {
       room.pendingTurnPresentation = this.createTurnPresentation(room, beforeState, gameState, transitionEvents, 'TURN_DRAW');
@@ -648,6 +649,7 @@ export class LoveLetterService {
       nextState = transition.nextState;
       events = [...events, ...transition.events];
     }
+    observeBotEvents(room, beforeState, nextState, events);
     this.applyGameStateToRoom(room, nextState);
     if (nextState.outcome?.reason === 'INSUFFICIENT_HUMANS') {
       this.clearBotTimer(roomCode);
@@ -752,7 +754,6 @@ export class LoveLetterService {
       isBot: !!player.isBot,
       tokens: room.gameState === 'GAME_OVER' ? 0 : player.tokens || 0,
       personality: player.personality,
-      memory: player.memory,
     }));
     const storedState = room.gameStateObject;
     // A player who forfeited remains in the completed round snapshot, but not
@@ -776,6 +777,7 @@ export class LoveLetterService {
         maxPlayers: room.maxPlayers,
       } };
     const { nextState, events } = core.executeCommand(baseState, command);
+    observeBotEvents(room, baseState, nextState, events);
     this.clearRoundAdvanceTimer(roomCode);
     this.applyGameStateToRoom(room, nextState);
     if (nextState.playPhase === 'ROUND_START') {
@@ -1153,7 +1155,15 @@ export class LoveLetterService {
           latestGs.matchState !== 'PLAYING'
         ) return;
 
-        const botAction = decideBotAction(latestGs, currentTurnPlayer);
+        const knowledge = latestRoom.botKnowledgeByPlayerId?.[currentTurnPlayer.id]
+          || (latestRoom.botKnowledgeByPlayerId ||= {}, latestRoom.botKnowledgeByPlayerId[currentTurnPlayer.id] = createBotKnowledge(currentTurnPlayer.id, latestGs));
+        const observation = buildBotObservation(latestGs, currentTurnPlayer.id);
+        const botAction = decideBotAction(
+          observation,
+          knowledge,
+          core,
+          `${roomCode}:${latestGs.roundNumber}:${latestGs.stateVersion}:${currentTurnPlayer.id}`,
+        );
         if (botAction) {
           try {
             await this.handleCommand(roomCode, {

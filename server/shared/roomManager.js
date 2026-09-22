@@ -8,7 +8,7 @@ import {
   resumeGameTimer,
   handleForfeitedPlayer,
 } from '../games/love-letter.js';
-import { createBotPlayer } from '../games/love-letter-ai.js';
+import { createBotPlayer } from '../core/AiBotController.js';
 import { RECONNECT_GRACE_MS } from './reconnectPolicy.js';
 
 export { roomRepository };
@@ -816,6 +816,7 @@ export function initRoomManager(io) {
         }
 
         const removed = room.players.splice(botIdx, 1)[0];
+        if (room.botKnowledgeByPlayerId) delete room.botKnowledgeByPlayerId[removed.id];
         room.stateVersion = (room.stateVersion || 0) + 1;
         emitSystemMessage(io, roomCode, room, `${removed.nickname}님이 퇴장했습니다.`);
         broadcastRoomState(io, roomCode);
