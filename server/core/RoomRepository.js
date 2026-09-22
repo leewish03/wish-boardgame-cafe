@@ -28,6 +28,10 @@ export class MemoryRoomRepository {
     return Array.from(this._rooms.values());
   }
 
+  async recordDalmutiDecision() {
+    // Local development keeps gameplay telemetry out of process memory.
+  }
+
   clear() {
     this._rooms.clear();
   }

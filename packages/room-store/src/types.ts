@@ -42,4 +42,5 @@ export interface RoomRepository<TGameState = GameState> {
   saveRoom(room: Room<TGameState>): Promise<void>;
   deleteRoom(id: string): Promise<void>;
   listRooms?(): Promise<Room<TGameState>[]>;
+  recordDalmutiDecision?(trace: Record<string, unknown>): Promise<void>;
 }

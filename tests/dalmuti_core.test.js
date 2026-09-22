@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   DALMUTI_RANKS, createDeck, createInitialState, executeCommand, getLegalPlays,
-  assignBotProfile, chooseBotCommand, chooseTimeoutCommand, getBotPerspective, getPublicView, getPrivateView,
+  assignBotProfile, analyzeBotDecision, chooseBotCommand, chooseTimeoutCommand, createDecisionTrace, getBotPerspective, getBotThinkDelay, getPublicView, getPrivateView,
 } from '../packages/dalmuti-core/src/index.js';
 
 const players = Array.from({ length: 6 }, (_, index) => ({
@@ -22,10 +22,19 @@ assert.equal(createDeck({ useStrippedDeck: true }, 5).length, 68, 'five-player s
 assert.equal(createDeck({ useStrippedDeck: true }, 4).length, 57, 'four-player stripped deck has 57 cards');
 
 let state = createInitialState(players, { roundCount: 5, turnTimeoutSeconds: 0 }, 4242);
-assert.deepEqual(state.players.slice(0, 3).map((player) => player.botProfile), ['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'], 'bots receive stable distinct table personalities');
+assert.deepEqual(state.players.slice(0, 3).map((player) => player.botProfile), ['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING'], 'bots receive stable distinct table personalities');
+const namedProfiles = createInitialState([
+  { ...players[0], personality:'AGGRESSIVE' }, { ...players[1], personality:'DEFENSIVE' }, { ...players[2], personality:'CALCULATING' }, { ...players[3], personality:'STRATEGIC' },
+], { turnTimeoutSeconds:0 }, 12);
+assert.deepEqual(namedProfiles.players.map((player) => player.botProfile), ['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING', 'STRATEGIC'], 'room bot names retain their intended Dalmuti personalities');
+let memoryResetState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds:0 }, 71);
+memoryResetState.botMemory.opponentStats.p1 = { samples: 9 };
+memoryResetState.matchState = 'GAME_OVER';
+({ nextState: memoryResetState } = executeCommand(memoryResetState, { type:'START_MATCH', playerId:'p0' }));
+assert.deepEqual(memoryResetState.botMemory.opponentStats, {}, 'a new match clears learned opponent tendencies');
 const reconnectReplacementState = createInitialState(players.slice(0, 4).map((player, index) => ({ ...player, isBot: index !== 0 })), { turnTimeoutSeconds: 0 }, 77);
 const reconnectProfile = assignBotProfile(reconnectReplacementState, 'p0');
-assert.ok(['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'].includes(reconnectProfile), 'a disconnected human promoted to bot receives a stable strategy profile');
+assert.ok(['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING', 'STRATEGIC', 'INFORMATIVE'].includes(reconnectProfile), 'a disconnected human promoted to bot receives a stable strategy profile');
 let startResult = executeCommand(state, { type: 'START_MATCH', playerId: 'p0' });
 state = startResult.nextState;
 assert.equal(state.roundNumber, 1);
@@ -69,6 +78,7 @@ assert.equal(new Set(state.finishOrder).size, players.length);
 
 const publicView = getPublicView(state);
 assert.equal(JSON.stringify(publicView).includes('"hand"'), false, 'public view has no secret hands');
+assert.equal(JSON.stringify(publicView).includes('botProfile'), false, 'public view hides bot personalities');
 assert.ok(Array.isArray(getPrivateView(state, state.players[0].id).hand));
 
 // Bots must be given only their own cards and a bounded journal of public
@@ -89,6 +99,9 @@ assert.deepEqual(
   { actorId: observedActor, rank: observedLead.rank, count: observedLead.count, jesterCount: observedLead.jesterCount },
   'bots retain the public rank/count/jester details of observed plays',
 );
+const anonymousTrace = createDecisionTrace(botInspectionState, { type:'PASS', playerId:'p0' }, 'HUMAN');
+assert.equal(JSON.stringify(anonymousTrace).includes('p0'), false, 'telemetry excludes player identifiers');
+assert.equal(JSON.stringify(anonymousTrace).includes('d_'), false, 'telemetry excludes card identifiers');
 
 // Leading should value a multi-card dump and its likely next lead, rather
 // than greedily choosing an arbitrary singleton.
@@ -118,6 +131,15 @@ for (let seed = 1; seed <= 60; seed += 1) {
 }
 assert.ok(gamblingChoices.size >= 2, 'aggressive bots vary among similarly viable leads across deterministic room seeds');
 
+const analysisState = createInitialState(players.slice(0, 4), { useStrippedDeck:false, turnTimeoutSeconds:0 }, 61);
+analysisState.matchState = 'PLAYING'; analysisState.playPhase = 'TURN_INPUT'; analysisState.currentTurnPlayerId = 'p0';
+analysisState.players.forEach((player) => { player.handCount = 6; player.botProfile = 'AGGRESSIVE'; });
+analysisState.secrets.p0.hand = [{ id:'a8', rank:8 }, { id:'b8', rank:8 }, { id:'a9', rank:9 }, { id:'b9', rank:9 }, { id:'a10', rank:10 }, { id:'b10', rank:10 }];
+const analysis = analyzeBotDecision(analysisState, 'p0');
+assert.ok(analysis.candidates.length >= 2, 'AI exposes scored legal candidates only to server-side analysis');
+assert.ok(analysis.candidates.every((candidate) => candidate.probability > 0), 'softmax keeps near legal choices available');
+assert.ok(getBotThinkDelay(analysisState, 'p0') >= 250 && getBotThinkDelay(analysisState, 'p0') <= 1600, 'bot thinking time is bounded and deterministic');
+
 // Passing is temporary: a player remains eligible after somebody else plays.
 let playState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 7);
 ({ nextState: playState } = executeCommand(playState, { type: 'START_MATCH', playerId: 'p0' }));
@@ -132,6 +154,10 @@ assert.ok(lead);
 const responder = playState.currentTurnPlayerId;
 ({ nextState: playState } = executeCommand(playState, { type: 'PASS', playerId: responder }));
 assert.ok(playState.trick.passPlayerIds.includes(responder));
+const passObservation = getBotPerspective(playState, leader).memory.find((event) => event.type === 'PASSED' && event.actorId === responder);
+assert.equal(passObservation.requiredCount, playState.trick.requiredCount, 'pass memory retains the required set size');
+assert.equal(passObservation.topRank, playState.trick.topRank, 'pass memory retains the pile rank');
+assert.ok(playState.botMemory.roundBeliefs[responder]?.length, 'pass observation becomes an opponent belief constraint');
 
 // Jokers may fill a numeric set, while the effective numeric rank still has to beat the pile.
 const jokerState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 11);

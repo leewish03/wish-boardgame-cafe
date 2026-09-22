@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "start": "node server.js",
     "prod": "vite build && node server.js",
-    "test": "node tests/run_all_tests.js"
+    "test": "node tests/run_all_tests.js",
+    "ai:dalmuti:report": "node scripts/evaluate-dalmuti-ai.js",
+    "ai:dalmuti:benchmark": "node scripts/benchmark-dalmuti-ai.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

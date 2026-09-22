@@ -90,7 +90,7 @@ export function createInitialState(players, partialConfig = {}, seed = Date.now(
     players: players.map((player) => ({
       id: player.id, nickname: player.nickname, avatarUrl: player.avatarUrl || player.avatar,
       isHost: !!player.isHost, isBot: !!player.isBot,
-      botProfile: player.isBot ? ['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'][players.filter((candidate) => candidate.isBot).findIndex((candidate) => candidate.id === player.id) % 3] : null,
+      botProfile: player.isBot ? profileNameFor(player, players.filter((candidate) => candidate.isBot).findIndex((candidate) => candidate.id === player.id)) : null,
       score: 0, roleIndex: 0,
       role: '상인', handCount: 0, finishedPosition: null, passed: false,
     })),
@@ -111,9 +111,9 @@ export function createInitialState(players, partialConfig = {}, seed = Date.now(
     stateVersion: 1,
     actionSerial: 0,
     randomSeed: Number(seed) >>> 0,
-    // This is deliberately a public-action journal, not a second copy of
-    // hidden hands.  Bots consume a profile-limited tail of it as memory.
-    botMemory: { publicEvents: [] },
+    telemetryMatchKey: `dm_${Date.now().toString(36)}_${Math.floor(random() * 0xFFFFFF).toString(36)}`,
+    // Public observations only.  Never place another player's hand here.
+    botMemory: createBotMemory(),
   };
   refreshPlayers(state);
   return state;
@@ -202,7 +202,9 @@ function beginRound(state) {
   state.outcome = null;
   state.trick = { requiredCount: null, topRank: null, lastPlayerId: null, passPlayerIds: [], sets: [], completedCount: 0 };
   state.discardedCards = [];
-  state.botMemory = { publicEvents: [] };
+  const memory = ensureBotMemory(state);
+  memory.roundEvents = [];
+  memory.roundBeliefs = {};
   state.players.forEach((player) => { player.finishedPosition = null; player.passed = false; });
   const random = randomForState(state);
   const deck = shuffle(createDeck(state.config, state.players.length), random);
@@ -236,10 +238,35 @@ function beginRound(state) {
   refreshPlayers(state);
 }
 
+function createBotMemory() {
+  return { roundEvents: [], opponentStats: {}, roundBeliefs: {} };
+}
+
+function ensureBotMemory(state) {
+  const legacy = state.botMemory?.publicEvents || [];
+  const memory = state.botMemory || createBotMemory();
+  if (!Array.isArray(memory.roundEvents)) memory.roundEvents = legacy.filter((event) => event.roundNumber === state.roundNumber);
+  if (!memory.opponentStats || typeof memory.opponentStats !== 'object') memory.opponentStats = {};
+  if (!memory.roundBeliefs || typeof memory.roundBeliefs !== 'object') memory.roundBeliefs = {};
+  state.botMemory = memory;
+  return memory;
+}
+
+function opponentStatsFor(memory, playerId) {
+  if (!playerId) return null;
+  if (!memory.opponentStats[playerId]) {
+    memory.opponentStats[playerId] = {
+      samples: 0, leadCardMean: 1, weakLeadMean: 0.5, jesterRate: 0,
+      passRates: {}, nearFinishPressure: 0.5,
+    };
+  }
+  return memory.opponentStats[playerId];
+}
+
 function recordPublicBotEvent(state, event) {
   if (!event?.id || !event?.type) return;
-  const journal = state.botMemory || (state.botMemory = { publicEvents: [] });
-  if (journal.publicEvents.some((entry) => entry.id === event.id)) return;
+  const journal = ensureBotMemory(state);
+  if (journal.roundEvents.some((entry) => entry.id === event.id)) return;
   const entry = {
     id: event.id,
     type: event.type,
@@ -248,13 +275,35 @@ function recordPublicBotEvent(state, event) {
     rank: event.rank ?? null,
     count: event.count ?? null,
     jesterCount: event.jesterCount ?? 0,
+    requiredCount: event.requiredCount ?? null,
+    topRank: event.topRank ?? null,
+    handCount: event.handCount ?? null,
+    wasLead: !!event.wasLead,
     roundNumber: state.roundNumber,
     serial: state.actionSerial,
   };
-  journal.publicEvents.push(entry);
-  // Keep enough history for the best-memory profile without making room
-  // persistence grow for a long-running match.
-  if (journal.publicEvents.length > 96) journal.publicEvents.splice(0, journal.publicEvents.length - 96);
+  journal.roundEvents.push(entry);
+  if (journal.roundEvents.length > 128) journal.roundEvents.splice(0, journal.roundEvents.length - 128);
+  if (entry.actorId && entry.type === 'SET_PLAYED') {
+    const stats = opponentStatsFor(journal, entry.actorId);
+    const weight = 1 / Math.min(12, stats.samples + 1);
+    stats.samples += 1;
+    if (entry.wasLead) {
+      stats.leadCardMean += (Number(entry.count || 1) - stats.leadCardMean) * weight;
+      stats.weakLeadMean += ((Number(entry.rank || 13) / 13) - stats.weakLeadMean) * weight;
+    }
+    stats.jesterRate += ((Number(entry.jesterCount || 0) / Math.max(1, Number(entry.count || 1))) - stats.jesterRate) * weight;
+    if (Number(entry.handCount || 99) <= 3) stats.nearFinishPressure += (1 - stats.nearFinishPressure) * weight;
+  }
+  if (entry.actorId && entry.type === 'PASSED' && entry.requiredCount) {
+    const stats = opponentStatsFor(journal, entry.actorId);
+    const key = String(Math.min(4, entry.requiredCount));
+    const previous = stats.passRates[key] ?? 0.5;
+    stats.passRates[key] = previous + (1 - previous) / Math.min(12, stats.samples + 1);
+    const beliefs = journal.roundBeliefs[entry.actorId] || (journal.roundBeliefs[entry.actorId] = []);
+    beliefs.push({ requiredCount: entry.requiredCount, topRank: entry.topRank, serial: entry.serial });
+    if (beliefs.length > 8) beliefs.shift();
+  }
 }
 
 function selectCards(hand, selection) {
@@ -335,6 +384,7 @@ function endRound(state) {
 
 function playSet(state, command) {
   const play = validatePlay(state, command);
+  const wasLead = state.trick.requiredCount == null;
   const hand = state.secrets[command.playerId].hand;
   const natural = play.rank === 13 ? [] : hand.filter((card) => card.rank === play.rank).slice(0, play.count - play.jesterCount);
   const jesters = hand.filter((card) => card.rank === 13).slice(0, play.jesterCount);
@@ -342,7 +392,7 @@ function playSet(state, command) {
   const cardIds = new Set(cards.map((card) => card.id));
   state.secrets[command.playerId].hand = hand.filter((card) => !cardIds.has(card.id));
   state.actionSerial += 1;
-  const set = { id: makeId('set', state), actorId: command.playerId, rank: play.rank, count: play.count, jesterCount: play.jesterCount, cards };
+  const set = { id: makeId('set', state), actorId: command.playerId, rank: play.rank, count: play.count, jesterCount: play.jesterCount, cards, wasLead };
   state.trick.sets.push(set);
   state.trick.requiredCount = play.count;
   state.trick.topRank = play.rank;
@@ -364,15 +414,22 @@ function playSet(state, command) {
 function pass(state, command) {
   if (state.playPhase !== 'TURN_INPUT' || state.currentTurnPlayerId !== command.playerId) throw new Error('지금은 패스할 수 없습니다.');
   if (state.trick.requiredCount == null) throw new Error('새 트릭의 선은 패스할 수 없습니다.');
+  const passEvent = {
+    id: makeId('pass', state), type: 'PASSED', actorId: command.playerId,
+    requiredCount: state.trick.requiredCount, topRank: state.trick.topRank,
+    handCount: state.secrets[command.playerId]?.hand.length || 0, timestamp: Date.now(),
+  };
   if (!state.trick.passPlayerIds.includes(command.playerId)) state.trick.passPlayerIds.push(command.playerId);
   state.actionSerial += 1;
-  state.lastAction = { id: makeId('pass', state), type: 'PASSED', actorId: command.playerId, timestamp: Date.now() };
+  recordPublicBotEvent(state, passEvent);
+  state.lastAction = passEvent;
   const requiredPassers = activeIds(state).filter((id) => id !== state.trick.lastPlayerId);
   if (requiredPassers.every((id) => state.trick.passPlayerIds.includes(id))) {
     const leader = activeIds(state).includes(state.trick.lastPlayerId) ? state.trick.lastPlayerId : nextActive(state, state.trick.lastPlayerId);
     state.discardedCards.push(...state.trick.sets.flatMap((set) => set.cards || []));
     state.trick = { requiredCount: null, topRank: null, lastPlayerId: null, passPlayerIds: [], sets: [], completedCount: state.trick.completedCount + 1 };
     state.lastAction = { id: makeId('clear', state), type: 'TRICK_CLEARED', actorId: leader, timestamp: Date.now() };
+    state.pendingEvents = [passEvent, state.lastAction];
     setTurn(state, leader);
   } else {
     setTurn(state, nextActive(state, command.playerId));
@@ -414,6 +471,7 @@ export function executeCommand(input, command) {
       if (state.matchState !== 'LOBBY' && state.matchState !== 'GAME_OVER') throw new Error('매치를 시작할 수 없습니다.');
       state.roundNumber = 0;
       state.players.forEach((player) => { player.score = 0; });
+      state.botMemory = createBotMemory();
       beginRound(state);
       break;
     case 'ADVANCE_ROUND':
@@ -473,48 +531,57 @@ export function executeCommand(input, command) {
 }
 
 const BOT_PROFILES = Object.freeze({
-  CAUTIOUS: {
-    memoryLimit: 16, shedWeight: 7, finishBonus: 950, jesterPenalty: 46,
-    leadControlWeight: 52, chainWeight: 7, responseThreshold: 24, blockNearFinish: 25,
-    gambleChance: 0.12, nearBestMargin: 14, gambleTemperature: 8, controlTolerance: 0.07,
-  },
-  BALANCED: {
-    memoryLimit: 32, shedWeight: 10, finishBonus: 1200, jesterPenalty: 30,
-    leadControlWeight: 66, chainWeight: 10, responseThreshold: 7, blockNearFinish: 38,
-    gambleChance: 0.25, nearBestMargin: 28, gambleTemperature: 16, controlTolerance: 0.11,
-  },
-  AGGRESSIVE: {
-    memoryLimit: 48, shedWeight: 13, finishBonus: 1500, jesterPenalty: 18,
-    leadControlWeight: 82, chainWeight: 13, responseThreshold: -6, blockNearFinish: 58,
-    gambleChance: 0.38, nearBestMargin: 46, gambleTemperature: 24, controlTolerance: 0.16,
-  },
+  AGGRESSIVE: { memoryLimit: 30, temperature: 22, shedWeight: 13, controlWeight: 52, chainWeight: 7, blockWeight: 78, responseCommitment: 38, jesterReserve: 10, modelWeight: 9 },
+  DEFENSIVE: { memoryLimit: 34, temperature: 11, shedWeight: 8, controlWeight: 84, chainWeight: 6, blockWeight: 48, responseCommitment: 10, jesterReserve: 30, modelWeight: 12 },
+  CALCULATING: { memoryLimit: 48, temperature: 8, shedWeight: 12, controlWeight: 84, chainWeight: 15, blockWeight: 70, responseCommitment: 24, jesterReserve: 16, modelWeight: 16 },
+  STRATEGIC: { memoryLimit: 38, temperature: 14, shedWeight: 11, controlWeight: 74, chainWeight: 18, blockWeight: 64, responseCommitment: 20, jesterReserve: 18, modelWeight: 13 },
+  INFORMATIVE: { memoryLimit: 56, temperature: 16, shedWeight: 11, controlWeight: 72, chainWeight: 12, blockWeight: 68, responseCommitment: 16, jesterReserve: 18, modelWeight: 25 },
 });
 
-const BOT_PROFILE_NAMES = Object.freeze(['CAUTIOUS', 'BALANCED', 'AGGRESSIVE']);
+const BOT_PROFILE_NAMES = Object.freeze(Object.keys(BOT_PROFILES));
+const LEGACY_PROFILES = Object.freeze({ CAUTIOUS: 'DEFENSIVE', BALANCED: 'STRATEGIC', AGGRESSIVE: 'AGGRESSIVE' });
 
 function stableBotProfileIndex(playerId) {
   return [...String(playerId || '')].reduce((hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0, 17) % BOT_PROFILE_NAMES.length;
+}
+
+function profileNameFor(player, fallbackIndex = 0) {
+  const requested = String(player?.personality || player?.botProfile || '').toUpperCase();
+  if (BOT_PROFILES[requested]) return requested;
+  if (LEGACY_PROFILES[requested]) return LEGACY_PROFILES[requested];
+  return BOT_PROFILE_NAMES[Math.max(0, fallbackIndex) % BOT_PROFILE_NAMES.length];
+}
+
+function inferredProfileFromMemory(state, playerId) {
+  const stats = ensureBotMemory(state).opponentStats[playerId];
+  if (!stats || stats.samples < 3) return null;
+  const signatures = {
+    AGGRESSIVE: [2.5, 0.68, 0.65], DEFENSIVE: [1.35, 0.35, 0.35],
+    CALCULATING: [1.8, 0.5, 0.5], STRATEGIC: [2.15, 0.52, 0.55], INFORMATIVE: [1.7, 0.46, 0.48],
+  };
+  const observed = [stats.leadCardMean, stats.weakLeadMean, stats.nearFinishPressure];
+  return BOT_PROFILE_NAMES.reduce((best, name) => {
+    const distance = signatures[name].reduce((sum, value, index) => sum + (value - observed[index]) ** 2, 0);
+    return distance < best.distance ? { name, distance } : best;
+  }, { name: null, distance: Infinity }).name;
 }
 
 export function assignBotProfile(state, playerId) {
   const player = state.players.find((candidate) => candidate.id === playerId);
   if (!player) return null;
   player.isBot = true;
-  if (!BOT_PROFILES[player.botProfile]) player.botProfile = BOT_PROFILE_NAMES[stableBotProfileIndex(playerId)];
+  if (!BOT_PROFILES[player.botProfile]) player.botProfile = inferredProfileFromMemory(state, playerId) || profileNameFor(player, stableBotProfileIndex(playerId));
   return player.botProfile;
 }
 
 function botProfileFor(state, playerId) {
-  const profileName = state.players.find((player) => player.id === playerId)?.botProfile || 'BALANCED';
-  return BOT_PROFILES[profileName] || BOT_PROFILES.BALANCED;
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  const profileName = profileNameFor(player, stableBotProfileIndex(playerId));
+  return BOT_PROFILES[profileName];
 }
 
 function handCounts(hand) {
   return hand.reduce((counts, card) => counts.set(card.rank, (counts.get(card.rank) || 0) + 1), new Map());
-}
-
-function publicHandCount(state, playerId) {
-  return state.players.find((player) => player.id === playerId)?.handCount || 0;
 }
 
 function subtractCounts(total, cards) {
@@ -533,6 +600,13 @@ function observationCounts(events) {
   return counts;
 }
 
+function rememberedEvents(state, profile) {
+  const events = ensureBotMemory(state).roundEvents || [];
+  const salient = events.filter((event) => event.type === 'PASSED' || event.rank <= 3 || event.jesterCount || event.count >= 2);
+  const tail = events.slice(-profile.memoryLimit);
+  return [...new Map([...salient, ...tail].map((event) => [event.id, event])).values()];
+}
+
 function withoutPlayedCards(hand, play) {
   let natural = play.rank === 13 ? 0 : play.count - play.jesterCount;
   let jokers = play.jesterCount;
@@ -543,137 +617,170 @@ function withoutPlayedCards(hand, play) {
   });
 }
 
-function chanceAtLeast(draws, successes, population, needed) {
-  if (needed <= 0) return 1;
-  if (draws < needed || successes < needed || population <= 0) return 0;
-  // Small deck sizes make this stable sequential dynamic programming clearer
-  // than factorial-based hypergeometric arithmetic.
-  const maxDraws = Math.min(draws, population);
-  let distribution = [1];
-  for (let draw = 0; draw < maxDraws; draw += 1) {
-    const next = Array(draw + 2).fill(0);
-    const remainingPopulation = population - draw;
-    for (let found = 0; found < distribution.length; found += 1) {
-      const probability = distribution[found] || 0;
-      const remainingSuccesses = Math.max(0, successes - found);
-      next[found + 1] += probability * (remainingSuccesses / remainingPopulation);
-      next[found] += probability * Math.max(0, (remainingPopulation - remainingSuccesses) / remainingPopulation);
-    }
-    distribution = next;
+function opponentAggression(view, playerId) {
+  const stats = view.opponentStats[playerId];
+  if (!stats?.samples) return 0.5;
+  return Math.max(0.15, Math.min(0.95, 0.2 + stats.leadCardMean / 8 + stats.weakLeadMean * 0.22 + stats.nearFinishPressure * 0.18));
+}
+
+function passLikelihood(view, playerId, hand, modelWeight) {
+  const constraints = view.roundBeliefs[playerId] || [];
+  if (!constraints.length) return 1;
+  const counts = handCounts(hand);
+  let likelihood = 1;
+  for (const pass of constraints) {
+    const canHavePlayed = [...counts.entries()].some(([rank, count]) => rank < pass.topRank && count + (counts.get(13) || 0) >= pass.requiredCount);
+    // Profiles with a stronger opponent model trust observed passes more.
+    if (canHavePlayed) likelihood *= Math.max(0.08, 0.48 - modelWeight * 0.016);
   }
-  return distribution.reduce((sum, probability, found) => sum + (found >= needed ? probability : 0), 0);
+  return likelihood;
 }
 
-function playerAggression(events, playerId) {
-  const ownEvents = events.filter((event) => event.actorId === playerId && event.type === 'SET_PLAYED');
-  if (!ownEvents.length) return 0.5;
-  const multiRate = ownEvents.filter((event) => event.count >= 2).length / ownEvents.length;
-  const averageRank = ownEvents.reduce((sum, event) => sum + Number(event.rank || 13), 0) / ownEvents.length;
-  // High-number early dumps and multi-card pressure both indicate a player
-  // more likely to contest a weak lead.
-  return Math.max(0.15, Math.min(1, 0.35 + multiRate * 0.4 + averageRank / 40));
-}
-
-function chanceOpponentBeats(view, playerId, play) {
-  if (play.rank <= 1) return 0;
-  const active = view.players.filter((player) => player.id !== playerId && player.handCount > 0);
-  const required = play.count;
-  let nobodyCanBeat = 1;
-  for (const opponent of active) {
-    const draws = opponent.handCount;
-    let anyRankCanBeat = 0;
-    for (let rank = 1; rank < play.rank; rank += 1) {
-      const rankCount = view.unknownCounts.get(rank) || 0;
-      const chance = chanceAtLeast(draws, rankCount, view.unknownCardTotal, required);
-      // Approximate a union of mutually competing same-rank groups.
-      anyRankCanBeat = 1 - (1 - anyRankCanBeat) * (1 - chance);
-    }
-    const tendency = playerAggression(view.memory, opponent.id);
-    const adjusted = Math.min(0.98, anyRankCanBeat * (0.65 + tendency * 0.5));
-    nobodyCanBeat *= 1 - adjusted;
+function canBeat(hand, topRank, count) {
+  const counts = handCounts(hand);
+  const jokers = counts.get(13) || 0;
+  for (let rank = 1; rank < topRank; rank += 1) {
+    if ((counts.get(rank) || 0) + jokers >= count && (counts.get(rank) || 0) > 0) return rank;
   }
-  return 1 - nobodyCanBeat;
+  return null;
 }
 
-function forecastLeadRun(view, playerId, hand, depth = 2) {
+function sampleHands(view, playerId, random) {
+  const pool = [];
+  for (const [rank, count] of view.unknownCounts) for (let index = 0; index < count; index += 1) pool.push({ rank });
+  const shuffled = shuffle(pool, random);
+  let cursor = 0;
+  const hands = new Map();
+  view.hierarchy.filter((id) => id !== playerId).forEach((id) => {
+    const count = view.players.find((player) => player.id === id)?.handCount || 0;
+    hands.set(id, shuffled.slice(cursor, cursor + count));
+    cursor += count;
+  });
+  return hands;
+}
+
+function rolloutControlChance(state, view, playerId, play, modelWeight) {
+  if (play.rank <= 1) return 1;
+  const random = decisionRandom(state, playerId, play.rank * 97 + play.count * 17 + play.jesterCount);
+  let weightedControl = 0;
+  let totalWeight = 0;
+  for (let sample = 0; sample < 16; sample += 1) {
+    const hands = sampleHands(view, playerId, random);
+    let topRank = play.rank;
+    let lastPlayerId = playerId;
+    let weight = 1;
+    const start = view.hierarchy.indexOf(playerId);
+    for (let offset = 1; offset < view.hierarchy.length; offset += 1) {
+      const id = view.hierarchy[(start + offset) % view.hierarchy.length];
+      if (id === playerId || !hands.has(id)) continue;
+      const hand = hands.get(id);
+      weight *= passLikelihood(view, id, hand, modelWeight);
+      const responseRank = canBeat(hand, topRank, play.count);
+      if (responseRank == null) continue;
+      const observedAggression = opponentAggression(view, id);
+      const confidence = Math.min(1, 0.35 + modelWeight / 28);
+      const aggression = 0.5 + (observedAggression - 0.5) * confidence;
+      const contestChance = 0.26 + aggression * 0.58 + (hand.length <= 3 ? 0.12 : 0);
+      if (random() < contestChance) { topRank = responseRank; lastPlayerId = id; }
+    }
+    totalWeight += weight;
+    if (lastPlayerId === playerId) weightedControl += weight;
+  }
+  return totalWeight ? weightedControl / totalWeight : 0.5;
+}
+
+function handShape(hand) {
+  const counts = handCounts(hand);
+  const groups = [...counts.entries()].filter(([rank]) => rank !== 13);
+  return { groups: groups.length, singles: groups.filter(([, count]) => count === 1).length, jokers: counts.get(13) || 0 };
+}
+
+function quickControlChance(view, play) {
+  if (play.rank <= 1) return 1;
+  const stronger = Array.from({ length: play.rank - 1 }, (_, index) => view.unknownCounts.get(index + 1) || 0).reduce((sum, count) => sum + count, 0);
+  const density = stronger / Math.max(1, view.unknownCardTotal);
+  const active = view.players.filter((player) => player.id !== view.playerId && player.handCount > 0).length;
+  return Math.max(0.04, Math.min(0.96, Math.pow(1 - density * Math.min(1, play.count * 0.8), active)));
+}
+
+function forecastLeadRun(view, hand, depth = 2) {
   if (depth <= 0 || !hand.length) return 0;
   const counts = handCounts(hand);
-  const groups = [...counts.entries()]
-    .filter(([rank]) => rank !== 13)
-    .flatMap(([rank, count]) => count > 1
-      ? [{ rank, count }, { rank, count: 1 }]
-      : [{ rank, count }])
-    .sort((a, b) => (b.count * 12 + b.rank) - (a.count * 12 + a.rank))
-    .slice(0, 4);
-  if (!groups.length) return hand.filter((card) => card.rank === 13).length * 2;
-  // This is a bounded two-lead expectimax-style plan. It does not invent opponent
-  // cards: each future lead is weighted by the probability that public card
-  // counts say the table cannot overtake it. The depth cap keeps a bot turn
-  // inexpensive even with a large hand.
+  const groups = [...counts.entries()].filter(([rank]) => rank !== 13)
+    .flatMap(([rank, count]) => count > 1 ? [{ rank, count }, { rank, count: 1 }] : [{ rank, count }])
+    .sort((a, b) => (b.count * 12 + b.rank) - (a.count * 12 + a.rank)).slice(0, 4);
+  if (!groups.length) return (counts.get(13) || 0) * 2;
   return Math.max(...groups.map((group) => {
     const virtualPlay = { ...group, jesterCount: 0 };
-    const holdLeadChance = 1 - chanceOpponentBeats(view, playerId, virtualPlay);
+    const holdLeadChance = quickControlChance(view, virtualPlay);
     const after = withoutPlayedCards(hand, virtualPlay);
-    const immediateDump = group.count * 14 + group.rank * 1.5;
-    return immediateDump + holdLeadChance * forecastLeadRun(view, playerId, after, depth - 1);
+    return group.count * 14 + group.rank * 1.5 + holdLeadChance * forecastLeadRun(view, after, depth - 1);
   }));
 }
 
 export function getBotPerspective(state, playerId) {
   const profile = botProfileFor(state, playerId);
-  const memory = (state.botMemory?.publicEvents || []).slice(-profile.memoryLimit);
+  const memory = rememberedEvents(state, profile);
   const ownHand = clone(state.secrets[playerId]?.hand || []);
   const deckCounts = handCounts(createDeck(state.config, state.players.length));
   const seenCounts = observationCounts(memory);
   const unknownCounts = subtractCounts(subtractCounts(deckCounts, ownHand), [...seenCounts.entries()]
     .flatMap(([rank, count]) => Array.from({ length: count }, () => ({ rank }))));
-  const unknownCardTotal = [...unknownCounts.values()].reduce((sum, count) => sum + count, 0);
+  const journal = ensureBotMemory(state);
   return {
-    playerId,
-    profile,
-    ownHand,
+    playerId, profile, ownHand,
     players: state.players.map((player) => ({ id: player.id, handCount: player.handCount, roleIndex: player.roleIndex, score: player.score })),
     hierarchy: [...state.hierarchy],
     trick: { requiredCount: state.trick.requiredCount, topRank: state.trick.topRank, lastPlayerId: state.trick.lastPlayerId, passPlayerIds: [...state.trick.passPlayerIds] },
-    finishOrder: [...state.finishOrder],
-    memory: clone(memory),
-    unknownCounts,
-    unknownCardTotal,
+    finishOrder: [...state.finishOrder], memory: clone(memory), unknownCounts,
+    unknownCardTotal: [...unknownCounts.values()].reduce((sum, count) => sum + count, 0),
+    opponentStats: clone(journal.opponentStats), roundBeliefs: clone(journal.roundBeliefs),
   };
 }
 
-function evaluateBotPlay(view, playerId, play, profile) {
+function riskNeed(view, playerId) {
+  const player = view.players.find((candidate) => candidate.id === playerId);
+  const scores = view.players.map((candidate) => candidate.score);
+  const behind = Math.max(...scores) - (player?.score || 0);
+  const peonPressure = (player?.roleIndex || 0) / Math.max(1, view.players.length - 1);
+  return Math.min(1, behind / 8 + peonPressure * 0.45);
+}
+
+function dynamicJesterCost(hand, play, profile) {
+  if (!play.jesterCount) return 0;
+  const before = handShape(hand);
+  const after = handShape(withoutPlayedCards(hand, play));
+  const completesGroup = play.rank !== 13 && (handCounts(hand).get(play.rank) || 0) === play.count - play.jesterCount;
+  const preserveValue = before.jokers > after.jokers && after.groups > 0 ? profile.jesterReserve : 0;
+  return preserveValue - (completesGroup ? 12 : 0) + (play.rank === 13 && hand.length > play.count ? 90 : 0);
+}
+
+function evaluateBotPlay(state, view, playerId, play, profile) {
   const hand = view.ownHand;
   const counts = handCounts(hand);
-  const naturalCount = play.rank === 13 ? 0 : play.count - play.jesterCount;
   const remaining = hand.length - play.count;
   const isLead = view.trick.requiredCount == null;
-  const rankDiscardValue = play.rank === 13 ? -18 : play.rank * 4;
-  const clearsNaturalGroup = naturalCount > 0 && naturalCount === counts.get(play.rank);
-  const jesterOnly = play.rank === 13;
   const remainingHand = withoutPlayedCards(hand, play);
-  const opponentThreat = chanceOpponentBeats(view, playerId, play);
-  const leadChance = 1 - opponentThreat;
+  const beforeShape = handShape(hand);
+  const afterShape = handShape(remainingHand);
+  const controlChance = rolloutControlChance(state, view, playerId, play, profile.modelWeight);
   const nearFinishers = view.players.filter((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 3).length;
-  let score = rankDiscardValue + play.count * profile.shedWeight;
-  if (clearsNaturalGroup) score += 22;
-  if (remaining === 0) score += profile.finishBonus;
-  score += leadChance * profile.leadControlWeight;
-  score += leadChance * forecastLeadRun(view, playerId, remainingHand) * (profile.chainWeight / 10);
+  const clearsNaturalGroup = play.rank !== 13 && (counts.get(play.rank) || 0) === play.count - play.jesterCount;
+  let score = play.rank * 3 + play.count * profile.shedWeight;
+  score += (beforeShape.groups - afterShape.groups) * 18 + (beforeShape.singles - afterShape.singles) * 7;
+  if (clearsNaturalGroup) score += 18;
+  if (remaining === 0) score += 10_000;
+  score += controlChance * profile.controlWeight;
+  score += controlChance * forecastLeadRun(view, remainingHand) * (profile.chainWeight / 11);
+  score -= dynamicJesterCost(hand, play, profile);
+  if (play.rank <= 3 && remaining > 0) score -= (4 - play.rank) * (10 - riskNeed(view, playerId) * 5);
   if (isLead) score += (play.count - 1) * profile.chainWeight;
-  // Low ranks and Jesters make future control/escape combinations. Spend
-  // them only when the current set materially improves the hand.
-  if (play.rank <= 3) score -= (4 - play.rank) * 13;
-  score -= play.jesterCount * profile.jesterPenalty;
-  if (jesterOnly && remaining > 0) score -= 120;
-  if (!isLead) {
-    const pressure = Math.max(0, view.trick.topRank - play.rank) * 8;
-    score += pressure + nearFinishers * profile.blockNearFinish;
-    // A risky response that is unlikely to survive the circuit is usually a
-    // waste of a control card; aggressive bots tolerate that risk more.
-    score -= opponentThreat * (profile === BOT_PROFILES.CAUTIOUS ? 36 : profile === BOT_PROFILES.BALANCED ? 20 : 8);
+  else {
+    score += Math.max(0, view.trick.topRank - play.rank) * 7;
+    score += nearFinishers * profile.blockWeight;
+    score -= (1 - controlChance) * (42 - riskNeed(view, playerId) * 24);
   }
-  return { score, controlChance: leadChance };
+  return { score, controlChance };
 }
 
 function chooseTaxReturn(state, playerId, count) {
@@ -693,7 +800,7 @@ function chooseTaxReturn(state, playerId, count) {
 function chooseMerchantTarget(view, playerId) {
   const candidates = view.players.filter((player) => player.id !== playerId && player.handCount > 0);
   return [...candidates].sort((a, b) => {
-    const aggressionGap = playerAggression(view.memory, b.id) - playerAggression(view.memory, a.id);
+    const aggressionGap = opponentAggression(view, b.id) - opponentAggression(view, a.id);
     if (aggressionGap) return aggressionGap;
     // When cards are exchanged blindly, taking a chance against the player
     // closest to empty is the only strategically meaningful default.
@@ -701,10 +808,10 @@ function chooseMerchantTarget(view, playerId) {
   })[0]?.id || null;
 }
 
-function decisionRandom(state, playerId) {
+function decisionRandom(state, playerId, salt = 0) {
   const playerHash = [...String(playerId || '')]
     .reduce((hash, char) => ((hash * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
-  let seed = (state.randomSeed + state.stateVersion * 104729 + state.actionSerial * 8191 + playerHash) >>> 0;
+  let seed = (state.randomSeed + state.stateVersion * 104729 + state.actionSerial * 8191 + playerHash + salt * 131) >>> 0;
   // Consecutive room seeds must not produce nearly identical first draws.
   seed ^= seed >>> 16;
   seed = Math.imul(seed, 0x7feb352d) >>> 0;
@@ -714,33 +821,6 @@ function decisionRandom(state, playerId) {
   return makeSeededRandom(seed >>> 0);
 }
 
-function chooseHumanLikeCandidate(state, view, playerId, rankedCandidates, profile) {
-  const best = rankedCandidates[0];
-  if (!best || rankedCandidates.length < 2) return best;
-  // Finishing and urgent blocking are tactical facts, not gambling moments.
-  const isFinishing = best.play.count === view.ownHand.length;
-  const urgentBlock = view.trick.requiredCount != null
-    && view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 2);
-  if (isFinishing || urgentBlock) return best;
-  const nearBest = rankedCandidates.filter((candidate) => {
-    const scoreGap = best.score - candidate.score;
-    const similarlyContested = Math.abs(best.controlChance - candidate.controlChance) <= profile.controlTolerance;
-    return scoreGap <= profile.nearBestMargin
-      || (similarlyContested && scoreGap <= profile.nearBestMargin * 2);
-  });
-  if (nearBest.length < 2) return best;
-  const random = decisionRandom(state, playerId);
-  if (random() >= profile.gambleChance) return best;
-  const weights = nearBest.map((candidate) => Math.exp((candidate.score - best.score) / profile.gambleTemperature));
-  const target = random() * weights.reduce((sum, weight) => sum + weight, 0);
-  let cursor = 0;
-  for (let index = 0; index < nearBest.length; index += 1) {
-    cursor += weights[index];
-    if (target <= cursor) return nearBest[index];
-  }
-  return best;
-}
-
 function rankBotDecisionOptions(state, playerId) {
   if (state.playPhase !== 'TURN_INPUT' || state.currentTurnPlayerId !== playerId) return [];
   const profile = botProfileFor(state, playerId);
@@ -748,39 +828,88 @@ function rankBotDecisionOptions(state, playerId) {
   const plays = getLegalPlays(state, playerId);
   const naturalLeadExists = state.trick.requiredCount == null && plays.some((play) => play.rank !== 13 && play.jesterCount === 0);
   const candidates = naturalLeadExists ? plays.filter((play) => play.rank !== 13) : plays;
-  return [...candidates]
-    .map((play) => ({ play, ...evaluateBotPlay(view, playerId, play, profile) }))
+  const ranked = [...candidates]
+    .map((play) => ({ play, ...evaluateBotPlay(state, view, playerId, play, profile) }))
     .sort((a, b) => b.score - a.score || b.play.count - a.play.count || b.play.rank - a.play.rank);
+  if (state.trick.requiredCount != null) {
+    const ownShape = handShape(view.ownHand);
+    const bestPlayScore = ranked[0]?.score || 0;
+    const nearFinishThreat = view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 3) ? 24 : 0;
+    const passScore = bestPlayScore - profile.responseCommitment + ownShape.jokers * profile.jesterReserve * 0.4 - nearFinishThreat - riskNeed(view, playerId) * 20;
+    ranked.push({ play: null, score: passScore, controlChance: 0 });
+  }
+  return ranked.sort((a, b) => b.score - a.score || (b.play?.count || 0) - (a.play?.count || 0));
 }
 
-export function chooseBotCommand(state, playerId) {
-  const profile = botProfileFor(state, playerId);
+function withSoftmaxProbabilities(candidates, temperature) {
+  if (!candidates.length) return [];
+  const best = candidates[0].score;
+  const weights = candidates.map((candidate) => Math.exp(Math.max(-30, (candidate.score - best) / temperature)));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  return candidates.map((candidate, index) => ({ ...candidate, probability: weights[index] / total }));
+}
+
+function selectCandidate(state, playerId, candidates) {
+  const random = decisionRandom(state, playerId, 901);
+  let cursor = random();
+  for (const candidate of candidates) {
+    cursor -= candidate.probability;
+    if (cursor <= 0) return candidate;
+  }
+  return candidates[0];
+}
+
+function decisionEntropy(candidates) {
+  return candidates.reduce((sum, candidate) => candidate.probability ? sum - candidate.probability * Math.log2(candidate.probability) : sum, 0);
+}
+
+export function analyzeBotDecision(state, playerId, profileOverride = null) {
+  const profile = BOT_PROFILES[profileOverride] || botProfileFor(state, playerId);
   const view = getBotPerspective(state, playerId);
+  let command = null;
+  let candidates = [];
   if (state.playPhase === 'REVOLUTION_DECISION' && state.revolutionCandidateId === playerId) {
     const role = state.hierarchy.indexOf(playerId);
     const reversedRole = state.hierarchy.length - 1 - role;
     const positionGain = role - reversedRole;
     const leadersNearFinish = view.players.filter((player) => player.roleIndex < role && player.handCount <= 3).length;
     const wantsRevolution = positionGain > 0
-      && (profile !== BOT_PROFILES.CAUTIOUS || positionGain >= 3 || leadersNearFinish > 0);
-    return { type: wantsRevolution ? 'DECLARE_REVOLUTION' : 'DECLINE_REVOLUTION', playerId };
-  }
-  if (state.playPhase === 'TAX_RETURN' && state.tax.currentDalmutiId === playerId) {
+      && (profile !== BOT_PROFILES.DEFENSIVE || positionGain >= 3 || leadersNearFinish > 0);
+    command = { type: wantsRevolution ? 'DECLARE_REVOLUTION' : 'DECLINE_REVOLUTION', playerId };
+  } else if (state.playPhase === 'TAX_RETURN' && state.tax.currentDalmutiId === playerId) {
     const pair = state.tax.pairs.find((candidate) => candidate.dalmutiId === playerId);
-    return { type: 'SELECT_TAX_RETURN', playerId, selection: chooseTaxReturn(state, playerId, pair.count) };
-  }
-  if (state.playPhase === 'MERCHANT_EXCHANGE' && state.merchantExchange.actorId === playerId) {
+    command = { type: 'SELECT_TAX_RETURN', playerId, selection: chooseTaxReturn(state, playerId, pair.count) };
+  } else if (state.playPhase === 'MERCHANT_EXCHANGE' && state.merchantExchange.actorId === playerId) {
     const targetId = chooseMerchantTarget(view, playerId);
-    return { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId, targetId: state.merchantExchange.eligibleTargetIds.includes(targetId) ? targetId : state.merchantExchange.eligibleTargetIds[0] };
-  }
-  if (state.playPhase === 'TURN_INPUT' && state.currentTurnPlayerId === playerId) {
+    command = { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId, targetId: state.merchantExchange.eligibleTargetIds.includes(targetId) ? targetId : state.merchantExchange.eligibleTargetIds[0] };
+  } else if (state.playPhase === 'TURN_INPUT' && state.currentTurnPlayerId === playerId) {
     const rankedCandidates = rankBotDecisionOptions(state, playerId);
-    if (!rankedCandidates.length) return { type: 'PASS', playerId };
-    const selected = chooseHumanLikeCandidate(state, view, playerId, rankedCandidates, profile);
-    if (state.trick.requiredCount != null && selected.score < profile.responseThreshold) return { type: 'PASS', playerId };
-    return { type: 'PLAY_SET', playerId, ...selected.play };
+    if (!rankedCandidates.length) command = { type: 'PASS', playerId };
+    else {
+      const finishing = rankedCandidates.find((candidate) => candidate.play && candidate.play.count === view.ownHand.length);
+      const urgent = view.trick.requiredCount != null && view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 2)
+        ? rankedCandidates.find((candidate) => candidate.play && candidate.controlChance >= 0.7) : null;
+      candidates = withSoftmaxProbabilities(rankedCandidates, profile.temperature);
+      const selected = finishing || urgent || selectCandidate(state, playerId, candidates);
+      command = selected?.play ? { type: 'PLAY_SET', playerId, ...selected.play } : { type: 'PASS', playerId };
+    }
   }
-  return null;
+  const entropy = decisionEntropy(candidates);
+  const forced = candidates.length <= 1 || command?.type !== 'PLAY_SET' || (command.count === view.ownHand.length);
+  const legalCount = candidates.length;
+  const random = decisionRandom(state, playerId, 1777);
+  const deliberationPhase = state.playPhase === 'REVOLUTION_DECISION' || state.playPhase === 'TAX_RETURN' || state.playPhase === 'MERCHANT_EXCHANGE';
+  const baseDelay = deliberationPhase ? 760 : (forced ? 250 : 400 + legalCount * 36 + entropy * 170);
+  const delayMs = Math.max(250, Math.min(1600, Math.round(baseDelay + (random() - 0.5) * 220)));
+  return { command, candidates, entropy, delayMs };
+}
+
+export function chooseBotCommand(state, playerId) {
+  return analyzeBotDecision(state, playerId).command;
+}
+
+export function getBotThinkDelay(state, playerId) {
+  return analyzeBotDecision(state, playerId).delayMs;
 }
 
 export function chooseTimeoutCommand(state, playerId) {
@@ -806,10 +935,42 @@ export function getPrivateView(state, playerId) {
   };
 }
 
+export function createDecisionTrace(state, command, actorKind = 'HUMAN', analysis = null) {
+  const hand = state.secrets[command?.playerId]?.hand || [];
+  const histogram = Object.fromEntries([...handCounts(hand)].map(([rank, count]) => [rank, count]));
+  const legalPlays = getLegalPlays(state, command?.playerId).map(({ rank, count, jesterCount }) => ({ rank, count, jesterCount }));
+  return {
+    matchKey: state.telemetryMatchKey,
+    eventType: 'DECISION', actorKind, roundNumber: state.roundNumber,
+    playerCount: state.players.length, roleIndex: state.hierarchy.indexOf(command?.playerId),
+    handHistogram: histogram,
+    trick: { requiredCount: state.trick.requiredCount, topRank: state.trick.topRank },
+    opponentHandCounts: state.players.filter((player) => player.id !== command?.playerId).map((player) => player.handCount),
+    legalPlays,
+    selected: Object.fromEntries(Object.entries(command || {}).filter(([key]) => key !== 'playerId')),
+    candidateDistribution: analysis?.candidates.map((candidate) => ({
+      selected: candidate.play ? { type: 'PLAY_SET', ...candidate.play } : { type: 'PASS' },
+      probability: candidate.probability,
+    })) || [],
+  };
+}
+
+export function createRoundResultTraces(state) {
+  return state.finishOrder.map((playerId, index) => {
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    return {
+    matchKey: state.telemetryMatchKey, eventType: 'ROUND_RESULT', roundNumber: state.roundNumber,
+    playerCount: state.players.length, roleIndex: state.hierarchy.indexOf(playerId), actorKind: player?.isBot ? 'BOT' : 'HUMAN',
+    finishPosition: index + 1,
+    };
+  });
+}
+
 export function getPublicView(state) {
+  const players = state.players.map(({ botProfile, ...player }) => player);
   return {
     gameType: state.gameType, matchState: state.matchState, playPhase: state.playPhase,
-    roundNumber: state.roundNumber, config: clone(state.config), players: clone(state.players),
+    roundNumber: state.roundNumber, config: clone(state.config), players: clone(players),
     hierarchy: [...state.hierarchy], initialSeatOrder: state.roundNumber <= 1 ? clone(state.initialSeatOrder) : [],
     currentTurnPlayerId: state.currentTurnPlayerId, turnStartedAt: state.turnStartedAt,
     turnExpiresAt: state.turnExpiresAt, trick: clone(state.trick), finishOrder: [...state.finishOrder],

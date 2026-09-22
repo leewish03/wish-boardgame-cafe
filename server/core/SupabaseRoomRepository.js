@@ -46,6 +46,7 @@ export class SupabaseRoomRepository {
       max: 5,
       idleTimeoutMillis: 20_000,
     });
+    this.lastTelemetryCleanupAt = 0;
   }
 
   async initialize() {
@@ -56,6 +57,9 @@ export class SupabaseRoomRepository {
       const room = restoreRoom(row.state);
       if (room?.code) this._rooms.set(String(room.code).toUpperCase(), room);
     }
+    // Telemetry migration may be deployed after room storage.  Never block
+    // game-room recovery when the optional calibration table is unavailable.
+    await this.cleanupDalmutiTelemetry(true).catch(() => {});
   }
 
   async getRoom(id) {
@@ -90,6 +94,23 @@ export class SupabaseRoomRepository {
 
   async listRooms() {
     return Array.from(this._rooms.values());
+  }
+
+  async cleanupDalmutiTelemetry(force = false) {
+    if (!force && Date.now() - this.lastTelemetryCleanupAt < 86_400_000) return;
+    this.lastTelemetryCleanupAt = Date.now();
+    await this.pool.query("delete from wish_private.dalmuti_ai_decisions where created_at < now() - interval '30 days'");
+  }
+
+  async recordDalmutiDecision(trace) {
+    if (!trace?.matchKey || !trace?.eventType) return;
+    await this.pool.query(
+      `insert into wish_private.dalmuti_ai_decisions
+       (match_key, event_type, actor_kind, round_number, player_count, role_index, payload)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      [trace.matchKey, trace.eventType, trace.actorKind || null, trace.roundNumber, trace.playerCount, trace.roleIndex ?? null, JSON.stringify(trace)]
+    );
+    void this.cleanupDalmutiTelemetry().catch(() => {});
   }
 
   async close() {

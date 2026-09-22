@@ -2,7 +2,6 @@ import { roomRepository } from './RoomRepository.js';
 import { broadcastRoomState } from '../shared/roomManager.js';
 import * as core from '../../packages/dalmuti-core/src/index.js';
 
-const BOT_DELAY_MS = 520;
 const PRESENTATION_FALLBACK_MS = 900;
 const PRESENTATION_EVENT_TYPES = new Set(['SET_PLAYED', 'PASSED', 'TRICK_CLEARED', 'TAX_COMPLETED', 'REVOLUTION', 'GREAT_REVOLUTION', 'MERCHANT_EXCHANGED']);
 
@@ -40,6 +39,7 @@ export class DalmutiService {
       avatarUrl: player.avatarUrl,
       isHost: player.id === hostId,
       isBot: !!player.isBot,
+      personality: player.personality || player.botPersonality,
     };
   }
 
@@ -101,6 +101,11 @@ export class DalmutiService {
       if (!room?.gameStateObject || room.gameType !== 'DALMUTI') throw new Error('진행 중인 달무티 게임을 찾을 수 없습니다.');
       if (room.isPaused) throw new Error('재접속을 기다리는 동안 게임이 일시정지되었습니다.');
       if (room.dalmutiPresentationGate) throw new Error('이전 행동을 테이블에 표시하는 중입니다.');
+      const actor = room.players.find((player) => player.id === command.playerId);
+      const actorKind = actor?.isBot ? 'BOT' : 'HUMAN';
+      const analysis = core.analyzeBotDecision(room.gameStateObject, command.playerId, actorKind === 'HUMAN' ? 'STRATEGIC' : null);
+      const trace = core.createDecisionTrace(room.gameStateObject, command, actorKind, analysis);
+      if (actorKind === 'BOT') trace.botProfile = room.gameStateObject.players.find((player) => player.id === command.playerId)?.botProfile || null;
       const { nextState, events } = core.executeCommand(room.gameStateObject, command);
       this.syncRoom(room, nextState);
       const envelopes = this.makeEventEnvelopes(nextState, events);
@@ -114,6 +119,12 @@ export class DalmutiService {
         };
       }
       await roomRepository.saveRoom(room);
+      void roomRepository.recordDalmutiDecision?.(trace).catch(() => {});
+      if (nextState.lastAction?.type === 'ROUND_ENDED' || nextState.lastAction?.type === 'MATCH_ENDED') {
+        core.createRoundResultTraces(nextState).forEach((result) => {
+          void roomRepository.recordDalmutiDecision?.(result).catch(() => {});
+        });
+      }
       this.emitEnvelopes(roomCode, envelopes);
       broadcastRoomState(this.io, roomCode);
       this.schedule(roomCode);
@@ -165,10 +176,11 @@ export class DalmutiService {
       const actor = room.players.find((player) => player.id === actorId);
       if (actor?.isBot) {
         const version = state.stateVersion;
+        const delay = core.getBotThinkDelay(state, actorId);
         const timer = setTimeout(() => {
           this.botTimers.delete(roomCode);
           void this.runBot(roomCode, actorId, version);
-        }, BOT_DELAY_MS);
+        }, delay);
         timer.unref?.(); this.botTimers.set(roomCode, timer); return;
       }
       if (actorId && state.turnExpiresAt > 0) {

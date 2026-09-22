@@ -102,7 +102,7 @@ try {
   await service.disconnectExpired(created.roomCode, ids[1]);
   assert.equal(rooms[created.roomCode].players.find((player) => player.id === ids[1]).isBot, true, 'expired seat becomes a bot');
   assert.ok(
-    ['CAUTIOUS', 'BALANCED', 'AGGRESSIVE'].includes(rooms[created.roomCode].gameStateObject.players.find((player) => player.id === ids[1]).botProfile),
+    ['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING', 'STRATEGIC', 'INFORMATIVE'].includes(rooms[created.roomCode].gameStateObject.players.find((player) => player.id === ids[1]).botProfile),
     'an expired seat receives a strategy profile before its bot turn is scheduled',
   );
   const lateReconnect = await emit(clients[1], 'room:reconnect', { roomCode:created.roomCode, ...credentials[1] });
