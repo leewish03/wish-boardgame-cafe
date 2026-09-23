@@ -15,7 +15,7 @@ const groupCards = (cards = []) => {
   return [...groups.values()].sort((a, b) => a.rank - b.rank);
 };
 
-export default function DalmutiGame({ roomState, currentUser, socket, webrtc, stt, chatMessages = [], onSendChat, onLeave }) {
+export default function DalmutiGame({ roomState, currentUser, socket, webrtc, stt, chatMessages = [], onSendChat, onLeave, onRoomUnavailable }) {
   const game = roomState?.dalmuti;
   const myId = currentUser?.id;
   const reduceMotion = useReducedMotion();
@@ -50,9 +50,13 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       timers.add(timer);
     };
     socket.on('dalmuti:event', onEvent);
-    socket.emit('dalmuti:view-ready', { roomCode: roomState?.code });
-    return () => { socket.off('dalmuti:event', onEvent); timers.forEach((timer) => window.clearTimeout(timer)); };
-  }, [socket, roomState?.code, reduceMotion]);
+    const handleRoomUnavailable = () => onRoomUnavailable?.();
+    socket.on('room:unavailable', handleRoomUnavailable);
+    socket.emit('dalmuti:view-ready', { roomCode: roomState?.code }, (result) => {
+      if (!result?.success) handleRoomUnavailable();
+    });
+    return () => { socket.off('dalmuti:event', onEvent); socket.off('room:unavailable', handleRoomUnavailable); timers.forEach((timer) => window.clearTimeout(timer)); };
+  }, [socket, roomState?.code, reduceMotion, onRoomUnavailable]);
 
   useEffect(() => { setSelection(null); setTaxSelection({}); setError(''); }, [game?.stateVersion]);
 
@@ -72,9 +76,16 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     if (!socket) return;
     setError('');
     socket.emit('dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: game.stateVersion } }, (result) => {
-      if (!result?.success) setError(result?.error || '행동을 처리하지 못했습니다.');
+      if (!result?.success) {
+        const message = result?.error || '행동을 처리하지 못했습니다.';
+        if (/방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없/.test(message)) {
+          onRoomUnavailable?.();
+          return;
+        }
+        setError(message);
+      }
     });
-  }, [socket, roomState?.code, game?.stateVersion]);
+  }, [socket, roomState?.code, game?.stateVersion, onRoomUnavailable]);
 
   const chooseRank = (rank) => {
     if (!isMyTurn || game.playPhase !== 'TURN_INPUT') return;

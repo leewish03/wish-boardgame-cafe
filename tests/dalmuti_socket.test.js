@@ -35,9 +35,18 @@ registerDalmutiController(io, service);
 await new Promise((resolve) => server.listen(0, resolve));
 const url = `http://127.0.0.1:${server.address().port}`;
 const clients = Array.from({ length: 4 }, () => ClientIO(url, { transports: ['websocket'] }));
+let missingRoomClient = null;
 
 try {
   await Promise.all(clients.map((client) => waitFor(client, 'connect')));
+  missingRoomClient = ClientIO(url, { transports: ['websocket'] });
+  await waitFor(missingRoomClient, 'connect');
+  const unavailable = waitFor(missingRoomClient, 'room:unavailable');
+  const missingView = await emit(missingRoomClient, 'dalmuti:view-ready', { roomCode:'GONE42' });
+  assert.equal(missingView.success, false, 'a stale Dalmuti table is explicitly rejected');
+  assert.match(missingView.error, /방을 찾을 수 없습니다/);
+  assert.match((await unavailable).error, /방을 찾을 수 없습니다/, 'the client receives the room-unavailable signal needed to leave its stale table');
+
   const created = await emit(clients[0], 'room:create', { gameType:'DALMUTI', nickname:'Host', maxPlayers:4, roundCount:5, turnTimeLimit:0 });
   assert.ok(created.success);
   const ids = [created.userId];
@@ -109,6 +118,7 @@ try {
   assert.equal(lateReconnect.success, false, 'a bot-taken seat cannot be reclaimed late');
   console.log('Dalmuti Socket.IO start, private projection and command routing passed.');
 } finally {
+  missingRoomClient?.disconnect();
   clients.forEach((client) => client.disconnect());
   service.clearTimers(rooms[Object.keys(rooms)[0]]?.code || '');
   await new Promise((resolve) => io.close(resolve));

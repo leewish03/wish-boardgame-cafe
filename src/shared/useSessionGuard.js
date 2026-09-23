@@ -62,10 +62,12 @@ export function useSessionGuard({
   roomState,
   screen,
   onReconnectRequest,
+  onRoomUnavailable,
 }) {
   const wakeLockRef = useRef(null);
   const roomStateRef = useRef(roomState);
   const onReconnectRequestRef = useRef(onReconnectRequest);
+  const onRoomUnavailableRef = useRef(onRoomUnavailable);
 
   useEffect(() => {
     roomStateRef.current = roomState;
@@ -74,6 +76,10 @@ export function useSessionGuard({
   useEffect(() => {
     onReconnectRequestRef.current = onReconnectRequest;
   }, [onReconnectRequest]);
+
+  useEffect(() => {
+    onRoomUnavailableRef.current = onRoomUnavailable;
+  }, [onRoomUnavailable]);
 
   // 1. Screen Wake Lock API
   useEffect(() => {
@@ -240,6 +246,8 @@ export function useSessionGuard({
                 onReconnectRequestRef.current(session);
               }
             }
+          } else if (/방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없|방 없음/.test(String(res?.error || ''))) {
+            onRoomUnavailableRef.current?.();
           }
         }
       );

@@ -471,6 +471,19 @@ export default function App() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
+  const isMissingRoomError = useCallback((error) => /방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없|방 없음/.test(String(error || '')), []);
+  const handleRoomUnavailable = useCallback(() => {
+    // A server restart can leave the browser with one final, stale table
+    // snapshot. Never leave that screen interactive: its room no longer
+    // exists on the authority, so clear the recovery route and return home.
+    queuedReconnectRef.current = null;
+    setReconnectOffer(null);
+    clearSession();
+    setRoomState(null);
+    setScreen('lobby');
+    setToastMessage('방이 종료되었거나 찾을 수 없습니다. 로비로 돌아갔습니다.');
+  }, []);
+
   // Game Lobby Creation Dialog
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedGameForCreate, setSelectedGameForCreate] = useState('LOVE_LETTER');
@@ -538,6 +551,8 @@ export default function App() {
               setScreen('game');
             }
             if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 다시 접속했습니다.');
+          } else if (isMissingRoomError(res?.error)) {
+            handleRoomUnavailable();
           } else {
             // Keep the route visible until the player explicitly chooses to
             // abandon it. A transient reconnect failure is not a departure.
@@ -556,7 +571,7 @@ export default function App() {
         }
       );
     },
-    [socket]
+    [socket, handleRoomUnavailable, isMissingRoomError]
   );
 
   useEffect(() => () => {
@@ -576,6 +591,7 @@ export default function App() {
     roomState,
     screen,
     onReconnectRequest: handleReconnectRequest,
+    onRoomUnavailable: handleRoomUnavailable,
   });
 
   // Recover sessions saved by older builds as well. The dialog deliberately
@@ -675,6 +691,7 @@ export default function App() {
 
     socket.on('room:state', handleRoomState);
     socket.on('room:resumed', handleRoomResumed);
+    socket.on('room:unavailable', handleRoomUnavailable);
 
     const handleChatMessage = (message) => {
       if (!message?.id) return;
@@ -690,9 +707,10 @@ export default function App() {
     return () => {
       socket.off('room:state', handleRoomState);
       socket.off('room:resumed', handleRoomResumed);
+      socket.off('room:unavailable', handleRoomUnavailable);
       socket.off('chat:message', handleChatMessage);
     };
-  }, [socket, sfx, reconnectOffer, screen]);
+  }, [socket, sfx, reconnectOffer, screen, handleRoomUnavailable]);
 
   // Handle Entry (Nickname submission)
   const handleEnterLobby = (e) => {
@@ -1442,6 +1460,7 @@ export default function App() {
             chatMessages={roomState?.chatMessages || []}
             onSendChat={handleSendChat}
             onLeave={handleLeaveRoom}
+            onRoomUnavailable={handleRoomUnavailable}
           /> : <LoveLetterGame
             roomState={roomState}
             currentUser={currentUser}
