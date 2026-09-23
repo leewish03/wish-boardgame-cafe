@@ -115,7 +115,12 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     if (game.playPhase === 'MERCHANT_EXCHANGE') return `${currentPlayer?.nickname || '상인'}의 상인 교환`;
     if (game.matchState === 'ROUND_END') return `${game.roundNumber}라운드 신분 재편`;
     if (game.matchState === 'GAME_OVER') return '최종 계급전 종료';
-    if (isMyTurn) return game.trick.requiredCount == null ? '내가 새로운 트릭을 이끕니다' : `${game.trick.requiredCount}장 · ${game.trick.topRank}보다 강한 계급`;
+    if (isMyTurn) {
+      if (game.trick.requiredCount == null) return '내가 새로운 트릭을 이끕니다';
+      if (game.trick.topRank === 1) return `달무티(1) ${game.trick.requiredCount}장 · 이 트릭은 패스만 가능합니다`;
+      if (!legalPlays.length) return `${game.trick.requiredCount}장 · 낼 수 있는 카드가 없어 패스합니다`;
+      return `${game.trick.requiredCount}장 · ${game.trick.topRank}보다 강한 계급`;
+    }
     return `${currentPlayer?.nickname || '상대'}의 차례`;
   })();
 
