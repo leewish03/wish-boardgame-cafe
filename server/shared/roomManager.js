@@ -655,6 +655,7 @@ export function initRoomManager(io) {
         const room = rooms[code];
 
         if (!room) {
+          socket.emit('room:unavailable', { roomCode: code || null, error: '방을 찾을 수 없습니다.' });
           if (typeof callback === 'function') callback({ success: false, error: '방 없음' });
           return;
         }

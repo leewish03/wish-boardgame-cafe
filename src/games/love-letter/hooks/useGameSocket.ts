@@ -209,7 +209,7 @@ export function useGameSocket({
 
     const handleConnect = () => {
       setIsConnected(true);
-      socket.emit(SOCKET_EVENTS.GAME_VIEW_READY);
+      socket.emit(SOCKET_EVENTS.GAME_VIEW_READY, { roomCode, userId: myUserId });
     };
     const handleDisconnect = () => { setIsConnected(false); pendingDraws.current = []; };
 
@@ -316,7 +316,7 @@ export function useGameSocket({
     socket.on('game:presentation-return', handleReturn);
     socket.on('game:terminated', handleTerminated);
     if (onPresentationCancel) socket.on('game:presentation-cancel', onPresentationCancel);
-    if (socket.connected) socket.emit(SOCKET_EVENTS.GAME_VIEW_READY);
+    if (socket.connected) socket.emit(SOCKET_EVENTS.GAME_VIEW_READY, { roomCode, userId: myUserId });
 
     return () => {
       socket.off('connect', handleConnect);
@@ -328,7 +328,7 @@ export function useGameSocket({
       socket.off('game:terminated', handleTerminated);
       if (onPresentationCancel) socket.off('game:presentation-cancel', onPresentationCancel);
     };
-  }, [socket, onGameEvent, onPresentationCancel, roomCode, onLeaveRoom]);
+  }, [socket, onGameEvent, onPresentationCancel, roomCode, onLeaveRoom, myUserId]);
 
   // Derive GameState & Hand
   const { gameState, myHand } = useMemo(() => adaptRoomStateToGameState(rawRoomState, myUserId), [rawRoomState, myUserId]);

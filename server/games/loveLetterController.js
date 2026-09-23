@@ -5,6 +5,25 @@ function callbackError(callback, error) {
   if (typeof callback === 'function') callback({ success: false, error: error.message || String(error) });
 }
 
+function emitRoomUnavailable(socket, payload, error) {
+  const roomCode = String(payload?.roomCode || '').toUpperCase().trim() || null;
+  socket.emit('room:unavailable', {
+    roomCode,
+    error: error.message || String(error),
+  });
+}
+
+function requireLoveLetterRoom(socket, payload) {
+  const resolved = resolveRoomAndUser(socket, payload);
+  const { room, roomCode, userId } = resolved;
+  if (!room || !roomCode || !userId || room.gameType !== 'LOVE_LETTER' || !room.players.some((player) => player.id === userId)) {
+    const error = new Error('러브레터 방을 찾을 수 없습니다.');
+    emitRoomUnavailable(socket, { ...payload, roomCode }, error);
+    throw error;
+  }
+  return resolved;
+}
+
 function normalizeCommand(payload, playerId) {
   const command = payload?.command || payload;
   if (!command || typeof command.type !== 'string') {
@@ -31,17 +50,18 @@ export function registerLoveLetterController(io, service) {
   io.on('connection', (socket) => {
     // The table mounts after the lobby receives room:state. Its first snapshot
     // may already have been emitted, so let the authenticated socket request it.
-    socket.on(SOCKET_EVENTS.GAME_VIEW_READY, () => {
-      const mapping = socketToUser[socket.id];
-      const room = mapping && rooms[mapping.roomCode];
-      if (room?.players.some(player => player.id === mapping.userId && player.socketId === socket.id)) {
-        service.broadcastGameSnapshot(mapping.roomCode, room);
+    socket.on(SOCKET_EVENTS.GAME_VIEW_READY, (payload, callback) => {
+      try {
+        const { room, roomCode } = requireLoveLetterRoom(socket, payload);
+        service.broadcastGameSnapshot(roomCode, room);
+        if (typeof callback === 'function') callback({ success: true });
+      } catch (error) {
+        callbackError(callback, error);
       }
     });
     const handleStart = async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const { roomCode, userId } = requireLoveLetterRoom(socket, payload);
         await service.startMatch(roomCode, userId);
         if (typeof callback === 'function') callback({ success: true });
       } catch (error) {
@@ -54,8 +74,7 @@ export function registerLoveLetterController(io, service) {
 
     socket.on('game:advance', async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const { roomCode, userId } = requireLoveLetterRoom(socket, payload);
         const result = await service.advanceRound(roomCode, userId, payload?.expectedStateVersion, payload?.requestId);
         if (typeof callback === 'function') callback({ success: true, ...result });
       } catch (error) {
@@ -65,8 +84,7 @@ export function registerLoveLetterController(io, service) {
 
     socket.on('game:rematch', async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const { roomCode, userId } = requireLoveLetterRoom(socket, payload);
         const result = await service.startRematch(roomCode, userId, payload?.expectedStateVersion, payload?.requestId);
         if (typeof callback === 'function') callback({ success: true, ...result });
       } catch (error) {
@@ -76,8 +94,7 @@ export function registerLoveLetterController(io, service) {
 
     socket.on(SOCKET_EVENTS.GAME_COMMAND, async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const { roomCode, userId } = requireLoveLetterRoom(socket, payload);
         const command = normalizeCommand(payload, userId);
         await service.handleCommand(roomCode, command);
         if (typeof callback === 'function') callback({ success: true });
@@ -88,8 +105,7 @@ export function registerLoveLetterController(io, service) {
 
     socket.on(SOCKET_EVENTS.GAME_PRESENTATION_ACK, async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
-        if (!room || !roomCode || !userId) throw new Error('방 또는 플레이어를 찾을 수 없습니다.');
+        const { roomCode, userId } = requireLoveLetterRoom(socket, payload);
         const result = await service.acknowledgePresentation(
           roomCode,
           userId,
@@ -110,7 +126,12 @@ export function registerLoveLetterController(io, service) {
         const playerId = payload?.playerId || payload?.userId;
         const room = rooms[code];
         const player = room?.players.find((candidate) => candidate.id === playerId);
-        if (!room || !player || !payload?.sessionToken || player.sessionToken !== payload.sessionToken) {
+        if (!room || !player) {
+          const error = new Error('러브레터 방을 찾을 수 없습니다.');
+          emitRoomUnavailable(socket, payload, error);
+          throw error;
+        }
+        if (!payload?.sessionToken || player.sessionToken !== payload.sessionToken) {
           throw new Error('재접속 세션을 확인할 수 없습니다.');
         }
         player.socketId = socket.id;

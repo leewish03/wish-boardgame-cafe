@@ -52,10 +52,19 @@ async function main() {
   const url = `http://127.0.0.1:${server.address().port}`;
   const a = ClientIO(url, { transports: ['websocket'] });
   const b = ClientIO(url, { transports: ['websocket'] });
+  const stale = ClientIO(url, { transports: ['websocket'] });
   let testRoomCode = null;
 
   try {
-    await Promise.all([once(a, 'connect'), once(b, 'connect')]);
+    await Promise.all([once(a, 'connect'), once(b, 'connect'), once(stale, 'connect')]);
+    const staleRoomNotice = once(stale, 'room:unavailable');
+    const staleView = await emit(stale, 'game:view-ready', { roomCode: 'GONE42', userId: 'missing-player' });
+    assert.equal(staleView.success, false, 'a missing Love Letter room must reject the stale table request');
+    assert.equal((await staleRoomNotice).roomCode, 'GONE42', 'a missing Love Letter room must explicitly tell the client to leave');
+    const staleHeartbeatNotice = once(stale, 'room:unavailable');
+    const staleHeartbeat = await emit(stale, 'session:heartbeat', { roomCode: 'GONE42', userId: 'missing-player' });
+    assert.equal(staleHeartbeat.success, false, 'every game room must reject a stale heartbeat');
+    assert.equal((await staleHeartbeatNotice).roomCode, 'GONE42', 'the shared heartbeat must use the same leave-room signal');
     const created = await emit(a, 'room:create', { gameType: 'LOVE_LETTER', nickname: 'Alice', targetTokens: 2 });
     assert.equal(created.success, true);
     testRoomCode = created.roomCode;
@@ -212,6 +221,7 @@ async function main() {
     if (testRoomCode) delete rooms[testRoomCode];
     a.disconnect();
     b.disconnect();
+    stale.disconnect();
     io.close();
     server.close();
   }
