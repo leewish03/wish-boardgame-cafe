@@ -545,7 +545,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         onCancelAction={handleCancelAction}
       />
       </TableViewport>
-      <PresentationStagePlane viewportRef={tableViewportRef}/>
+      <PresentationStagePlane
+        viewportRef={tableViewportRef}
+        showComparison={Boolean(physicalStep && ['COMPARE_GATHER', 'COMPARE_REVEAL', 'COMPARE_RESULT', 'COMPARE_SETTLE'].includes(physicalStep.kind))}
+      />
 
       {/* My public discard shelf is physically attached directly above my hand. */}
       {visual.visualTable.players.find(p => p.id === activeUserId) && (
@@ -659,6 +662,6 @@ const BoardSurface = styled.div<{$chatOpen:boolean}>`
   font-family: ${THEME.font.sans};
   color: ${THEME.foreground};
 `;
-const TableViewport = styled.main`min-height:0;overflow-y:auto;overflow-x:clip;display:grid;grid-template-rows:auto auto;align-content:start;overscroll-behavior-y:contain;`;
+const TableViewport = styled.main`min-height:0;overflow:hidden;display:grid;grid-template-rows:auto auto;align-content:start;`;
 
 export default LoveLetterGame;

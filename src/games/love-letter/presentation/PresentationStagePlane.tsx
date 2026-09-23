@@ -15,7 +15,7 @@ const Anchor: React.FC<{kind:'comparison-left'|'comparison-right'|'priest-review
  * A moving card and its destination now share one fixed viewport coordinate
  * space, so text, chat, or a scrollbar cannot pull a central animation aside.
  */
-export const PresentationStagePlane: React.FC<{viewportRef: RefObject<HTMLElement | null>}> = ({ viewportRef }) => {
+export const PresentationStagePlane: React.FC<{viewportRef: RefObject<HTMLElement | null>; showComparison?: boolean}> = ({ viewportRef, showComparison = false }) => {
   const [rect, setRect] = useState<Rect | null>(null);
   useLayoutEffect(() => {
     const measure = () => {
@@ -34,18 +34,18 @@ export const PresentationStagePlane: React.FC<{viewportRef: RefObject<HTMLElemen
 
   if (!rect) return null;
   return <Plane style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} aria-hidden="true">
-    <ComparisonSlots><Anchor kind="comparison-left"/><span>VS</span><Anchor kind="comparison-right"/></ComparisonSlots>
+    <ComparisonSlots $visible={showComparison}><Anchor kind="comparison-left"/><span>VS</span><Anchor kind="comparison-right"/></ComparisonSlots>
     <PriestSlot><Anchor kind="priest-review"/></PriestSlot>
     <RoundSlots>{Array.from({ length: 6 }, (_, index) => <Anchor key={index} kind={`round-result:${index}`}/>)}</RoundSlots>
   </Plane>;
 };
 
 const Plane = styled.div`position:fixed;z-index:590;pointer-events:none;`;
-const ComparisonSlots = styled.div`
+const ComparisonSlots = styled.div<{$visible:boolean}>`
   position:absolute;left:50%;top:50%;width:min(304px,78vw);height:clamp(151px,43vw,206px);transform:translate(-50%,-50%);
   display:grid;grid-template-columns:1fr 30px 1fr;align-items:center;gap:8px;
   >span:not(:nth-child(2)){display:block;width:100%;height:100%;}
-  >span:nth-child(2){font:900 17px ${THEME.font.serif};color:${THEME.goldAntique};text-align:center;}
+  >span:nth-child(2){font:900 17px ${THEME.font.serif};color:${THEME.goldAntique};text-align:center;opacity:${p=>p.$visible ? 1 : 0};}
 `;
 const PriestSlot = styled.div`
   position:absolute;left:50%;top:50%;width:clamp(106px,30vw,144px);aspect-ratio:154 / 220;transform:translate(-50%,-50%);

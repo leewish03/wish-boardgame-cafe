@@ -154,10 +154,10 @@ const LocalZoneRoot=styled.section`
 `;
 const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;
 const DiscardHeader=styled.div`
-  height:72px;display:grid;grid-template-columns:repeat(3,var(--local-decision-card));column-gap:var(--local-decision-gap);justify-content:center;align-items:start;padding-top:1px;box-sizing:border-box;color:${THEME.mutedForeground};font-size:9px;font-weight:750;
+  height:40px;display:grid;grid-template-columns:repeat(3,var(--local-decision-card));column-gap:var(--local-decision-gap);justify-content:center;align-items:start;padding-top:1px;box-sizing:border-box;color:${THEME.mutedForeground};font-size:9px;font-weight:750;
   >span{grid-column:1;justify-self:start;}
 `;
-const LocalMetaRail=styled.div`grid-column:3;justify-self:end;width:40px;display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:14px;`;
+const LocalMetaRail=styled.div`grid-column:3;justify-self:end;width:40px;display:flex;flex-direction:column;align-items:center;gap:4px;`;
 const TokenMeta=styled.span`display:flex;align-items:center;justify-content:center;gap:2px;white-space:nowrap;color:${THEME.burgundy};font-size:8px;font-weight:850;line-height:11px;`;
 const SelfTarget=styled.button<{$targetable:boolean;$selected:boolean;$eliminated:boolean}>`
   position:relative;width:100%;height:100%;min-width:0;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:${THEME.foreground};font:inherit;
