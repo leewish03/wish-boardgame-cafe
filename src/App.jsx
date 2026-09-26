@@ -23,6 +23,7 @@ import { useSocket } from './shared/useSocket';
 import { useWebRTC } from './shared/useWebRTC';
 import { useSTT } from './shared/useSTT';
 import { RoomChat } from './shared/RoomChat';
+import { createRoomSessionBoundary, terminalSessionCode, sessionEndMessages } from './shared/roomSession';
 import { sfx } from './shared/sfx';
 import {
   useSessionGuard,
@@ -471,18 +472,28 @@ export default function App() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  const isMissingRoomError = useCallback((error) => /방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없|방 없음/.test(String(error || '')), []);
-  const handleRoomUnavailable = useCallback(() => {
+  const roomSessionRef = useRef(createRoomSessionBoundary());
+  const invalidateRoomSession = useCallback(() => {
+    roomSessionRef.current.invalidate();
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    reconnectTimeoutRef.current = null;
+    reconnectInFlightRef.current = false;
+    queuedReconnectRef.current = null;
+  }, []);
+  const handleRoomUnavailable = useCallback((result) => {
+    const code = terminalSessionCode(result);
+    if (!code || !roomSessionRef.current.matches(result)) return;
     // A server restart can leave the browser with one final, stale table
     // snapshot. Never leave that screen interactive: its room no longer
     // exists on the authority, so clear the recovery route and return home.
-    queuedReconnectRef.current = null;
+    invalidateRoomSession();
     setReconnectOffer(null);
     clearSession();
+    setCurrentUser(previous => previous ? { ...previous, sessionToken: null } : previous);
     setRoomState(null);
     setScreen('lobby');
-    setToastMessage('방이 종료되었거나 찾을 수 없습니다. 로비로 돌아갔습니다.');
-  }, []);
+    setToastMessage(sessionEndMessages[code]);
+  }, [invalidateRoomSession]);
 
   // Game Lobby Creation Dialog
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -516,11 +527,16 @@ export default function App() {
         socket.connect();
         return;
       }
+      const request = roomSessionRef.current.begin(session.roomCode, session.userId);
       reconnectInFlightRef.current = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = setTimeout(() => {
+        if (!roomSessionRef.current.isCurrent(request)) return;
+        roomSessionRef.current.invalidate();
         reconnectInFlightRef.current = false;
         reconnectTimeoutRef.current = null;
+        setReconnectOffer(session);
+        setToastMessage('재접속 응답이 지연되고 있습니다. 다시 시도해 주세요.');
       }, 6000);
 
       socket.emit(
@@ -529,12 +545,16 @@ export default function App() {
           roomCode: session.roomCode,
           userId: session.userId,
           sessionToken: session.sessionToken,
+          requestId: request.requestId,
         },
         (res) => {
+          if (!roomSessionRef.current.isCurrent(request)) return;
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
           reconnectInFlightRef.current = false;
           if (res?.success) {
+            if (res.roomCode !== session.roomCode || res.userId !== session.userId) return;
+            roomSessionRef.current.accept(request, res.roomCode, res.userId);
             queuedReconnectRef.current = null;
             setReconnectOffer(null);
             const restoredUser = {
@@ -545,14 +565,15 @@ export default function App() {
             };
             setCurrentUser(restoredUser);
             setRoomState(res.gameState);
+            socket.emit(res.gameState?.gameType === 'DALMUTI' ? 'dalmuti:view-ready' : 'game:view-ready', { roomCode: res.roomCode, userId: res.userId, requestId: request.requestId });
             if (res.gameState?.gameState === 'LOBBY') {
               setScreen('waitingRoom');
             } else {
               setScreen('game');
             }
             if (!res.alreadyConnected) setToastMessage('이전 게임 세션에 다시 접속했습니다.');
-          } else if (isMissingRoomError(res?.error)) {
-            handleRoomUnavailable();
+          } else if (terminalSessionCode(res)) {
+            handleRoomUnavailable({ ...res, roomCode: session.roomCode, userId: session.userId, requestId: request.requestId });
           } else {
             // Keep the route visible until the player explicitly chooses to
             // abandon it. A transient reconnect failure is not a departure.
@@ -571,7 +592,7 @@ export default function App() {
         }
       );
     },
-    [socket, handleRoomUnavailable, isMissingRoomError]
+    [socket, handleRoomUnavailable]
   );
 
   useEffect(() => () => {
@@ -592,6 +613,7 @@ export default function App() {
     screen,
     onReconnectRequest: handleReconnectRequest,
     onRoomUnavailable: handleRoomUnavailable,
+    roomSessionBoundary: roomSessionRef.current,
   });
 
   // Recover sessions saved by older builds as well. The dialog deliberately
@@ -605,17 +627,19 @@ export default function App() {
 
   const handleDeclineReconnect = useCallback(() => {
     const saved = reconnectOffer;
+    invalidateRoomSession();
     setReconnectOffer(null);
     // The player has explicitly chosen to abandon this table. Notify the
     // authoritative server when possible, then leave locally without waiting
     // for a connection response that may itself be recovering.
     if (socket?.connected && saved?.roomCode && saved?.userId) {
-      socket.emit('room:forfeit', { roomCode: saved.roomCode, userId: saved.userId });
+      socket.emit('room:forfeit', { roomCode: saved.roomCode, userId: saved.userId, sessionToken: saved.sessionToken });
     }
     clearSession();
+    setCurrentUser(previous => previous ? { ...previous, sessionToken: null } : previous);
     setRoomState(null);
     setScreen('lobby');
-  }, [reconnectOffer, socket]);
+  }, [reconnectOffer, socket, invalidateRoomSession]);
 
   const refreshOpenRooms = useCallback(() => {
     if (!socket) return;
@@ -664,6 +688,10 @@ export default function App() {
 
     const handleRoomState = (state) => {
       if (!state) return;
+      if (!roomSessionRef.current.allows(state)) {
+        roomSessionRef.current.buffer(state);
+        return;
+      }
       // A saved session from a fresh visit must be decided in the reconnect
       // dialog before any room broadcast can navigate the player to a table.
       if (reconnectOffer && screen !== 'waitingRoom' && screen !== 'game') return;
@@ -676,6 +704,7 @@ export default function App() {
     };
 
     const handleRoomResumed = (payload) => {
+      if (!roomSessionRef.current.matches({ roomCode: payload?.roomCode })) return;
       setRoomState((prev) => {
         if (!prev) return prev;
         return {
@@ -790,6 +819,8 @@ export default function App() {
   // Submit Room Creation
   const handleCreateRoomSubmit = () => {
     if (!socket) return;
+    invalidateRoomSession();
+    const request = roomSessionRef.current.begin(null, null);
     sfx.playCardPlay();
 
     const currentNick = currentUser?.nickname || nickname.trim() || '방장';
@@ -810,7 +841,9 @@ export default function App() {
         merchantExchange,
       },
       (res) => {
+        if (!roomSessionRef.current.isCurrent(request)) return;
         if (res?.success) {
+          roomSessionRef.current.accept(request, res.roomCode, res.userId);
           const updatedUser = {
             id: res.userId,
             sessionToken: res.sessionToken,
@@ -822,9 +855,12 @@ export default function App() {
             ...updatedUser,
           });
           setCurrentUser(updatedUser);
+          const buffered = roomSessionRef.current.takeBuffered();
+          if (buffered) setRoomState(buffered);
           setCreateDialogOpen(false);
           setScreen('waitingRoom');
         } else {
+          roomSessionRef.current.invalidate();
           setToastMessage(res?.error || '방 생성에 실패했습니다.');
         }
       }
@@ -836,6 +872,8 @@ export default function App() {
     e?.preventDefault();
     const code = joinCodeInput.trim().toUpperCase();
     if (!code || !socket) return;
+    invalidateRoomSession();
+    const request = roomSessionRef.current.begin(code, null);
 
     sfx.playCardPlay();
     const currentNick = currentUser?.nickname || nickname.trim() || '플레이어';
@@ -849,7 +887,9 @@ export default function App() {
         avatarUrl: currentAvatar,
       },
       (res) => {
+        if (!roomSessionRef.current.isCurrent(request)) return;
         if (res?.success) {
+          roomSessionRef.current.accept(request, res.roomCode, res.userId);
           const updatedUser = {
             id: res.userId,
             sessionToken: res.sessionToken,
@@ -861,8 +901,11 @@ export default function App() {
             ...updatedUser,
           });
           setCurrentUser(updatedUser);
+          const buffered = roomSessionRef.current.takeBuffered();
+          if (buffered) setRoomState(buffered);
           setScreen('waitingRoom');
         } else {
+          roomSessionRef.current.invalidate();
           setToastMessage(res?.error || '방 입장에 실패했습니다.');
         }
       }
@@ -963,12 +1006,18 @@ export default function App() {
   const handleLeaveRoom = ({ immediate = false } = {}) => {
     const isPlaying = roomState?.gameState === 'PLAYING';
     if (isPlaying && !immediate && !window.confirm('진행 중인 게임에서 나가면 기권 처리됩니다. 나갈까요?')) return;
+    const departingSession = loadSession();
+    invalidateRoomSession();
+    const departureGeneration = roomSessionRef.current.version();
 
     let completed = false;
     const finishLeave = () => {
+      if (roomSessionRef.current.version() !== departureGeneration) return;
       if (completed) return;
       completed = true;
       clearSession();
+      setReconnectOffer(null);
+      setCurrentUser(previous => previous ? { ...previous, sessionToken: null } : previous);
       setRoomState(null);
       setScreen('lobby');
     };
@@ -980,18 +1029,17 @@ export default function App() {
 
     // A network request is still sent, but leaving the local table must never
     // depend on a callback from a connection that is currently recovering.
-    const fallback = immediate ? window.setTimeout(finishLeave, 800) : null;
+    const fallback = window.setTimeout(finishLeave, 800);
     socket.emit(isPlaying ? 'room:forfeit' : 'room:leave', {
       roomCode: roomState?.code,
       userId: currentUser?.id,
+      sessionToken: departingSession?.sessionToken,
     }, (result) => {
+      if (roomSessionRef.current.version() !== departureGeneration) return;
       if (fallback) window.clearTimeout(fallback);
       if (!result?.success) {
-        if (immediate) {
-          finishLeave();
-          return;
-        }
-        setToastMessage(result?.error || '방을 나가지 못했습니다. 다시 시도해 주세요.');
+        finishLeave();
+        if (terminalSessionCode(result)) setToastMessage(sessionEndMessages[terminalSessionCode(result)]);
         return;
       }
       finishLeave();

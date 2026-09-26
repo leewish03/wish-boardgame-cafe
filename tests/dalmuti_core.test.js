@@ -100,8 +100,9 @@ assert.deepEqual(
   'bots retain the public rank/count/jester details of observed plays',
 );
 const anonymousTrace = createDecisionTrace(botInspectionState, { type:'PASS', playerId:'p0' }, 'HUMAN');
-assert.equal(JSON.stringify(anonymousTrace).includes('p0'), false, 'telemetry excludes player identifiers');
-assert.equal(JSON.stringify(anonymousTrace).includes('d_'), false, 'telemetry excludes card identifiers');
+const encodedTrace = JSON.stringify(anonymousTrace);
+assert.equal(botInspectionState.players.some(player => encodedTrace.includes(JSON.stringify(player.id))), false, 'telemetry excludes player identifiers');
+assert.equal(Object.values(botInspectionState.secrets).some(secret => secret.hand.some(card => encodedTrace.includes(JSON.stringify(card.id)))), false, 'telemetry excludes card identifiers');
 
 // Leading should value a multi-card dump and its likely next lead, rather
 // than greedily choosing an arbitrary singleton.

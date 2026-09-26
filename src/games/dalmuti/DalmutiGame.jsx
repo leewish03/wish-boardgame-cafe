@@ -50,12 +50,8 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       timers.add(timer);
     };
     socket.on('dalmuti:event', onEvent);
-    const handleRoomUnavailable = () => onRoomUnavailable?.();
-    socket.on('room:unavailable', handleRoomUnavailable);
-    socket.emit('dalmuti:view-ready', { roomCode: roomState?.code }, (result) => {
-      if (!result?.success) handleRoomUnavailable();
-    });
-    return () => { socket.off('dalmuti:event', onEvent); socket.off('room:unavailable', handleRoomUnavailable); timers.forEach((timer) => window.clearTimeout(timer)); };
+    if (socket.connected) socket.emit('dalmuti:view-ready', { roomCode: roomState?.code });
+    return () => { socket.off('dalmuti:event', onEvent); timers.forEach((timer) => window.clearTimeout(timer)); };
   }, [socket, roomState?.code, reduceMotion, onRoomUnavailable]);
 
   useEffect(() => { setSelection(null); setTaxSelection({}); setError(''); }, [game?.stateVersion]);
@@ -79,13 +75,13 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       if (!result?.success) {
         const message = result?.error || '행동을 처리하지 못했습니다.';
         if (/방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없/.test(message)) {
-          onRoomUnavailable?.();
+            onRoomUnavailable?.({ ...result, roomCode: roomState.code, userId: myId });
           return;
         }
         setError(message);
       }
     });
-  }, [socket, roomState?.code, game?.stateVersion, onRoomUnavailable]);
+  }, [socket, roomState?.code, game?.stateVersion, myId, onRoomUnavailable]);
 
   const chooseRank = (rank) => {
     if (!isMyTurn || game.playPhase !== 'TURN_INPUT') return;

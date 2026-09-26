@@ -1,25 +1,15 @@
 import { SOCKET_EVENTS } from '../core/LoveLetterService.js';
-import { rooms, resolveRoomAndUser, socketToUser } from '../shared/roomManager.js';
+import { resolveRoomAndUser, sessionError, sessionFailure, authenticateRoomSession, bindRoomSession, isRoomSessionCurrent } from '../shared/roomManager.js';
 
 function callbackError(callback, error) {
-  if (typeof callback === 'function') callback({ success: false, error: error.message || String(error) });
-}
-
-function emitRoomUnavailable(socket, payload, error) {
-  const roomCode = String(payload?.roomCode || '').toUpperCase().trim() || null;
-  socket.emit('room:unavailable', {
-    roomCode,
-    error: error.message || String(error),
-  });
+  if (typeof callback === 'function') callback(sessionFailure(error));
 }
 
 function requireLoveLetterRoom(socket, payload) {
   const resolved = resolveRoomAndUser(socket, payload);
   const { room, roomCode, userId } = resolved;
-  if (!room || !roomCode || !userId || room.gameType !== 'LOVE_LETTER' || !room.players.some((player) => player.id === userId)) {
-    const error = new Error('러브레터 방을 찾을 수 없습니다.');
-    emitRoomUnavailable(socket, { ...payload, roomCode }, error);
-    throw error;
+  if (room.gameType !== 'LOVE_LETTER') {
+    throw sessionError(socket, payload, 'SESSION_CONTEXT_MISMATCH', roomCode, userId);
   }
   return resolved;
 }
@@ -122,23 +112,10 @@ export function registerLoveLetterController(io, service) {
 
     socket.on(SOCKET_EVENTS.SYNC_REQUEST, async (payload, callback) => {
       try {
-        const code = String(payload?.roomCode || '').toUpperCase().trim();
-        const playerId = payload?.playerId || payload?.userId;
-        const room = rooms[code];
-        const player = room?.players.find((candidate) => candidate.id === playerId);
-        if (!room || !player) {
-          const error = new Error('러브레터 방을 찾을 수 없습니다.');
-          emitRoomUnavailable(socket, payload, error);
-          throw error;
-        }
-        if (!payload?.sessionToken || player.sessionToken !== payload.sessionToken) {
-          throw new Error('재접속 세션을 확인할 수 없습니다.');
-        }
-        player.socketId = socket.id;
-        player.isDisconnected = false;
-        player.disconnectedAt = null;
-        socketToUser[socket.id] = { roomCode: code, userId: player.id };
-        socket.join(code);
+        const session = authenticateRoomSession(socket, payload);
+        const { room, roomCode: code, player } = session;
+        if (room.gameType !== 'LOVE_LETTER') throw sessionError(socket, payload, 'SESSION_CONTEXT_MISMATCH', code, player.id);
+        bindRoomSession(socket, session);
         // A sync request can be the first message after Socket.IO restored a
         // transport.  Treat it as a verified reconnection, not merely a
         // snapshot request; otherwise a paused table can remain frozen until
@@ -146,6 +123,7 @@ export function registerLoveLetterController(io, service) {
         if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
           await service.resumeRoom(code);
         }
+        if (!isRoomSessionCurrent(socket, session)) throw sessionError(socket, payload, 'SESSION_NOT_BOUND', code, player.id);
         service.broadcastGameSnapshot(code, room);
         if (typeof callback === 'function') callback({ success: true, stateVersion: room.stateVersion });
       } catch (error) {

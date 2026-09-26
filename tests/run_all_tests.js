@@ -16,6 +16,7 @@ const testSuites = [
   { name: '5. Section 48: 200-Game Property/Simulation Invariants Tests', file: 'tests/simulation.test.js' },
   { name: '6. Section 49: Socket Integration Tests (Real Sockets)', file: 'tests/socket_integration.test.js' },
   { name: '6.1 Typed Protocol Controller Integration', file: 'tests/protocol_socket_integration.test.js' },
+  { name: '6.1.2 Room Session Security and Races', file: 'tests/room_session_security.test.js' },
   { name: '6.1.0 Dalmuti Socket Integration', file: 'tests/dalmuti_socket.test.js' },
   { name: '6.1.1 Physical Card Presentation', file: 'tests/physical_presentation.test.js' },
   { name: '6.2 Voice Signalling Reconnect Integration', file: 'tests/voice_signaling_integration.test.js' },

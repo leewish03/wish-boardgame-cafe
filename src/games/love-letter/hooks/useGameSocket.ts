@@ -209,7 +209,6 @@ export function useGameSocket({
 
     const handleConnect = () => {
       setIsConnected(true);
-      socket.emit(SOCKET_EVENTS.GAME_VIEW_READY, { roomCode, userId: myUserId });
     };
     const handleDisconnect = () => { setIsConnected(false); pendingDraws.current = []; };
 

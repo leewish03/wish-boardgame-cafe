@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { terminalSessionCode, normalizeSavedSession } from './roomSession';
 
 export const SESSION_STORAGE_KEY = 'wish_boardgame_session';
 
@@ -14,7 +15,7 @@ export function saveSession(data) {
       return;
     }
     const sessionData = {
-      ...data,
+      ...normalizeSavedSession(data),
       savedAt: Date.now(),
     };
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
@@ -32,7 +33,7 @@ export function loadSession() {
     if (typeof window === 'undefined' || !window.localStorage) return null;
     const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    return normalizeSavedSession(JSON.parse(raw));
   } catch (err) {
     console.error('Failed to load session from localStorage:', err);
     return null;
@@ -63,6 +64,7 @@ export function useSessionGuard({
   screen,
   onReconnectRequest,
   onRoomUnavailable,
+  roomSessionBoundary,
 }) {
   const wakeLockRef = useRef(null);
   const roomStateRef = useRef(roomState);
@@ -230,14 +232,18 @@ export function useSessionGuard({
         return;
       }
 
+      const requestedContext = roomSessionBoundary?.snapshot();
       socket.emit(
         'session:heartbeat',
         {
           roomCode: session.roomCode,
           userId: session.userId,
           sessionToken: session.sessionToken,
+          requestId: requestedContext?.requestId,
         },
         (res) => {
+          if (!requestedContext || requestedContext !== roomSessionBoundary?.snapshot()) return;
+          if (!roomSessionBoundary?.matches({ roomCode: session.roomCode, userId: session.userId })) return;
           if (res?.success) {
             // Desync check: if client thinks room is paused, but server is unpaused
             const currentRoomState = roomStateRef.current;
@@ -246,8 +252,8 @@ export function useSessionGuard({
                 onReconnectRequestRef.current(session);
               }
             }
-          } else if (/방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없|방 없음/.test(String(res?.error || ''))) {
-            onRoomUnavailableRef.current?.();
+          } else if (terminalSessionCode(res)) {
+            onRoomUnavailableRef.current?.({ ...res, roomCode: session.roomCode, userId: session.userId });
           }
         }
       );

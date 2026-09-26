@@ -100,44 +100,86 @@ export function generateSessionToken(userId) {
 }
 
 export function resolveRoomAndUser(socket, payload = {}) {
-  let mapping = socketToUser[socket.id];
-  const { roomCode, userId, playerId } = payload || {};
-  let code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-  let uId = mapping?.userId || userId || playerId;
-  let room = rooms[code];
+  const mapping = socketToUser[socket.id];
+  const code = String(mapping?.roomCode || payload?.roomCode || '').toUpperCase().trim();
+  const userId = mapping?.userId || payload?.userId || payload?.playerId || null;
+  if (!mapping) throw sessionError(socket, payload, code && !rooms[code] ? 'ROOM_NOT_FOUND' : 'SESSION_NOT_BOUND', code, userId);
+  if ((payload?.roomCode && String(payload.roomCode).toUpperCase().trim() !== code)
+    || (payload?.userId && payload.userId !== userId) || (payload?.playerId && payload.playerId !== userId)) {
+    throw sessionError(socket, payload, 'SESSION_CONTEXT_MISMATCH', code, userId);
+  }
+  const room = rooms[code];
+  if (!room) throw sessionError(socket, payload, 'ROOM_NOT_FOUND', code, userId);
+  const player = room.players.find(p => p.id === userId);
+  if (!player) throw sessionError(socket, payload, 'PLAYER_REMOVED', code, userId);
+  if (player.takenOverByBot) throw sessionError(socket, payload, 'SEAT_TAKEN_OVER', code, userId);
+  if (player.socketId !== socket.id) throw sessionError(socket, payload, 'SESSION_NOT_BOUND', code, userId);
+  return { room, roomCode: code, userId, playerId: userId, player };
+}
 
-  // Fallback: search across all active rooms if socket/user is registered
-  if (!room) {
-    const allRooms = Array.from(roomRepository._rooms.values());
-    const found = allRooms.find((r) =>
-      r.players.some((p) => p.socketId === socket.id || (uId && p.id === uId))
-    );
-    if (found) {
-      room = found;
-      code = found.code;
-      const pl = found.players.find((p) => p.socketId === socket.id || (uId && p.id === uId));
-      if (pl) uId = pl.id;
+const sessionMessages = {
+  ROOM_NOT_FOUND: '방을 찾을 수 없습니다.', PLAYER_REMOVED: '이 방의 참가가 종료되었습니다.',
+  SEAT_TAKEN_OVER: 'AI가 이어받은 자리입니다.', SESSION_INVALID: '세션 토큰이 유효하지 않습니다.',
+  SESSION_NOT_BOUND: '재접속 인증이 필요합니다.', SESSION_CONTEXT_MISMATCH: '현재 방 세션과 요청이 일치하지 않습니다.',
+};
+
+export function sessionError(socket, payload, code, roomCode, userId) {
+  const error = Object.assign(new Error(sessionMessages[code]), {
+    code, roomCode: roomCode || null, userId: userId || null, requestId: payload?.requestId,
+  });
+  if (['ROOM_NOT_FOUND', 'PLAYER_REMOVED', 'SEAT_TAKEN_OVER'].includes(code)) {
+    socket.emit('room:unavailable', { ...error, error: error.message });
+    const mapping = socketToUser[socket.id];
+    if (mapping?.roomCode === roomCode && mapping?.userId === userId) {
+      socket.data?.leaveVoiceRoom?.(mapping);
+      delete socketToUser[socket.id];
+      socket.leave(roomCode);
     }
   }
+  return error;
+}
 
-  // Auto-heal socket mapping and room join
-  if (room && uId) {
-    const player = room.players.find((p) => p.id === uId);
-    if (player) {
-      if (player.socketId !== socket.id) {
-        if (player.socketId && socketToUser[player.socketId]) {
-          delete socketToUser[player.socketId];
-        }
-        player.socketId = socket.id;
-      }
-      player.isDisconnected = false;
-      player.disconnectedAt = null;
-      socketToUser[socket.id] = { roomCode: code, userId: uId };
-      socket.join(code);
-    }
+export function sessionFailure(error) {
+  return { success: false, error: error.message || String(error), ...(error.code ? {
+    code: error.code, roomCode: error.roomCode, userId: error.userId, requestId: error.requestId,
+  } : {}) };
+}
+
+export function authenticateRoomSession(socket, payload = {}) {
+  const code = String(payload.roomCode || '').toUpperCase().trim();
+  const userId = payload.userId || payload.playerId;
+  const room = rooms[code];
+  if (!room) throw sessionError(socket, payload, 'ROOM_NOT_FOUND', code, userId);
+  const player = room.players.find(p => p.id === userId);
+  if (!player) throw sessionError(socket, payload, 'PLAYER_REMOVED', code, userId);
+  if (player.takenOverByBot) throw sessionError(socket, payload, 'SEAT_TAKEN_OVER', code, userId);
+  if (!payload.sessionToken || !player.sessionToken || payload.sessionToken !== player.sessionToken) {
+    throw sessionError(socket, payload, 'SESSION_INVALID', code, userId);
   }
+  return { room, roomCode: code, userId, player };
+}
 
-  return { room, roomCode: code, userId: uId, playerId: uId };
+export function bindRoomSession(socket, { room, roomCode, userId, player }) {
+  const previous = socketToUser[socket.id];
+  if (previous && (previous.roomCode !== roomCode || previous.userId !== userId)) {
+    throw sessionError(socket, {}, 'SESSION_CONTEXT_MISMATCH', roomCode, userId);
+  }
+  if (player.socketId && player.socketId !== socket.id) {
+    const oldSocket = socket.nsp.sockets.get(player.socketId);
+    oldSocket?.leave(roomCode);
+    delete socketToUser[player.socketId];
+  }
+  player.socketId = socket.id;
+  player.isDisconnected = false;
+  player.disconnectedAt = null;
+  socketToUser[socket.id] = { roomCode, userId };
+  socket.join(roomCode);
+}
+
+export function isRoomSessionCurrent(socket, { room, roomCode, userId, player }) {
+  return socket.connected && rooms[roomCode] === room && room.players.includes(player)
+    && player.socketId === socket.id && socketToUser[socket.id]?.roomCode === roomCode
+    && socketToUser[socket.id]?.userId === userId;
 }
 
 export function getPublicRoomState(room, requestUserId = null) {
@@ -555,50 +597,12 @@ export function initRoomManager(io) {
     // 3. Reconnect Room
     socket.on('room:reconnect', async (payload, callback) => {
       try {
-        const { roomCode, userId, playerId, sessionToken } = payload || {};
-        const code = (roomCode || '').toUpperCase().trim();
-        const room = rooms[code];
-        const targetId = userId || playerId;
-
-        if (!room) {
-          if (typeof callback === 'function') {
-            callback({ success: false, error: '방이 존재하지 않거나 이미 종료되었습니다.' });
-          }
-          return;
-        }
-
-        const player = room.players.find((p) => p.id === targetId);
-        if (!player) {
-          if (typeof callback === 'function') {
-            callback({ success: false, error: '해당 방에 등록된 플레이어가 아닙니다.' });
-          }
-          return;
-        }
-
-        if (player.takenOverByBot) {
-          if (typeof callback === 'function') callback({ success: false, error: '재접속 제한시간이 지나 AI가 이 자리를 이어받았습니다.' });
-          return;
-        }
-
-        if (player.sessionToken && sessionToken && player.sessionToken !== sessionToken) {
-          if (typeof callback === 'function') {
-            callback({ success: false, error: '세션 토큰이 유효하지 않습니다.' });
-          }
-          return;
-        }
+        const session = authenticateRoomSession(socket, payload);
+        const { room, roomCode: code, player } = session;
 
         // A repeated request from the same connected socket is merely a sync.
         const alreadyConnected = player.socketId === socket.id && !player.isDisconnected;
-        // Clean up previous socket mapping if socketId changed
-        if (player.socketId && player.socketId !== socket.id) {
-          delete socketToUser[player.socketId];
-        }
-
-        player.socketId = socket.id;
-        player.isDisconnected = false;
-        player.disconnectedAt = null;
-        socketToUser[socket.id] = { roomCode: code, userId: player.id };
-        socket.join(code);
+        bindRoomSession(socket, session);
 
         // Check if room was paused because of this player (or any player)
         if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
@@ -616,6 +620,10 @@ export function initRoomManager(io) {
           }
         }
 
+        if (!isRoomSessionCurrent(socket, session)) {
+          if (typeof callback === 'function') callback(sessionFailure(sessionError(socket, payload, 'SESSION_NOT_BOUND', code, player.id)));
+          return;
+        }
         if (!alreadyConnected) {
           emitSystemMessage(io, code, room, `${player.nickname}님이 다시 연결했습니다.`);
         }
@@ -624,6 +632,7 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') {
           callback({
             success: true,
+            requestId: payload?.requestId,
             alreadyConnected,
             roomCode: code,
             userId: player.id,
@@ -638,9 +647,9 @@ export function initRoomManager(io) {
 
         broadcastRoomState(io, code);
       } catch (err) {
-        console.error('room:reconnect error:', err);
+        if (!err.code) console.error('room:reconnect error:', err);
         if (typeof callback === 'function') {
-          callback({ success: false, error: '재접속 처리 중 오류가 발생했습니다.' });
+          callback(sessionFailure(err));
         }
       }
     });
@@ -648,48 +657,9 @@ export function initRoomManager(io) {
     // 3.1 Session Heartbeat & State Verification
     socket.on('session:heartbeat', async (payload, callback) => {
       try {
-        let mapping = socketToUser[socket.id];
-        const { roomCode, userId, playerId, sessionToken } = payload || {};
-        const code = (mapping?.roomCode || roomCode || '').toUpperCase().trim();
-        const uId = mapping?.userId || userId || playerId;
-        const room = rooms[code];
-
-        if (!room) {
-          socket.emit('room:unavailable', { roomCode: code || null, error: '방을 찾을 수 없습니다.' });
-          if (typeof callback === 'function') callback({ success: false, error: '방 없음' });
-          return;
-        }
-
-        const player = room.players.find((p) => p.id === uId);
-        if (!player) {
-          if (typeof callback === 'function') callback({ success: false, error: '플레이어 없음' });
-          return;
-        }
-
-        if (player.takenOverByBot) {
-          if (typeof callback === 'function') callback({ success: false, error: 'AI가 이어받은 자리입니다.' });
-          return;
-        }
-
-        if (sessionToken && player.sessionToken && player.sessionToken !== sessionToken) {
-          if (typeof callback === 'function') callback({ success: false, error: '인증 실패' });
-          return;
-        }
-
-        // Auto-heal socket mapping if missing or changed
-        if (!mapping || player.socketId !== socket.id) {
-          if (player.socketId && player.socketId !== socket.id) {
-            delete socketToUser[player.socketId];
-          }
-          player.socketId = socket.id;
-          socketToUser[socket.id] = { roomCode: code, userId: uId };
-          socket.join(code);
-        }
-
-        if (player.isDisconnected) {
-          player.isDisconnected = false;
-          player.disconnectedAt = null;
-        }
+        const session = authenticateRoomSession(socket, payload);
+        const { room, roomCode: code, userId: uId, player } = session;
+        bindRoomSession(socket, session);
 
         // Mobile browsers can restore a transport while the app is returning
         // from the keyboard without emitting a distinct reconnect flow. A
@@ -710,6 +680,7 @@ export function initRoomManager(io) {
           }
         }
 
+        if (!isRoomSessionCurrent(socket, session)) return;
         if (typeof callback === 'function') {
           callback({
             success: true,
@@ -727,8 +698,8 @@ export function initRoomManager(io) {
           });
         }
       } catch (err) {
-        console.error('session:heartbeat error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: '하트비트 오류' });
+        if (!err.code) console.error('session:heartbeat error:', err);
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
@@ -752,7 +723,7 @@ export function initRoomManager(io) {
         }
       } catch (err) {
         console.error('room:ready error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: '준비 상태 변경 오류' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
@@ -781,7 +752,7 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') callback({ success: true, bot });
       } catch (err) {
         console.error('room:add-bot error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: '봇 추가 중 오류 발생' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
@@ -824,7 +795,7 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') callback({ success: true, removedBotId: removed.id });
       } catch (err) {
         console.error('room:remove-bot error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: '봇 제거 중 오류 발생' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
@@ -850,14 +821,15 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') callback({ success: true, message: msg });
       } catch (err) {
         console.error('chat:message error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: err.message || '메시지 전송에 실패했습니다.' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
     // 6. Explicit Forfeit / Leave Room
     const handleForfeit = async (payload, callback) => {
       try {
-        let { room, roomCode: code, userId: uId } = resolveRoomAndUser(socket, payload);
+        let { room, roomCode: code, userId: uId } = payload?.sessionToken
+          ? authenticateRoomSession(socket, payload) : resolveRoomAndUser(socket, payload);
         if (!room) {
           if (typeof callback === 'function') callback({ success: true });
           return;
@@ -865,6 +837,12 @@ export function initRoomManager(io) {
 
         if (!uId) throw new Error('기권할 플레이어를 찾을 수 없습니다.');
         const departingPlayer = room.players.find((player) => player.id === uId);
+        const departingSocketId = departingPlayer?.socketId;
+        if (departingSocketId) {
+          delete socketToUser[departingSocketId];
+          io.sockets.sockets.get(departingSocketId)?.leave(code);
+        }
+        if (departingPlayer) departingPlayer.socketId = null;
 
         // An explicit departure resolves the reconnect wait for everyone.
         // Previously, if a connected player left while waiting for somebody
@@ -922,14 +900,15 @@ export function initRoomManager(io) {
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
         console.error('room:forfeit error:', err);
-        if (typeof callback === 'function') callback({ success: false, error: err.message || '기권 처리에 실패했습니다.' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     };
 
     socket.on('room:forfeit', handleForfeit);
     socket.on('room:leave', async (payload, callback) => {
       try {
-        const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
+        const { room, roomCode, userId } = payload?.sessionToken
+          ? authenticateRoomSession(socket, payload) : resolveRoomAndUser(socket, payload);
         if (!room) { if (typeof callback === 'function') callback({ success: true }); return; }
         // Leaving a completed result screen must not run a forfeit command and
         // mutate the already-finished outcome.
@@ -941,6 +920,10 @@ export function initRoomManager(io) {
         delete socketToUser[socket.id];
         socket.leave(roomCode);
         const departingPlayer = room.players.find((player) => player.id === userId);
+        if (departingPlayer?.socketId) {
+          delete socketToUser[departingPlayer.socketId];
+          io.sockets.sockets.get(departingPlayer.socketId)?.leave(roomCode);
+        }
         room.players = room.players.filter((player) => player.id !== userId);
         if (room.players.length === 0) {
           delete rooms[roomCode];
@@ -957,7 +940,7 @@ export function initRoomManager(io) {
         socket.to(roomCode).emit('webrtc:peer-left', { leftUserId: userId });
         if (typeof callback === 'function') callback({ success: true });
       } catch (err) {
-        if (typeof callback === 'function') callback({ success: false, error: err.message || '방을 나가지 못했습니다.' });
+        if (typeof callback === 'function') callback(sessionFailure(err));
       }
     });
 
