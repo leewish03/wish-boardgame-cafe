@@ -24,16 +24,16 @@ function clonePersistable(value, key = '') {
   return result;
 }
 
-function restoreRoom(state) {
+export function restoreRoom(state) {
   if (!state || typeof state !== 'object') return null;
   const room = clonePersistable(state);
   for (const player of room.players || []) {
     player.socketId = null;
-    player.isDisconnected = true;
+    player.isDisconnected = !player.isBot;
   }
   room.isPaused = room.gameState === 'PLAYING' || room.gameState === 'ROUND_END';
   room.pausedPlayerId = room.isPaused ? room.pausedPlayerId || null : null;
-  room.pauseExpiresAt = null;
+  room.pauseExpiresAt = room.gameType === 'DALMUTI' && room.isPaused ? room.pauseExpiresAt || Date.now() + 90_000 : null;
   return room;
 }
 

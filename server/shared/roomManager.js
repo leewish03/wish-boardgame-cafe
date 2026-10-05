@@ -249,6 +249,7 @@ export function getPublicRoomState(room, requestUserId = null) {
     targetTokens: room.targetTokens || 4,
     maxPlayers: room.maxPlayers || 4,
     turnTimeLimit: room.turnTimeLimit ?? 60,
+    roundCount: room.roundCount,
     deckCount: room.deck ? room.deck.length : 0,
     setAsideOpenCards: room.setAsideOpenCards || [],
     turnPlayerId: room.turnPlayerId,
@@ -350,6 +351,10 @@ function openRoomSummary(room) {
 export async function handlePauseExpired(io, roomCode, userId) {
   const room = rooms[roomCode];
   if (!room) return;
+  if (room.gameType === 'DALMUTI' && lifecycleForRoom(room)?.disconnectExpired) {
+    await lifecycleForRoom(room).disconnectExpired(roomCode, userId);
+    return;
+  }
 
   const player = room.players.find((p) => p.id === userId);
   if (!player || !player.isDisconnected) {
@@ -605,7 +610,7 @@ export function initRoomManager(io) {
         bindRoomSession(socket, session);
 
         // Check if room was paused because of this player (or any player)
-        if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
+        if (room.isPaused && (room.gameType === 'DALMUTI' || room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
           const pausedId = room.pausedPlayerId || player.id;
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
@@ -665,7 +670,7 @@ export function initRoomManager(io) {
         // from the keyboard without emitting a distinct reconnect flow. A
         // verified heartbeat is therefore sufficient to release a pause that
         // was created for this same player.
-        if (room.isPaused && (room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
+        if (room.isPaused && (room.gameType === 'DALMUTI' || room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
           const pausedId = room.pausedPlayerId || player.id;
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
@@ -848,7 +853,7 @@ export function initRoomManager(io) {
         // Previously, if a connected player left while waiting for somebody
         // else, the core forfeit command cleared its expiry timer but the room
         // stayed flagged as paused forever.
-        if (room.isPaused) {
+        if (room.isPaused && room.gameType !== 'DALMUTI') {
           if (room.pauseTimeout) clearTimeout(room.pauseTimeout);
           room.pauseTimeout = null;
           room.isPaused = false;
@@ -859,14 +864,21 @@ export function initRoomManager(io) {
 
         const lifecycle = lifecycleForRoom(room);
         if (room.gameStateObject && lifecycle?.forfeit) {
-          await lifecycle.forfeit(code, uId);
+          const departure = await lifecycle.forfeit(code, uId);
+          if (departure?.roomDeleted) {
+            socket.data?.leaveVoiceRoom?.({ roomCode: code, userId: uId });
+            delete socketToUser[socket.id]; socket.leave(code);
+            socket.to(code).emit('webrtc:peer-left', { leftUserId: uId });
+            callback?.({ success: true });
+            return;
+          }
           // Lifecycle services may persist a fresh state transition.  Read it
           // back before touching room metadata so an old room object cannot
           // overwrite the new turn/result state after a departure.
           room = (await roomRepository.getRoom(code)) || room;
           // Core keeps the round outcome for history; the room roster must not
           // deal the departed player into the following round.
-          room.players = room.players.filter((player) => player.id !== uId);
+          if (!departure?.retainSeat) room.players = room.players.filter((player) => player.id !== uId);
         } else if (room.gameState === 'PLAYING') {
           handleForfeitedPlayer(io, room, uId, true);
         } else {
@@ -912,7 +924,7 @@ export function initRoomManager(io) {
         if (!room) { if (typeof callback === 'function') callback({ success: true }); return; }
         // Leaving a completed result screen must not run a forfeit command and
         // mutate the already-finished outcome.
-        if (room.gameStateObject?.matchState === 'PLAYING' || room.gameState === 'PLAYING') {
+        if (room.gameStateObject?.matchState === 'PLAYING' || room.gameState === 'PLAYING' || (room.gameType === 'DALMUTI' && ['ROUND_END', 'GAME_OVER'].includes(room.gameState))) {
           await handleForfeit(payload, callback);
           return;
         }

@@ -89,6 +89,7 @@ async function startServer() {
     pause: (roomCode, playerId) => dalmutiService.pauseRoom(roomCode, playerId),
     resume: (roomCode) => dalmutiService.resumeRoom(roomCode),
     disconnectExpired: (roomCode, playerId) => dalmutiService.disconnectExpired(roomCode, playerId),
+    forfeit: (roomCode, playerId) => dalmutiService.finalizeDeparture(roomCode, playerId),
     projectPublicState: (room, playerId) => dalmutiService.projectRoomState(room, playerId),
   });
   await loveLetterService.restorePausedRooms();

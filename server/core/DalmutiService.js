@@ -1,9 +1,9 @@
 import { roomRepository } from './RoomRepository.js';
-import { broadcastRoomState } from '../shared/roomManager.js';
+import { broadcastRoomState, rooms } from '../shared/roomManager.js';
 import * as core from '../../packages/dalmuti-core/src/index.js';
 
 const PRESENTATION_FALLBACK_MS = 900;
-const PRESENTATION_EVENT_TYPES = new Set(['SET_PLAYED', 'PASSED', 'TRICK_CLEARED', 'TAX_COMPLETED', 'REVOLUTION', 'GREAT_REVOLUTION', 'MERCHANT_EXCHANGED']);
+const PRESENTATION_EVENT_TYPES = new Set(['ROUND_DEALT', 'OPENING_READY', 'PLAY_STARTED', 'SET_PLAYED', 'PASSED', 'TRICK_CLEARED', 'TAX_COMPLETED', 'REVOLUTION', 'GREAT_REVOLUTION', 'MERCHANT_EXCHANGED', 'ROUND_ENDED', 'MATCH_ENDED']);
 
 export class DalmutiService {
   constructor(io) {
@@ -13,10 +13,11 @@ export class DalmutiService {
     this.botTimers = new Map();
     this.roundTimers = new Map();
     this.presentationTimers = new Map();
+    this.pauseTimers = new Map();
   }
 
   clearTimers(roomCode) {
-    for (const timers of [this.turnTimers, this.botTimers, this.roundTimers]) {
+    for (const timers of [this.turnTimers, this.botTimers, this.roundTimers, this.presentationTimers]) {
       const timer = timers.get(roomCode);
       if (timer) clearTimeout(timer);
       timers.delete(roomCode);
@@ -87,8 +88,10 @@ export class DalmutiService {
       }
       const { nextState, events } = core.executeCommand(state, { type: 'START_MATCH', playerId: hostId });
       this.syncRoom(room, nextState);
+      const envelopes = this.makeEventEnvelopes(nextState, events);
+      this.preparePresentation(room, envelopes);
       await roomRepository.saveRoom(room);
-      this.emitEvents(roomCode, nextState, events);
+      this.emitEnvelopes(roomCode, envelopes);
       broadcastRoomState(this.io, roomCode);
       this.schedule(roomCode);
       return { success: true };
@@ -109,15 +112,7 @@ export class DalmutiService {
       const { nextState, events } = core.executeCommand(room.gameStateObject, command);
       this.syncRoom(room, nextState);
       const envelopes = this.makeEventEnvelopes(nextState, events);
-      const eventToGate = [...envelopes].reverse().find((envelope) => PRESENTATION_EVENT_TYPES.has(envelope.event.type));
-      if (eventToGate && nextState.matchState === 'PLAYING') {
-        room.dalmutiPresentationGate = {
-          eventId: eventToGate.eventId,
-          waitingFor: room.players.filter((player) => !player.isBot && player.socketId && !player.isDisconnected).map((player) => player.id),
-          acknowledged: [],
-          fallbackAt: Date.now() + PRESENTATION_FALLBACK_MS,
-        };
-      }
+      this.preparePresentation(room, envelopes);
       await roomRepository.saveRoom(room);
       void roomRepository.recordDalmutiDecision?.(trace).catch(() => {});
       if (nextState.lastAction?.type === 'ROUND_ENDED' || nextState.lastAction?.type === 'MATCH_ENDED') {
@@ -133,13 +128,31 @@ export class DalmutiService {
   }
 
   makeEventEnvelopes(state, events) {
-    return events.map((event) => ({
+    return events.map((event, eventIndex) => ({
         eventId: `${event.id || 'event'}_${state.stateVersion}`,
         stateVersion: state.stateVersion,
         roundNumber: state.roundNumber,
+        eventIndex,
+        eventCount: events.length,
         timestamp: Date.now(),
         event,
       }));
+  }
+
+  preparePresentation(room, envelopes) {
+    if (!envelopes.some(({ event }) => PRESENTATION_EVENT_TYPES.has(event.type))) return;
+    const waitingFor = room.players.filter((player) => !player.isBot && player.socketId && !player.isDisconnected).map((player) => player.id);
+    if (!waitingFor.length) return;
+    const last = envelopes.at(-1);
+    room.dalmutiPresentationGate = {
+      eventId: last.eventId, stateVersion: last.stateVersion,
+      waitingFor, acknowledged: [],
+      fallbackAt: Date.now() + Math.min(2700, envelopes.length * PRESENTATION_FALLBACK_MS),
+    };
+    // The next turn/result clock starts only when this batch settles.
+    room.gameStateObject.turnExpiresAt = 0;
+    if (room.gameStateObject.outcome?.advanceAt) room.gameStateObject.outcome.advanceAt = null;
+    this.syncRoom(room, room.gameStateObject);
   }
 
   emitEnvelopes(roomCode, envelopes) {
@@ -152,14 +165,16 @@ export class DalmutiService {
 
   schedule(roomCode) {
     this.clearTimers(roomCode);
-    void roomRepository.getRoom(roomCode).then((room) => {
+    // The shared room proxy reads the repository cache synchronously; no
+    // delayed lookup can install a timer after a later pause/delete cleared it.
+    const room = rooms[roomCode];
       if (!room?.gameStateObject || room.isPaused || room.gameType !== 'DALMUTI') return;
       const state = room.gameStateObject;
       if (room.dalmutiPresentationGate) {
         const eventId = room.dalmutiPresentationGate.eventId;
         const timer = setTimeout(() => {
           this.presentationTimers.delete(roomCode);
-          void this.releasePresentation(roomCode, eventId);
+          void this.releasePresentation(roomCode, eventId).catch((error) => console.error('Dalmuti presentation recovery:', error));
         }, Math.max(25, room.dalmutiPresentationGate.fallbackAt - Date.now()));
         timer.unref?.(); this.presentationTimers.set(roomCode, timer); return;
       }
@@ -179,7 +194,7 @@ export class DalmutiService {
         const delay = core.getBotThinkDelay(state, actorId);
         const timer = setTimeout(() => {
           this.botTimers.delete(roomCode);
-          void this.runBot(roomCode, actorId, version);
+          void this.runBot(roomCode, actorId, version).catch((error) => console.error('Dalmuti bot turn:', error));
         }, delay);
         timer.unref?.(); this.botTimers.set(roomCode, timer); return;
       }
@@ -187,23 +202,22 @@ export class DalmutiService {
         const version = state.stateVersion;
         const timer = setTimeout(() => {
           this.turnTimers.delete(roomCode);
-          void this.runTimeout(roomCode, actorId, version);
+          void this.runTimeout(roomCode, actorId, version).catch((error) => console.error('Dalmuti turn timeout:', error));
         }, Math.max(25, state.turnExpiresAt - Date.now()));
         timer.unref?.(); this.turnTimers.set(roomCode, timer);
       }
-    });
   }
 
   async runBot(roomCode, playerId, version) {
     const room = await roomRepository.getRoom(roomCode);
-    if (!room?.gameStateObject || room.isPaused || room.gameStateObject.stateVersion !== version) return;
+    if (!room?.gameStateObject || room.isPaused || room.dalmutiPresentationGate || room.gameStateObject.stateVersion !== version || room.gameStateObject.currentTurnPlayerId !== playerId || !room.players.find((player) => player.id === playerId)?.isBot) return;
     const command = core.chooseBotCommand(room.gameStateObject, playerId);
     if (command) await this.handleCommand(roomCode, { ...command, expectedStateVersion: version });
   }
 
   async runTimeout(roomCode, playerId, version) {
     const room = await roomRepository.getRoom(roomCode);
-    if (!room?.gameStateObject || room.isPaused || room.gameStateObject.stateVersion !== version) return;
+    if (!room?.gameStateObject || room.isPaused || room.dalmutiPresentationGate || room.gameStateObject.stateVersion !== version || room.gameStateObject.currentTurnPlayerId !== playerId || !room.gameStateObject.turnExpiresAt || room.gameStateObject.turnExpiresAt > Date.now()) return;
     const command = core.chooseTimeoutCommand(room.gameStateObject, playerId);
     if (command) await this.handleCommand(roomCode, { ...command, expectedStateVersion: version });
   }
@@ -233,6 +247,7 @@ export class DalmutiService {
     if (timer) clearTimeout(timer);
     this.presentationTimers.delete(room.code);
     room.dalmutiPresentationGate = null;
+    this.startClocks(room);
     await roomRepository.saveRoom(room);
     broadcastRoomState(this.io, room.code);
     this.schedule(room.code);
@@ -242,11 +257,21 @@ export class DalmutiService {
     const rooms = await roomRepository.listRooms();
     for (const room of rooms) {
       if (room.gameType !== 'DALMUTI' || !room.gameStateObject) continue;
-      if (room.dalmutiPresentationGate && room.dalmutiPresentationGate.fallbackAt <= Date.now()) {
+      if (room.dalmutiPresentationGate) {
         room.dalmutiPresentationGate = null;
-        await roomRepository.saveRoom(room);
+        room.pausedTurnRemainingMs ??= room.gameStateObject.config.turnTimeoutSeconds * 1000;
+        room.pausedRoundRemainingMs ??= 8000;
       }
-      if (!room.isPaused) this.schedule(room.code);
+      if (room.isPaused) {
+        room.pauseExpiresAt ??= Date.now() + 90_000;
+        room.pausedTurnRemainingMs ??= room.gameStateObject.config.turnTimeoutSeconds * 1000;
+        room.pausedRoundRemainingMs ??= 8000;
+        await roomRepository.saveRoom(room);
+        this.schedulePause(room);
+      } else {
+        await roomRepository.saveRoom(room);
+        this.schedule(room.code);
+      }
     }
   }
 
@@ -278,6 +303,11 @@ export class DalmutiService {
       pausedPlayerId: room.pausedPlayerId || null,
       pauseExpiresAt: room.pauseExpiresAt || null,
       presentationPending: !!room.dalmutiPresentationGate,
+      presentationBatch: room.dalmutiPresentationGate ? {
+        stateVersion: room.dalmutiPresentationGate.stateVersion,
+        eventId: room.dalmutiPresentationGate.eventId,
+        fallbackAt: room.dalmutiPresentationGate.fallbackAt,
+      } : null,
       chatMessages: (room.chatMessages || []).slice(-30),
       dalmuti: publicState,
       mySecret: privateState,
@@ -286,40 +316,136 @@ export class DalmutiService {
   }
 
   async pauseRoom(roomCode, playerId) {
-    const room = await roomRepository.getRoom(roomCode);
-    if (!room?.gameStateObject || room.isPaused) return;
-    this.clearTimers(roomCode);
-    room.isPaused = true;
-    room.pausedPlayerId = playerId;
-    room.pauseExpiresAt = Date.now() + 90_000;
-    await roomRepository.saveRoom(room);
-    broadcastRoomState(this.io, roomCode);
+    return this.runExclusive(roomCode, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      if (!room?.gameStateObject) return;
+      if (!room.isPaused) {
+        const state = room.gameStateObject;
+        room.pausedTurnRemainingMs = room.dalmutiPresentationGate ? state.config.turnTimeoutSeconds * 1000 : Math.max(0, state.turnExpiresAt - Date.now());
+        room.pausedRoundRemainingMs = room.dalmutiPresentationGate ? 8000 : Math.max(0, (state.outcome?.advanceAt || Date.now() + 8000) - Date.now());
+        room.isPaused = true;
+        room.pausedPlayerId = playerId;
+        room.pauseExpiresAt = Date.now() + 90_000;
+      }
+      this.clearTimers(roomCode);
+      room.dalmutiPresentationGate = null;
+      await roomRepository.saveRoom(room);
+      this.schedulePause(room);
+      broadcastRoomState(this.io, roomCode);
+    });
   }
 
   async resumeRoom(roomCode) {
-    const room = await roomRepository.getRoom(roomCode);
-    if (!room?.gameStateObject) return;
-    room.isPaused = false; room.pausedPlayerId = null; room.pauseExpiresAt = null;
-    await roomRepository.saveRoom(room);
-    broadcastRoomState(this.io, roomCode);
-    this.schedule(roomCode);
+    return this.runExclusive(roomCode, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      if (!room?.gameStateObject) return;
+      if (room.players.some((player) => !player.isBot && player.isDisconnected)) {
+        this.schedulePause(room);
+        return;
+      }
+      await this.resumeUnlocked(room);
+    });
   }
 
-  async disconnectExpired(roomCode, playerId) {
-    const room = await roomRepository.getRoom(roomCode);
-    const player = room?.players.find((candidate) => candidate.id === playerId);
-    const gamePlayer = room?.gameStateObject?.players.find((candidate) => candidate.id === playerId);
-    if (!room || !player || !gamePlayer) return;
-    player.isBot = true; player.takenOverByBot = true; player.isDisconnected = false; player.socketId = null;
-    core.assignBotProfile(room.gameStateObject, playerId);
+  clearPauseTimer(roomCode) {
+    clearTimeout(this.pauseTimers.get(roomCode));
+    this.pauseTimers.delete(roomCode);
+  }
+
+  schedulePause(room) {
+    this.clearPauseTimer(room.code);
+    if (!room.isPaused) return;
+    const deadline = room.pauseExpiresAt;
+    const timer = setTimeout(() => {
+      void this.disconnectExpired(room.code).catch((error) => console.error('Dalmuti reconnect expiry:', error));
+    }, Math.max(0, deadline - Date.now()));
+    timer.unref?.();
+    this.pauseTimers.set(room.code, timer);
+  }
+
+  startClocks(room, remaining = false) {
+    const state = room.gameStateObject;
+    if (state.matchState === 'PLAYING') {
+      state.turnStartedAt = Date.now();
+      state.turnExpiresAt = state.config.turnTimeoutSeconds > 0 ? Date.now() + (remaining ? room.pausedTurnRemainingMs ?? state.config.turnTimeoutSeconds * 1000 : state.config.turnTimeoutSeconds * 1000) : 0;
+    }
+    if (state.matchState === 'ROUND_END') state.outcome.advanceAt = Date.now() + (remaining ? room.pausedRoundRemainingMs ?? 8000 : 8000);
+    this.syncRoom(room, state);
+  }
+
+  async resumeUnlocked(room) {
+    this.clearPauseTimer(room.code);
+    if (room.isPaused) this.startClocks(room, true);
     room.isPaused = false; room.pausedPlayerId = null; room.pauseExpiresAt = null;
-    if (room.hostId === playerId) {
+    delete room.pausedTurnRemainingMs; delete room.pausedRoundRemainingMs;
+    await roomRepository.saveRoom(room);
+    broadcastRoomState(this.io, room.code);
+    this.schedule(room.code);
+  }
+
+  takeOver(room, player) {
+    player.isBot = true; player.takenOverByBot = true; player.isDisconnected = false; player.socketId = null;
+    core.assignBotProfile(room.gameStateObject, player.id);
+    if (room.hostId === player.id) {
       const nextHost = room.players.find((candidate) => !candidate.isBot && candidate.socketId);
       if (nextHost) room.hostId = nextHost.id;
     }
-    await roomRepository.saveRoom(room);
-    broadcastRoomState(this.io, roomCode);
-    this.schedule(roomCode);
+    const gate = room.dalmutiPresentationGate;
+    if (gate) gate.waitingFor = gate.waitingFor.filter((id) => id !== player.id);
+    room.gameStateObject.stateVersion += 1;
+    this.syncRoom(room, room.gameStateObject);
+  }
+
+  async deleteRoom(room) {
+    this.clearTimers(room.code); this.clearPauseTimer(room.code);
+    await roomRepository.deleteRoom(room.code);
+    this.io.to(room.code).emit('room:unavailable', { error: '모든 플레이어가 퇴장해 게임이 종료되었습니다.' });
+  }
+
+  async deleteIfNoHumans(room) {
+    if (room.players.some((player) => !player.isBot)) return false;
+    await this.deleteRoom(room);
+    return true;
+  }
+
+  async disconnectExpired(roomCode) {
+    return this.runExclusive(roomCode, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      if (!room?.isPaused || room.pauseExpiresAt > Date.now()) return;
+      room.players.filter((player) => !player.isBot && player.isDisconnected).forEach((player) => this.takeOver(room, player));
+      if (await this.deleteIfNoHumans(room)) return;
+      await this.resumeUnlocked(room);
+    });
+  }
+
+  async finalizeDeparture(roomCode, playerId) {
+    return this.runExclusive(roomCode, async () => {
+      const room = await roomRepository.getRoom(roomCode);
+      if (!room?.gameStateObject) return { retainSeat: false };
+      const player = room.players.find((candidate) => candidate.id === playerId);
+      if (!player || player.isBot) return { retainSeat: true };
+      if (room.gameStateObject.matchState === 'GAME_OVER') {
+        if (!room.players.some((candidate) => candidate.id !== playerId && !candidate.isBot)) {
+          await this.deleteRoom(room);
+          return { retainSeat: false, roomDeleted: true };
+        }
+        const gate = room.dalmutiPresentationGate;
+        if (gate) {
+          gate.waitingFor = gate.waitingFor.filter((id) => id !== playerId);
+          if (gate.waitingFor.every((id) => gate.acknowledged.includes(id))) await this.releasePresentationUnlocked(room);
+        }
+        return { retainSeat: false };
+      }
+      this.takeOver(room, player);
+      if (await this.deleteIfNoHumans(room)) return { retainSeat: true, roomDeleted: true };
+      if (room.isPaused && room.players.some((candidate) => !candidate.isBot && candidate.isDisconnected)) {
+        await roomRepository.saveRoom(room);
+        this.schedulePause(room); broadcastRoomState(this.io, roomCode);
+      } else if (room.dalmutiPresentationGate && room.dalmutiPresentationGate.waitingFor.every((id) => room.dalmutiPresentationGate.acknowledged.includes(id))) {
+        await this.releasePresentationUnlocked(room);
+      } else await this.resumeUnlocked(room);
+      return { retainSeat: true };
+    });
   }
 }
 

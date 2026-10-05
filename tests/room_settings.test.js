@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import { io as ClientIO } from 'socket.io-client';
-import { initRoomManager, rooms } from '../server/shared/roomManager.js';
+import { initRoomManager, rooms, getPublicRoomState } from '../server/shared/roomManager.js';
 
 function once(socket, event, timeout = 3_000) {
   return new Promise((resolve, reject) => {
@@ -35,6 +35,11 @@ try {
   assert.equal(created.success, true, 'room creation should succeed');
   assert.equal(rooms[created.roomCode].turnTimeLimit, 0, 'untimed tables must preserve zero on the authoritative room');
   console.log('✅ Untimed room setting stays at 0 seconds.');
+  const dalmuti = await new Promise(resolve => client.emit('room:create', {
+    gameType: 'DALMUTI', nickname: '달무티 방장', roundCount: 5,
+  }, resolve));
+  assert.equal(dalmuti.success, true);
+  assert.equal(getPublicRoomState(rooms[dalmuti.roomCode], dalmuti.userId).roundCount, 5, 'waiting room must display the chosen Dalmuti round count');
 } finally {
   client.close();
   // This short process owns no persistent resource.  Do not await Socket.IO's

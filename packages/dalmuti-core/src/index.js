@@ -257,7 +257,7 @@ function opponentStatsFor(memory, playerId) {
   if (!memory.opponentStats[playerId]) {
     memory.opponentStats[playerId] = {
       samples: 0, leadCardMean: 1, weakLeadMean: 0.5, jesterRate: 0,
-      passRates: {}, nearFinishPressure: 0.5,
+      passRates: {}, responseSamples: {}, nearFinishPressure: 0.5,
     };
   }
   return memory.opponentStats[playerId];
@@ -279,6 +279,7 @@ function recordPublicBotEvent(state, event) {
     topRank: event.topRank ?? null,
     handCount: event.handCount ?? null,
     wasLead: !!event.wasLead,
+    nearFinishThreat: !!event.nearFinishThreat,
     roundNumber: state.roundNumber,
     serial: state.actionSerial,
   };
@@ -293,16 +294,32 @@ function recordPublicBotEvent(state, event) {
       stats.weakLeadMean += ((Number(entry.rank || 13) / 13) - stats.weakLeadMean) * weight;
     }
     stats.jesterRate += ((Number(entry.jesterCount || 0) / Math.max(1, Number(entry.count || 1))) - stats.jesterRate) * weight;
-    if (Number(entry.handCount || 99) <= 3) stats.nearFinishPressure += (1 - stats.nearFinishPressure) * weight;
+    const beliefs = journal.roundBeliefs[entry.actorId] || [];
+    beliefs.forEach((belief) => { belief.confidence = (belief.confidence ?? 1) * 0.5; });
+    journal.roundBeliefs[entry.actorId] = beliefs.filter((belief) => belief.confidence >= 0.125);
   }
-  if (entry.actorId && entry.type === 'PASSED' && entry.requiredCount) {
+  if (entry.actorId && entry.requiredCount && (entry.type === 'PASSED' || (entry.type === 'SET_PLAYED' && !entry.wasLead))) {
     const stats = opponentStatsFor(journal, entry.actorId);
     const key = String(Math.min(4, entry.requiredCount));
+    stats.responseSamples ??= {};
+    stats.responseSamples[key] = (stats.responseSamples[key] || 0) + 1;
     const previous = stats.passRates[key] ?? 0.5;
-    stats.passRates[key] = previous + (1 - previous) / Math.min(12, stats.samples + 1);
+    const weight = 1 / Math.min(12, stats.responseSamples[key] + 2);
+    stats.passRates[key] = previous + ((entry.type === 'PASSED' ? 1 : 0) - previous) * weight;
+    if (entry.nearFinishThreat || (entry.handCount != null && entry.handCount <= 3)) {
+      stats.nearFinishPressure += ((entry.type === 'SET_PLAYED' ? 1 : 0) - stats.nearFinishPressure) * weight;
+    }
+  }
+  if (entry.actorId && entry.type === 'PASSED' && entry.requiredCount) {
     const beliefs = journal.roundBeliefs[entry.actorId] || (journal.roundBeliefs[entry.actorId] = []);
-    beliefs.push({ requiredCount: entry.requiredCount, topRank: entry.topRank, serial: entry.serial });
+    beliefs.push({ requiredCount: entry.requiredCount, topRank: entry.topRank, serial: entry.serial, confidence: 1 });
     if (beliefs.length > 8) beliefs.shift();
+  }
+  if (event.type === 'MERCHANT_EXCHANGED') {
+    delete journal.roundBeliefs[event.actorId]; delete journal.roundBeliefs[event.targetId];
+  }
+  if (event.type === 'TAX_COMPLETED') {
+    for (const pair of event.pairs || []) { delete journal.roundBeliefs[pair.dalmutiId]; delete journal.roundBeliefs[pair.peonId]; }
   }
 }
 
@@ -337,8 +354,11 @@ function finishTaxIfReady(state) {
     state.secrets[pair.peonId].hand.sort((a, b) => a.rank - b.rank);
   }
   const completedPairs = state.tax.pairs.map(({ dalmutiId, peonId, count }) => ({ dalmutiId, peonId, count }));
-  if (!maybeStartMerchantExchange(state)) startTurnPlay(state);
-  state.lastAction = { id: makeId('tax', state), type: 'TAX_COMPLETED', pairs: completedPairs, timestamp: Date.now() };
+  const taxEvent = { id: makeId('tax', state), type: 'TAX_COMPLETED', pairs: completedPairs, timestamp: Date.now() };
+  if (!maybeStartMerchantExchange(state)) {
+    startTurnPlay(state);
+    state.pendingEvents = [taxEvent, state.lastAction];
+  } else state.lastAction = taxEvent;
 }
 
 function validatePlay(state, command) {
@@ -385,6 +405,7 @@ function endRound(state) {
 function playSet(state, command) {
   const play = validatePlay(state, command);
   const wasLead = state.trick.requiredCount == null;
+  const responseContext = { requiredCount: state.trick.requiredCount, topRank: state.trick.topRank, nearFinishThreat: activeIds(state).some((id) => id !== command.playerId && state.secrets[id].hand.length <= 3) };
   const hand = state.secrets[command.playerId].hand;
   const natural = play.rank === 13 ? [] : hand.filter((card) => card.rank === play.rank).slice(0, play.count - play.jesterCount);
   const jesters = hand.filter((card) => card.rank === 13).slice(0, play.jesterCount);
@@ -398,7 +419,8 @@ function playSet(state, command) {
   state.trick.topRank = play.rank;
   state.trick.lastPlayerId = command.playerId;
   state.trick.passPlayerIds = [];
-  state.lastAction = { ...set, type: 'SET_PLAYED', timestamp: Date.now() };
+  const playEvent = { ...set, ...responseContext, handCount: state.secrets[command.playerId].hand.length, type: 'SET_PLAYED', timestamp: Date.now() };
+  state.lastAction = playEvent;
   if (state.secrets[command.playerId].hand.length === 0 && !state.finishOrder.includes(command.playerId)) {
     state.finishOrder.push(command.playerId);
     const points = activeIds(state).length;
@@ -406,6 +428,7 @@ function playSet(state, command) {
   }
   if (activeIds(state).length <= 1) {
     endRound(state);
+    state.pendingEvents = [playEvent, state.lastAction];
   } else {
     setTurn(state, nextActive(state, command.playerId));
   }
@@ -418,10 +441,10 @@ function pass(state, command) {
     id: makeId('pass', state), type: 'PASSED', actorId: command.playerId,
     requiredCount: state.trick.requiredCount, topRank: state.trick.topRank,
     handCount: state.secrets[command.playerId]?.hand.length || 0, timestamp: Date.now(),
+    nearFinishThreat: activeIds(state).some((id) => id !== command.playerId && state.secrets[id].hand.length <= 3),
   };
   if (!state.trick.passPlayerIds.includes(command.playerId)) state.trick.passPlayerIds.push(command.playerId);
   state.actionSerial += 1;
-  recordPublicBotEvent(state, passEvent);
   state.lastAction = passEvent;
   const requiredPassers = activeIds(state).filter((id) => id !== state.trick.lastPlayerId);
   if (requiredPassers.every((id) => state.trick.passPlayerIds.includes(id))) {
@@ -485,8 +508,9 @@ export function executeCommand(input, command) {
         const isGreatRevolution = command.playerId === state.hierarchy[state.hierarchy.length - 1];
         if (isGreatRevolution) state.hierarchy.reverse();
         const revolutionType = isGreatRevolution ? 'GREAT_REVOLUTION' : 'REVOLUTION';
-        startTurnPlay(state, state.hierarchy[0], revolutionType);
-        state.lastAction = { id: makeId('revolution', state), type: revolutionType, actorId: command.playerId, timestamp: Date.now() };
+        const revolutionEvent = { id: makeId('revolution', state), type: revolutionType, actorId: command.playerId, hierarchy: [...state.hierarchy], timestamp: Date.now() };
+        startTurnPlay(state);
+        state.pendingEvents = [revolutionEvent, state.lastAction];
       }
       break;
     case 'DECLINE_REVOLUTION':
@@ -511,8 +535,9 @@ export function executeCommand(input, command) {
       const b = state.secrets[command.targetId].hand;
       const ai = Math.floor(random() * a.length); const bi = Math.floor(random() * b.length);
       [a[ai], b[bi]] = [b[bi], a[ai]];
-      state.lastAction = { id: makeId('merchant', state), type: 'MERCHANT_EXCHANGED', actorId: command.playerId, targetId: command.targetId, timestamp: Date.now() };
+      const merchantEvent = { id: makeId('merchant', state), type: 'MERCHANT_EXCHANGED', actorId: command.playerId, targetId: command.targetId, timestamp: Date.now() };
       startTurnPlay(state);
+      state.pendingEvents = [merchantEvent, state.lastAction];
       break;
     }
     case 'PLAY_SET': playSet(state, command); break;
@@ -520,13 +545,14 @@ export function executeCommand(input, command) {
     default: throw new Error('지원하지 않는 달무티 명령입니다.');
   }
   state.stateVersion += 1;
-  recordPublicBotEvent(state, state.lastAction);
   refreshPlayers(state);
   const pendingEvents = state.pendingEvents;
   delete state.pendingEvents;
+  const events = pendingEvents || (state.lastAction && state.lastAction.id !== previousActionId ? [state.lastAction] : []);
+  events.forEach((event) => recordPublicBotEvent(state, event));
   return {
     nextState: state,
-    events: pendingEvents || (state.lastAction && state.lastAction.id !== previousActionId ? [state.lastAction] : []),
+    events,
   };
 }
 
@@ -629,20 +655,35 @@ function passLikelihood(view, playerId, hand, modelWeight) {
   const counts = handCounts(hand);
   let likelihood = 1;
   for (const pass of constraints) {
-    const canHavePlayed = [...counts.entries()].some(([rank, count]) => rank < pass.topRank && count + (counts.get(13) || 0) >= pass.requiredCount);
+    const canHavePlayed = [...counts.entries()].some(([rank, count]) => rank < pass.topRank && rank !== 13 && count + (counts.get(13) || 0) >= pass.requiredCount);
     // Profiles with a stronger opponent model trust observed passes more.
-    if (canHavePlayed) likelihood *= Math.max(0.08, 0.48 - modelWeight * 0.016);
+    if (canHavePlayed) {
+      const observedPassRate = view.opponentStats[playerId]?.passRates?.[String(Math.min(4, pass.requiredCount))] ?? 0.5;
+      const penalty = Math.max(0.08, Math.min(0.9, 0.28 - modelWeight * 0.008 + observedPassRate * 0.55));
+      likelihood *= 1 - (1 - penalty) * (pass.confidence ?? 1);
+    }
   }
   return likelihood;
 }
 
-function canBeat(hand, topRank, count) {
+export function chooseSampleResponse(hand, topRank, count, stats = {}, random = Math.random) {
   const counts = handCounts(hand);
   const jokers = counts.get(13) || 0;
+  const candidates = [];
   for (let rank = 1; rank < topRank; rank += 1) {
-    if ((counts.get(rank) || 0) + jokers >= count && (counts.get(rank) || 0) > 0) return rank;
+    const natural = counts.get(rank) || 0;
+    if (!natural || rank === 13) continue;
+    for (let jesterCount = Math.max(0, count - natural); jesterCount <= Math.min(jokers, count - 1); jesterCount += 1) {
+      const split = natural > count - jesterCount;
+      const score = (count === hand.length ? 10000 : 0) + rank * 3 + (split ? -24 : 16) - jesterCount * (28 - (stats.jesterRate || 0) * 20) - Math.max(0, 4 - rank) * 9;
+      candidates.push({ rank, count, jesterCount, score });
+    }
   }
-  return null;
+  if (!candidates.length) return null;
+  const max = Math.max(...candidates.map((candidate) => candidate.score));
+  const weights = candidates.map((candidate) => Math.exp((candidate.score - max) / 10));
+  let draw = random() * weights.reduce((sum, weight) => sum + weight, 0);
+  return candidates.find((candidate, index) => { draw -= weights[index]; return draw <= 0; }) || candidates.at(-1);
 }
 
 function sampleHands(view, playerId, random) {
@@ -675,13 +716,15 @@ function rolloutControlChance(state, view, playerId, play, modelWeight) {
       if (id === playerId || !hands.has(id)) continue;
       const hand = hands.get(id);
       weight *= passLikelihood(view, id, hand, modelWeight);
-      const responseRank = canBeat(hand, topRank, play.count);
-      if (responseRank == null) continue;
+      const stats = view.opponentStats[id] || {};
+      const response = chooseSampleResponse(hand, topRank, play.count, stats, random);
+      if (!response) continue;
       const observedAggression = opponentAggression(view, id);
       const confidence = Math.min(1, 0.35 + modelWeight / 28);
       const aggression = 0.5 + (observedAggression - 0.5) * confidence;
-      const contestChance = 0.26 + aggression * 0.58 + (hand.length <= 3 ? 0.12 : 0);
-      if (random() < contestChance) { topRank = responseRank; lastPlayerId = id; }
+      const passRate = stats.passRates?.[String(Math.min(4, play.count))] ?? 0.5;
+      const contestChance = Math.max(0.05, Math.min(0.98, 0.26 + aggression * 0.58 + (0.5 - passRate) * confidence * 0.4 + (hand.length <= 3 ? 0.12 : 0)));
+      if (hand.length === play.count || random() < contestChance) { topRank = response.rank; lastPlayerId = id; }
     }
     totalWeight += weight;
     if (lastPlayerId === playerId) weightedControl += weight;

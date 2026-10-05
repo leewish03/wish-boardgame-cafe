@@ -18,6 +18,8 @@ const testSuites = [
   { name: '6.1 Typed Protocol Controller Integration', file: 'tests/protocol_socket_integration.test.js' },
   { name: '6.1.2 Room Session Security and Races', file: 'tests/room_session_security.test.js' },
   { name: '6.1.0 Dalmuti Socket Integration', file: 'tests/dalmuti_socket.test.js' },
+  { name: '6.1.0.1 Dalmuti Recovery Clocks', file: 'tests/dalmuti_recovery.test.js' },
+  { name: '6.1.0.2 Dalmuti Presentation', file: 'tests/dalmuti_presentation.test.js' },
   { name: '6.1.1 Physical Card Presentation', file: 'tests/physical_presentation.test.js' },
   { name: '6.2 Voice Signalling Reconnect Integration', file: 'tests/voice_signaling_integration.test.js' },
   { name: '7. Section 50: Secret Leakage Security Tests (0-Leak Verification)', file: 'tests/secret_leakage.test.js' },

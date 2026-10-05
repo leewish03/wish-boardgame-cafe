@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { css } from 'styled-components';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Crown, LogOut, Mic, Trophy, Users, Volume2 } from 'lucide-react';
@@ -7,6 +7,9 @@ import { RoomChat } from '../../shared/RoomChat';
 import { RoomVoiceControls } from '../love-letter/ui/GameMenuDrawer';
 import { GameHud } from '../love-letter/ui/GameHud';
 import { DALMUTI_RANKS } from '../../../packages/dalmuti-core/src/index.js';
+import { useDalmutiPresentation } from './useDalmutiPresentation.js';
+import { DalmutiMotionLayer } from './DalmutiMotionLayer.jsx';
+import { toggleTaxSelection, visibleSetRanks } from './presentationState.js';
 
 const rankName = (rank) => DALMUTI_RANKS[rank] || `계급 ${rank}`;
 const groupCards = (cards = []) => {
@@ -16,52 +19,36 @@ const groupCards = (cards = []) => {
 };
 
 export default function DalmutiGame({ roomState, currentUser, socket, webrtc, stt, chatMessages = [], onSendChat, onLeave, onRoomUnavailable }) {
-  const game = roomState?.dalmuti;
+  const { visualRoom, active, busy, finish, requestSync } = useDalmutiPresentation(socket, roomState);
+  const game = visualRoom?.dalmuti;
   const myId = currentUser?.id;
   const reduceMotion = useReducedMotion();
   const [selection, setSelection] = useState(null);
   const [taxSelection, setTaxSelection] = useState({});
   const [error, setError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [eventBeat, setEventBeat] = useState(null);
-  const [presentedRound, setPresentedRound] = useState(null);
-  const [presentedSetIds, setPresentedSetIds] = useState([]);
-
+  const [submitting, setSubmitting] = useState(false);
+  const [jesterMode, setJesterMode] = useState(false);
+  const pending = useRef(null);
+  const surfaceRef = useRef(null);
+  const anchors = useRef(new Map());
+  const anchor = (key) => (element) => { if (element) anchors.current.set(key, element); else anchors.current.delete(key); };
+  const unlock = useCallback(() => { clearTimeout(pending.current?.timer); pending.current = null; setSubmitting(false); }, []);
   useEffect(() => {
-    if (!socket) return undefined;
-    const timers = new Set();
-    const onEvent = (envelope) => {
-      const event = envelope?.event || null;
-      setEventBeat(event);
-      if (event?.type === 'ROUND_DEALT') {
-        setPresentedRound(envelope?.roundNumber ?? null);
-        setPresentedSetIds([]);
-      } else if (event?.type === 'SET_PLAYED') {
-        setPresentedRound(envelope?.roundNumber ?? null);
-        setPresentedSetIds((current) => current.includes(event.id) ? current : [...current, event.id]);
-      } else if (event?.type === 'TRICK_CLEARED') {
-        setPresentedSetIds([]);
-      }
-      const timer = window.setTimeout(() => {
-        timers.delete(timer);
-        setEventBeat((current) => current?.id === envelope?.event?.id ? null : current);
-        socket.emit('dalmuti:presentation-ack', { roomCode: roomState?.code, eventId: envelope?.eventId });
-      }, reduceMotion ? 180 : 520);
-      timers.add(timer);
-    };
-    socket.on('dalmuti:event', onEvent);
-    if (socket.connected) socket.emit('dalmuti:view-ready', { roomCode: roomState?.code });
-    return () => { socket.off('dalmuti:event', onEvent); timers.forEach((timer) => window.clearTimeout(timer)); };
-  }, [socket, roomState?.code, reduceMotion, onRoomUnavailable]);
-
-  useEffect(() => { setSelection(null); setTaxSelection({}); setError(''); }, [game?.stateVersion]);
+    setSelection(null); setTaxSelection({}); setError(''); setJesterMode(false);
+    if (pending.current && roomState?.stateVersion > pending.current.version) unlock();
+  }, [roomState?.stateVersion, unlock]);
+  useEffect(() => {
+    socket?.on('disconnect', unlock);
+    return () => { socket?.off('disconnect', unlock); clearTimeout(pending.current?.timer); };
+  }, [socket, unlock]);
 
   const playersById = useMemo(() => new Map((game?.players || []).map((player) => [player.id, player])), [game?.players]);
   const me = playersById.get(myId);
   const opponents = (game?.hierarchy || []).filter((id) => id !== myId).map((id) => playersById.get(id)).filter(Boolean);
-  const handGroups = groupCards(roomState?.mySecret?.hand || []);
+  const handGroups = groupCards(visualRoom?.mySecret?.hand || []);
   const legalPlays = roomState?.mySecret?.legalPlays || [];
-  const isMyTurn = game?.currentTurnPlayerId === myId && !roomState?.isPaused && !roomState?.presentationPending;
+  const isMyTurn = roomState?.dalmuti?.currentTurnPlayerId === myId && !roomState?.isPaused && !busy && !submitting && socket?.connected !== false;
   const canPass = isMyTurn && game?.playPhase === 'TURN_INPUT' && game?.trick?.requiredCount != null;
   const currentPlayer = playersById.get(game?.currentTurnPlayerId);
   const currentTaxPair = game?.tax?.pairs?.find((pair) => pair.dalmutiId === myId);
@@ -69,10 +56,14 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
   const selectedTaxCount = Object.values(taxSelection).reduce((sum, value) => sum + value, 0);
 
   const send = useCallback((command) => {
-    if (!socket) return;
+    if (!socket?.connected || pending.current || busy || roomState?.isPaused) return;
     setError('');
-    socket.emit('dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: game.stateVersion } }, (result) => {
+    const version = roomState.stateVersion;
+    pending.current = { version, timer: setTimeout(() => { unlock(); requestSync(); setError('응답을 확인하는 중입니다. 다시 동기화합니다.'); }, 5000) };
+    setSubmitting(true);
+    socket.emit('dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: version } }, (result) => {
       if (!result?.success) {
+        unlock();
         const message = result?.error || '행동을 처리하지 못했습니다.';
         if (/방\s*(?:을|이)?\s*(?:찾을 수 없|존재하지)|진행 중인 .*게임을 찾을 수 없/.test(message)) {
             onRoomUnavailable?.({ ...result, roomCode: roomState.code, userId: myId });
@@ -81,15 +72,24 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
         setError(message);
       }
     });
-  }, [socket, roomState?.code, game?.stateVersion, myId, onRoomUnavailable]);
+  }, [socket, roomState, busy, myId, onRoomUnavailable, unlock, requestSync]);
 
   const chooseRank = (rank) => {
     if (!isMyTurn || game.playPhase !== 'TURN_INPUT') return;
+    if (rank === 13 && legalPlays.some((play) => play.rank !== 13 && play.jesterCount > 0)) {
+      setJesterMode((value) => !value);
+      if (selection && selection.rank !== 13) {
+        const mixed = legalPlays.find((play) => play.rank === selection.rank && play.count === selection.count && play.jesterCount > 0);
+        if (mixed) setSelection(mixed);
+      }
+      if (!legalPlays.some((play) => play.rank === 13)) return;
+    }
     const candidates = legalPlays.filter((play) => play.rank === rank);
     if (!candidates.length) return;
     const required = game.trick.requiredCount;
     const chosen = [...candidates].sort((a, b) => {
       if (required == null && a.count !== b.count) return a.count - b.count;
+      if (jesterMode) return Number(b.jesterCount > 0) - Number(a.jesterCount > 0) || a.jesterCount - b.jesterCount;
       return a.jesterCount - b.jesterCount;
     })[0];
     setSelection(chosen);
@@ -101,22 +101,18 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
   const toggleTaxRank = (rank, available) => {
     if (!currentTaxPair || game.currentTurnPlayerId !== myId) return;
     setTaxSelection((previous) => {
-      const next = { ...previous };
-      const current = next[rank] || 0;
-      if (selectedTaxCount >= taxNeeded && current === 0) return previous;
-      next[rank] = current >= available ? 0 : current + 1;
-      return next;
+      return toggleTaxSelection(previous, rank, available, taxNeeded);
     });
   };
 
   if (!game || !me) return null;
 
-  const displayedSets = presentedRound === game.roundNumber
-    ? game.trick.sets.filter((set) => presentedSetIds.includes(set.id))
-    : game.trick.sets;
+  const displayedSets = game.trick.sets;
+  const inputLocked = busy || submitting || roomState.isPaused || socket?.connected === false;
 
   const phaseMessage = (() => {
     if (roomState.isPaused) return '플레이어 재접속을 기다리는 중';
+    if (busy) return active?.event?.type === 'SET_PLAYED' ? `${playersById.get(active.event.actorId)?.nickname || '플레이어'}의 카드 제출` : '테이블 행동을 표시하는 중';
     if (game.playPhase === 'REVOLUTION_DECISION') return `${currentPlayer?.nickname || '플레이어'}의 혁명 결정`;
     if (game.playPhase === 'TAX_RETURN') return `${currentPlayer?.nickname || '달무티'}가 세금 반환 카드를 고르는 중`;
     if (game.playPhase === 'MERCHANT_EXCHANGE') return `${currentPlayer?.nickname || '상인'}의 상인 교환`;
@@ -131,7 +127,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     return `${currentPlayer?.nickname || '상대'}의 차례`;
   })();
 
-  return <Surface>
+  return <Surface ref={surfaceRef}>
     <GameHud
       roundNumber={game.roundNumber}
       turnPlayerNickname={currentPlayer?.nickname || '플레이어'}
@@ -141,19 +137,19 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       leftLabel={<>라운드 {game.roundNumber}/{game.config.roundCount} <span>· 내 {me.score}점</span></>}
       turnExpiresAt={game.turnExpiresAt}
       turnTimeoutSeconds={game.config.turnTimeoutSeconds}
-      clockMode={roomState.isPaused ? 'PAUSED' : roomState.presentationPending ? 'PRESENTING' : 'RUNNING'}
+      clockMode={roomState.isPaused ? 'PAUSED' : busy ? 'PRESENTING' : 'RUNNING'}
       onOpenSettings={() => setMenuOpen(true)}
     />
 
     <Table>
       <OpponentBoard data-count={opponents.length}>
-        {opponents.map((player) => <PlayerTile key={player.id} as={motion.article} layout $turn={player.id === game.currentTurnPlayerId} $finished={!!player.finishedPosition}>
+        {opponents.map((player) => <PlayerTile ref={anchor(`player:${player.id}`)} key={player.id} as={motion.article} layout transition={{ duration: reduceMotion ? .12 : .42 }} $turn={player.id === game.currentTurnPlayerId} $finished={!!player.finishedPosition}>
           <RankMedal>{player.roleIndex + 1}</RankMedal>
           <Avatar src={player.avatarUrl} alt=""/>
           <Identity><strong>{player.nickname}</strong><span>{player.role}</span></Identity>
           <Stats><b>{player.handCount}</b><small>패</small><i>{player.score}점</i></Stats>
           {player.id === game.currentTurnPlayerId && <TurnFlag>차례</TurnFlag>}
-          {player.passed && <PassFlag>PASS</PassFlag>}
+          {(player.passed || (active?.event.type === 'PASSED' && active.event.actorId === player.id)) && <PassFlag>패스</PassFlag>}
           {player.finishedPosition && <FinishFlag>{player.finishedPosition}위 확정</FinishFlag>}
         </PlayerTile>)}
       </OpponentBoard>
@@ -164,44 +160,52 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
           <b>{game.trick.requiredCount ? `${game.trick.requiredCount}장 · ${game.trick.topRank} ${rankName(game.trick.topRank)}` : '새로운 선'}</b>
           <small>연속 패스 {game.trick.passPlayerIds.length} · 완료 트릭 {game.trick.completedCount}</small>
         </TrickMeta>
-        <Pile aria-label="현재 중앙 카드 더미">
-          {displayedSets.slice(-4).map((set, index, visible) => <SetLayer key={set.id} as={motion.div} initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: set.actorId === myId ? 90 : -75, scale: .86 }} animate={{ opacity: 1, y: 0, scale: 1, rotate: (index - visible.length + 1) * 1.4 }} transition={{ duration: reduceMotion ? .12 : .36 }} $offset={index}>
-            {Array.from({ length: Math.min(set.count, 6) }, (_, cardIndex) => <MiniCard key={cardIndex} $jester={cardIndex >= set.count - set.jesterCount} style={{ marginLeft: cardIndex ? '-34px' : 0 }}><b>{cardIndex >= set.count - set.jesterCount ? 'J' : set.rank}</b><span>{cardIndex >= set.count - set.jesterCount ? '어릿광대' : rankName(set.rank)}</span></MiniCard>)}
+        <Pile ref={anchor('pile')} aria-label="현재 중앙 카드 더미" style={{ opacity: active?.event.type === 'TRICK_CLEARED' ? .2 : 1 }}>
+          {displayedSets.slice(-4).map((set, index, visible) => <SetLayer key={set.id} as={motion.div} initial={false} animate={{ rotate: (index - visible.length + 1) * 1.4 }} transition={{ duration: reduceMotion ? .12 : .2 }} $offset={index}>
+            {visibleSetRanks(set).map((rank, cardIndex) => <MiniCard key={cardIndex} $jester={rank === 13} style={{ marginLeft: cardIndex ? '-34px' : 0 }}><b>{rank === 13 ? 'J' : rank}</b><span>{rankName(rank)}</span></MiniCard>)}
+            <SetCount>{set.count}장{set.jesterCount > 0 && ` · J ${set.jesterCount}장`}</SetCount>
           </SetLayer>)}
           {!displayedSets.length && <EmptyPile><Crown size={22}/><span>선 플레이를 기다립니다</span></EmptyPile>}
-          <AnimatePresence>{eventBeat?.type === 'PASSED' && <Beat key={eventBeat.id} as={motion.div} initial={{ opacity: 0, scale: .85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>PASS</Beat>}</AnimatePresence>
         </Pile>
+        <Archive ref={anchor('archive')} aria-label="완료 트릭 보관부">완료 트릭 {game.trick.completedCount}</Archive>
         <ActionError>{error}</ActionError>
       </CenterStage>
 
       <LocalArea>
-        <SelfBar $turn={isMyTurn}><Avatar src={me.avatarUrl} alt=""/><Identity><strong>{me.nickname} <small>나</small></strong><span>{me.roleIndex + 1}위 · {me.role} · {me.score}점</span></Identity><Stats><b>{me.handCount}</b><small>패</small></Stats></SelfBar>
+        <SelfBar ref={anchor(`player:${myId}`)} $turn={isMyTurn}><Avatar src={me.avatarUrl} alt=""/><Identity><strong>{me.nickname} <small>나</small>{me.passed && ' · 패스'}</strong><span>{me.roleIndex + 1}위 · {me.role} · {me.score}점</span></Identity><Stats><b>{me.handCount}</b><small>패</small></Stats></SelfBar>
 
-        {game.playPhase === 'REVOLUTION_DECISION' && game.revolutionCandidateId === myId ? <DecisionTray><strong>어릿광대 둘이 모였습니다</strong><span>{me.role === '농노' ? '대혁명은 계급을 완전히 뒤집습니다.' : '혁명을 선언하면 이번 라운드의 세금이 사라집니다.'}</span><ButtonRow><Secondary onClick={() => send({ type:'DECLINE_REVOLUTION' })}>그대로 진행</Secondary><Primary onClick={() => send({ type:'DECLARE_REVOLUTION' })}>혁명 선언</Primary></ButtonRow></DecisionTray>
-        : game.playPhase === 'TAX_RETURN' && currentTaxPair && game.currentTurnPlayerId === myId ? <DecisionTray><strong>{taxNeeded}장을 농노에게 돌려주세요</strong><span>받을 세금은 최종 교환과 함께 손패에 들어옵니다.</span><TaxGroups>{handGroups.map((group) => <TaxChip key={group.rank} onClick={() => toggleTaxRank(group.rank, group.count)} $selected={taxSelection[group.rank] > 0}><b>{group.rank}</b><span>{rankName(group.rank)}</span><i>{taxSelection[group.rank] || 0}/{group.count}</i></TaxChip>)}</TaxGroups><Primary disabled={selectedTaxCount !== taxNeeded} onClick={() => send({ type:'SELECT_TAX_RETURN', selection:Object.entries(taxSelection).filter(([,count]) => count).map(([rank,count]) => ({ rank:Number(rank), count })) })}>{selectedTaxCount}/{taxNeeded}장 반환</Primary></DecisionTray>
-        : game.playPhase === 'MERCHANT_EXCHANGE' && game.merchantExchange?.actorId === myId ? <DecisionTray><strong>무작위로 교환할 상인을 고르세요</strong><TargetRow>{game.merchantExchange.eligibleTargetIds.map((id) => <Secondary key={id} onClick={() => send({ type:'SELECT_MERCHANT_EXCHANGE_TARGET', targetId:id })}>{playersById.get(id)?.nickname}</Secondary>)}</TargetRow></DecisionTray>
+        {game.playPhase === 'REVOLUTION_DECISION' && game.revolutionCandidateId === myId ? <DecisionTray><strong>어릿광대 둘이 모였습니다</strong><span>{me.role === '농노' ? '대혁명은 계급을 완전히 뒤집습니다.' : '혁명을 선언하면 이번 라운드의 세금이 사라집니다.'}</span><ButtonRow><Secondary disabled={inputLocked} onClick={() => send({ type:'DECLINE_REVOLUTION' })}>그대로 진행</Secondary><Primary disabled={inputLocked} onClick={() => send({ type:'DECLARE_REVOLUTION' })}>혁명 선언</Primary></ButtonRow></DecisionTray>
+        : game.playPhase === 'TAX_RETURN' && currentTaxPair && game.currentTurnPlayerId === myId ? <DecisionTray><strong>{taxNeeded}장을 농노에게 돌려주세요</strong><span>받을 세금은 최종 교환과 함께 손패에 들어옵니다.</span><TaxGroups>{handGroups.map((group) => <TaxChip disabled={inputLocked} key={group.rank} onClick={() => toggleTaxRank(group.rank, group.count)} $selected={taxSelection[group.rank] > 0}><b>{group.rank}</b><span>{rankName(group.rank)}</span><i>{taxSelection[group.rank] || 0}/{group.count}</i></TaxChip>)}</TaxGroups><Primary disabled={inputLocked || selectedTaxCount !== taxNeeded} onClick={() => send({ type:'SELECT_TAX_RETURN', selection:Object.entries(taxSelection).filter(([,count]) => count).map(([rank,count]) => ({ rank:Number(rank), count })) })}>{selectedTaxCount}/{taxNeeded}장 반환</Primary></DecisionTray>
+        : game.playPhase === 'MERCHANT_EXCHANGE' && game.merchantExchange?.actorId === myId ? <DecisionTray><strong>무작위로 교환할 상인을 고르세요</strong><TargetRow>{game.merchantExchange.eligibleTargetIds.map((id) => <Secondary disabled={inputLocked} key={id} onClick={() => send({ type:'SELECT_MERCHANT_EXCHANGE_TARGET', targetId:id })}>{playersById.get(id)?.nickname}</Secondary>)}</TargetRow></DecisionTray>
         : me.handCount === 0 ? <FinishedHand><Trophy size={20}/><div><strong>{me.finishedPosition}위로 패를 모두 냈습니다</strong><span>이번 판은 관전 중입니다 · 현재 {me.score}점</span></div></FinishedHand>
         : <>
           <HandRail aria-label="내 손패">
             {handGroups.map((group) => {
-              const legal = legalPlays.some((play) => play.rank === group.rank);
+              const mixedJester = group.rank === 13 && legalPlays.some((play) => play.rank !== 13 && play.jesterCount > 0);
+              const legal = legalPlays.some((play) => play.rank === group.rank) || mixedJester;
               const selected = selection?.rank === group.rank;
-              return <RankStack key={group.rank} as={motion.button} type="button" onClick={() => chooseRank(group.rank)} disabled={!legal || !isMyTurn} $legal={legal && isMyTurn} $selected={selected} whileTap={legal ? { y:-2 } : undefined}>
+              const highlighted = jesterMode && legalPlays.some((play) => play.rank === group.rank && play.jesterCount > 0);
+              return <RankStack ref={anchor(`rank:${group.rank}`)} key={group.rank} as={motion.button} type="button" onClick={() => chooseRank(group.rank)} disabled={!legal || !isMyTurn} $legal={legal && isMyTurn} $selected={selected || highlighted} aria-pressed={selected} title={mixedJester ? '숫자와 함께 사용 가능 · 먼저 숫자 묶음을 선택하세요' : undefined} whileTap={legal ? { y:-2 } : undefined}>
                 <CardNumber>{group.rank === 13 ? 'J' : group.rank}</CardNumber><CardName>{rankName(group.rank)}</CardName><CountBadge>× {group.count}</CountBadge>
+                {mixedJester && <JesterHint>함께 사용</JesterHint>}
               </RankStack>;
             })}
           </HandRail>
           <PlayTray>
-            <SelectionText>{selection ? <><b>{selection.count}× {selection.rank === 13 ? 'J' : selection.rank}</b><span>{selection.jesterCount ? `어릿광대 ${selection.jesterCount}장 포함` : '일반 카드 구성'}</span></> : <span>{isMyTurn ? '낼 계급 묶음을 선택하세요' : '상대의 행동을 기다리는 중'}</span>}</SelectionText>
-            {selection && countOptions.length > 1 && <OptionRow aria-label="낼 카드 장수 선택">{countOptions.map((count) => <Option key={count} $active={selection.count === count} onClick={() => setSelection(legalPlays.find((play) => play.rank === selection.rank && play.count === count))}>{count}장</Option>)}</OptionRow>}
-            {selection && compositionOptions.length > 1 && <OptionRow aria-label="어릿광대 조합 선택">{compositionOptions.map((play) => <Option key={play.jesterCount} $active={selection.jesterCount === play.jesterCount} onClick={() => setSelection(play)}>{play.jesterCount ? `J ${play.jesterCount}` : 'J 없음'}</Option>)}</OptionRow>}
+            <SelectionText>{selection ? <><b>{selection.count}× {selection.rank === 13 ? 'J' : selection.rank}</b><span>{selection.jesterCount ? `어릿광대 ${selection.jesterCount}장 포함` : '일반 카드 구성'}</span></> : <span>{isMyTurn ? game.trick.topRank === 1 ? '달무티(1)는 이길 수 없습니다 · 패스하세요' : !legalPlays.length ? '같은 장수의 더 낮은 숫자가 없어 패스만 가능합니다' : jesterMode ? '조커와 함께 낼 숫자 묶음을 선택하세요' : '낼 계급 묶음을 선택하세요' : submitting ? '제출 확인 중' : '상대의 행동을 기다리는 중'}</span>}</SelectionText>
+            {selection && countOptions.length > 0 && <OptionRow aria-label="낼 카드 장수 선택">{countOptions.map((count) => <Option disabled={!isMyTurn} key={count} $active={selection.count === count} aria-pressed={selection.count === count} onClick={() => setSelection(legalPlays.find((play) => play.rank === selection.rank && play.count === count && play.jesterCount === selection.jesterCount) || legalPlays.find((play) => play.rank === selection.rank && play.count === count))}>{count}장</Option>)}</OptionRow>}
+            {selection && selection.rank !== 13 && handGroups.some((group) => group.rank === 13) && <OptionRow aria-label="어릿광대 조합 선택">{[0,1,2].map((jesterCount) => {
+              const play = compositionOptions.find((candidate) => candidate.jesterCount === jesterCount);
+              return <Option disabled={!isMyTurn || !play} key={jesterCount} $active={selection.jesterCount === jesterCount} aria-pressed={selection.jesterCount === jesterCount} onClick={() => play && setSelection(play)}>J {jesterCount}</Option>;
+            })}</OptionRow>}
             <ButtonRow><Secondary disabled={!canPass} onClick={() => send({ type:'PASS' })}>패스</Secondary><Primary disabled={!selection || !isMyTurn} onClick={() => send({ type:'PLAY_SET', ...selection })}>중앙에 내기</Primary></ButtonRow>
           </PlayTray>
         </>}
       </LocalArea>
     </Table>
 
-    <AnimatePresence>{(game.matchState === 'ROUND_END' || game.matchState === 'GAME_OVER') && <Overlay as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><ResultCard as={motion.section} initial={reduceMotion ? {opacity:0}:{opacity:0,y:24}} animate={{opacity:1,y:0}}><Trophy size={28}/><h2>{game.matchState === 'GAME_OVER' ? '최종 계급전 결과' : `${game.roundNumber}라운드 결과`}</h2><ResultList>{game.outcome.finishOrder.map((id,index) => { const player=playersById.get(id); return <div key={id}><b>{index+1}</b><span>{player?.nickname}</span><em>{player?.score}점</em></div>; })}</ResultList>{game.matchState === 'ROUND_END' ? <><p>8초 후 새 신분으로 자리를 바꿉니다.</p>{roomState.hostId === myId && <Primary onClick={() => send({type:'ADVANCE_ROUND'})}>바로 다음 라운드</Primary>}</> : <p>{game.outcome.winnerIds.map((id)=>playersById.get(id)?.nickname).join(', ')}{game.outcome.winnerIds.length > 1 ? ' 공동 우승' : ' 최종 우승'}</p>}</ResultCard></Overlay>}</AnimatePresence>
+    <DalmutiMotionLayer active={active} anchors={anchors} surfaceRef={surfaceRef} myId={myId} finish={finish} reduced={reduceMotion}/>
+    <AnimatePresence>{(game.matchState === 'ROUND_END' || game.matchState === 'GAME_OVER') && <Overlay as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><ResultCard as={motion.section} initial={reduceMotion ? {opacity:0}:{opacity:0,y:24}} animate={{opacity:1,y:0}}><Trophy size={28}/><h2>{game.matchState === 'GAME_OVER' ? '최종 계급전 결과' : `${game.roundNumber}라운드 결과`}</h2><ResultList>{game.outcome.finishOrder.map((id,index) => { const player=playersById.get(id); return <div key={id}><b>{index+1}</b><span>{player?.nickname}</span><em>{player?.score}점</em></div>; })}</ResultList>{game.matchState === 'ROUND_END' ? <><p>8초 후 새 신분으로 자리를 바꿉니다.</p>{roomState.hostId === myId && <Primary disabled={inputLocked} onClick={() => send({type:'ADVANCE_ROUND'})}>바로 다음 라운드</Primary>}</> : <p>{game.outcome.winnerIds.map((id)=>playersById.get(id)?.nickname).join(', ')}{game.outcome.winnerIds.length > 1 ? ' 공동 우승' : ' 최종 우승'}</p>}</ResultCard></Overlay>}</AnimatePresence>
     <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer as={motion.aside} initial={{x:320}} animate={{x:0}} exit={{x:320}} onClick={(event)=>event.stopPropagation()}><h3>달무티 살롱</h3><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={myId} launcherPlacement="inline"/><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
     {roomState.isPaused && <PauseLayer><strong>게임 일시정지</strong><span>연결이 돌아오지 않으면 AI가 자리를 이어받습니다.</span></PauseLayer>}
   </Surface>;
@@ -223,6 +227,9 @@ const CenterStage=styled.section`width:100%;min-width:0;min-height:0;box-sizing:
 const TrickMeta=styled.div`display:flex;align-items:center;gap:9px;font-size:9px;color:${THEME.mutedForeground};b{font:900 11px ${THEME.font.serif};color:${THEME.foreground};}small{font-size:8px;}@media(max-width:420px){small{display:none;}}`;
 const Pile=styled.div`width:min(420px,calc(100% - 12px));max-width:100%;height:112px;box-sizing:border-box;position:relative;border:1px dashed rgba(197,160,89,.55);border-radius:14px;background:rgba(255,255,255,.28);display:grid;place-items:center;`;
 const SetLayer=styled.div`position:absolute;inset:9px;display:flex;align-items:center;justify-content:center;transform-origin:center;`;
+const SetCount=styled.span`position:absolute;bottom:-7px;right:0;padding:2px 5px;border-radius:5px;background:#fffdf7;font-size:9px;color:${THEME.foreground};`;
+const Archive=styled.div`align-self:flex-end;padding:5px 8px;border:1px solid ${THEME.border};border-radius:6px;font-size:9px;color:${THEME.goldAntique};`;
+const JesterHint=styled.span`font-size:8px;color:${THEME.goldAntique};`;
 const MiniCard=styled.div`width:60px;height:88px;flex:0 0 60px;border:1px solid ${p=>p.$jester?THEME.burgundy:THEME.gold};border-radius:7px;background:${p=>p.$jester?THEME.gradients.burgundySeal:'#fffdf7'};color:${p=>p.$jester?'#fff':THEME.foreground};box-shadow:0 5px 13px rgba(9,13,22,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;b{font:900 25px ${THEME.font.serif};}span{font-size:7px;font-weight:800;}`;
 const EmptyPile=styled.div`display:flex;flex-direction:column;align-items:center;gap:4px;color:${THEME.goldAntique};font-size:9px;`;
 const Beat=styled.div`position:absolute;padding:5px 13px;border-radius:12px;background:${THEME.primary};color:#fff;font:900 11px ${THEME.font.serif};z-index:10;`;
@@ -234,10 +241,10 @@ const RankStack=styled.button`width:57px;height:62px;flex:0 0 57px;border:1px so
 const CardNumber=styled.b`font:900 21px ${THEME.font.serif};line-height:1;`;
 const CardName=styled.span`font-size:7px;font-weight:850;color:${THEME.burgundy};margin-top:2px;`;
 const CountBadge=styled.i`font-size:8px;font-style:normal;font-weight:900;color:${THEME.goldAntique};margin-top:3px;`;
-const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(110px,1fr) auto auto;align-items:center;gap:5px;min-height:35px;@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;gap:4px;.options{grid-column:1/-1;display:flex;max-width:100%;overflow-x:auto;padding-bottom:1px;}}`;
+const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(110px,1fr) auto;align-items:center;gap:5px;min-height:35px;.options{grid-column:1/-1;display:flex;max-width:100%;overflow-x:auto;padding-bottom:1px;}&>div:last-child{grid-column:2;grid-row:1;}@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;gap:4px;}`;
 const SelectionText=styled.div`min-width:0;display:flex;flex-direction:column;b{font:900 12px ${THEME.font.serif};}span{font-size:9px;color:${THEME.mutedForeground};}`;
 const OptionRow=styled.div.attrs({className:'options'})`display:flex;gap:3px;`;
-const Option=styled.button`height:26px;flex:0 0 auto;padding:0 7px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:8px;font-weight:850;cursor:pointer;`;
+const Option=styled.button`min-width:44px;height:44px;flex:0 0 auto;padding:0 9px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:11px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
 const ButtonRow=styled.div`display:flex;gap:5px;`;
 const FinishedHand=styled.div`width:min(760px,100%);min-height:82px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:9px;color:${THEME.goldAntique};strong{display:block;font:900 13px ${THEME.font.serif};color:${THEME.foreground};}span{display:block;margin-top:3px;font-size:9px;font-weight:750;color:${THEME.mutedForeground};}`;
 const Secondary=styled.button`height:36px;padding:0 12px;border:1px solid ${THEME.border};border-radius:8px;background:#fff;color:${THEME.foreground};font-size:10px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;

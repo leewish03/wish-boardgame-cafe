@@ -6,6 +6,7 @@ import { initRoomManager, configureGameLifecycle, rooms } from '../server/shared
 import { createDalmutiService } from '../server/core/DalmutiService.js';
 import { registerDalmutiController } from '../server/games/dalmutiController.js';
 import { chooseBotCommand } from '../packages/dalmuti-core/src/index.js';
+import { mock } from 'node:test';
 
 const waitFor = (client, event, timeout = 5000) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), timeout);
@@ -29,6 +30,7 @@ configureGameLifecycle('DALMUTI', {
   pause: (code, id) => service.pauseRoom(code, id),
   resume: (code) => service.resumeRoom(code),
   disconnectExpired: (code, id) => service.disconnectExpired(code, id),
+  forfeit: (code, id) => service.finalizeDeparture(code, id),
   projectPublicState: (room, id) => service.projectRoomState(room, id),
 });
 registerDalmutiController(io, service);
@@ -80,6 +82,7 @@ try {
     if (!gate) return;
     await Promise.all(gate.waitingFor.map((id) => emit(clientById.get(id), 'dalmuti:presentation-ack', { roomCode:created.roomCode, eventId:gate.eventId })));
   };
+  await acknowledgePendingPresentation();
   let room = rooms[created.roomCode];
   let guard = 0;
   while (room.gameStateObject.playPhase !== 'TURN_INPUT' && guard++ < 10) {
@@ -99,6 +102,10 @@ try {
   assert.ok(playResult.success, playResult.error);
   const event = await eventPromise;
   assert.ok(['SET_PLAYED','PASSED'].includes(event.event.type));
+  const beforeDuplicate = JSON.stringify(rooms[created.roomCode].gameStateObject.secrets);
+  const duplicate = await emit(clientById.get(actorId), 'dalmuti:command', { roomCode:created.roomCode, command });
+  assert.equal(duplicate.success, false, 'rapid second click is blocked during the batch');
+  assert.equal(JSON.stringify(rooms[created.roomCode].gameStateObject.secrets), beforeDuplicate);
   assert.equal(rooms[created.roomCode].dalmutiPresentationGate?.eventId, event.eventId);
   await acknowledgePendingPresentation();
   assert.equal(rooms[created.roomCode].dalmutiPresentationGate, null);
@@ -108,18 +115,40 @@ try {
   });
   assert.equal(staleResult.success, false, 'stale commands are rejected');
   service.clearTimers(created.roomCode);
-  await service.disconnectExpired(created.roomCode, ids[1]);
+  clients[1].disconnect();
+  await waitForMatching(clients[0], 'room:state', (view) => view.isPaused);
+  assert.equal(service.pauseTimers.has(created.roomCode), true, 'real disconnect schedules the grace timer');
+  // Advance the actual registered deadline through the standard timer callback.
+  mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  service.schedulePause(rooms[created.roomCode]);
+  mock.timers.tick(90_000);
+  await service.queues.get(created.roomCode);
+  mock.timers.reset();
   assert.equal(rooms[created.roomCode].players.find((player) => player.id === ids[1]).isBot, true, 'expired seat becomes a bot');
   assert.ok(
     ['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING', 'STRATEGIC', 'INFORMATIVE'].includes(rooms[created.roomCode].gameStateObject.players.find((player) => player.id === ids[1]).botProfile),
     'an expired seat receives a strategy profile before its bot turn is scheduled',
   );
+  clients[1].connect();
+  await waitFor(clients[1], 'connect');
   const lateReconnect = await emit(clients[1], 'room:reconnect', { roomCode:created.roomCode, ...credentials[1] });
   assert.equal(lateReconnect.success, false, 'a bot-taken seat cannot be reclaimed late');
+  const beforeDeparture = room.gameStateObject.secrets[ids[2]].hand.length;
+  assert.ok((await emit(clients[2], 'room:forfeit', { roomCode:created.roomCode })).success);
+  assert.equal(room.players.length, 4, 'explicit departure retains the Dalmuti seat');
+  assert.equal(room.gameStateObject.secrets[ids[2]].hand.length, beforeDeparture);
+  assert.equal(room.gameStateObject.players.find((p) => p.id === ids[2]).isBot, true);
+  assert.ok((await emit(clients[0], 'room:forfeit', { roomCode:created.roomCode })).success);
+  assert.equal(room.hostId, ids[3], 'host transfers to the remaining connected human');
+  assert.ok((await emit(clients[3], 'room:forfeit', { roomCode:created.roomCode })).success);
+  assert.equal(rooms[created.roomCode], undefined, 'last human departure deletes the room');
+  assert.equal(service.pauseTimers.has(created.roomCode), false);
   console.log('Dalmuti Socket.IO start, private projection and command routing passed.');
 } finally {
   missingRoomClient?.disconnect();
   clients.forEach((client) => client.disconnect());
   service.clearTimers(rooms[Object.keys(rooms)[0]]?.code || '');
+  for (const code of service.pauseTimers.keys()) service.clearPauseTimer(code);
+  mock.timers.reset();
   await new Promise((resolve) => io.close(resolve));
 }

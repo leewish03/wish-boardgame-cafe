@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   DALMUTI_RANKS, createDeck, createInitialState, executeCommand, getLegalPlays,
   assignBotProfile, analyzeBotDecision, chooseBotCommand, chooseTimeoutCommand, createDecisionTrace, getBotPerspective, getBotThinkDelay, getPublicView, getPrivateView,
+  chooseSampleResponse,
 } from '../packages/dalmuti-core/src/index.js';
 
 const players = Array.from({ length: 6 }, (_, index) => ({
@@ -196,10 +197,12 @@ let revolutionState = createInitialState(players.slice(0, 4), { turnTimeoutSecon
 const originalHierarchy = [...revolutionState.hierarchy];
 const greatPeon = originalHierarchy.at(-1);
 revolutionState.matchState = 'PLAYING'; revolutionState.playPhase = 'REVOLUTION_DECISION'; revolutionState.revolutionCandidateId = greatPeon;
-({ nextState: revolutionState } = executeCommand(revolutionState, { type:'DECLARE_REVOLUTION', playerId:greatPeon }));
+const revolutionResult = executeCommand(revolutionState, { type:'DECLARE_REVOLUTION', playerId:greatPeon });
+revolutionState = revolutionResult.nextState;
 assert.deepEqual(revolutionState.hierarchy, [...originalHierarchy].reverse());
-assert.equal(revolutionState.lastAction.type, 'GREAT_REVOLUTION');
-assert.equal(revolutionState.lastAction.actorId, greatPeon);
+assert.deepEqual(revolutionResult.events.map((event) => event.type), ['GREAT_REVOLUTION', 'PLAY_STARTED']);
+assert.equal(revolutionResult.events[0].actorId, greatPeon);
+assert.equal(revolutionState.lastAction.type, 'PLAY_STARTED');
 
 // Tax cards are the peons' strongest cards and are not exposed by the public snapshot.
 let taxState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 23);
@@ -220,6 +223,37 @@ taxState = taxResult.nextState;
 assert.equal(taxResult.events[0].type, 'TAX_COMPLETED');
 assert.deepEqual(taxState.secrets[greatDalmuti].hand.map((card) => card.rank), [1,4]);
 assert.deepEqual(taxState.secrets[greatPeonId].hand.map((card) => card.rank), [9,10,11,13]);
+
+const finalState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 8);
+finalState.matchState = 'PLAYING'; finalState.playPhase = 'TURN_INPUT'; finalState.currentTurnPlayerId = 'p0';
+finalState.roundNumber = 1; finalState.finishOrder = ['p2', 'p3'];
+finalState.secrets.p0.hand = [{ id: 'last', rank: 4 }]; finalState.secrets.p1.hand = [{ id: 'other', rank: 5 }];
+const finalResult = executeCommand(finalState, { type: 'PLAY_SET', playerId: 'p0', rank: 4, count: 1 });
+assert.deepEqual(finalResult.events.map((event) => event.type), ['SET_PLAYED', 'ROUND_ENDED']);
+assert.equal(finalResult.events[0].handCount, 0);
+assert.equal(finalResult.nextState.botMemory.roundEvents.filter((event) => event.type === 'SET_PLAYED').length, 1);
+
+let merchantState = createInitialState(players, { merchantExchange: true }, 8);
+merchantState.matchState = 'PLAYING'; merchantState.playPhase = 'MERCHANT_EXCHANGE';
+merchantState.merchantExchange = { actorId: 'p0', eligibleTargetIds: ['p1'] };
+merchantState.secrets.p0.hand = [{ id: 'm1', rank: 4 }]; merchantState.secrets.p1.hand = [{ id: 'm2', rank: 5 }];
+merchantState.botMemory.roundBeliefs.p0 = [{ requiredCount: 1, topRank: 10 }];
+const merchantResult = executeCommand(merchantState, { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId: 'p0', targetId: 'p1' });
+assert.deepEqual(merchantResult.events.map((event) => event.type), ['MERCHANT_EXCHANGED', 'PLAY_STARTED']);
+assert.equal(merchantResult.nextState.botMemory.roundBeliefs.p0, undefined);
+assert.equal(JSON.stringify(merchantResult.events).includes('m1'), false, 'exchange events reveal no cards');
+
+const responseState = createInitialState(players.slice(0, 4), {}, 8);
+responseState.matchState = 'PLAYING'; responseState.playPhase = 'TURN_INPUT'; responseState.currentTurnPlayerId = 'p0';
+responseState.trick.requiredCount = 1; responseState.trick.topRank = 10;
+responseState.secrets.p0.hand = [{ id: 'r8', rank: 8 }, { id: 'r9', rank: 9 }];
+responseState.secrets.p1.hand = [{ id: 'r6', rank: 6 }];
+const passedStats = executeCommand(responseState, { type: 'PASS', playerId: 'p0' }).nextState.botMemory.opponentStats.p0;
+const submittedStats = executeCommand(responseState, { type: 'PLAY_SET', playerId: 'p0', rank: 8, count: 1 }).nextState.botMemory.opponentStats.p0;
+assert.ok(passedStats.passRates['1'] > 0.5 && submittedStats.passRates['1'] < 0.5);
+assert.ok(submittedStats.nearFinishPressure > passedStats.nearFinishPressure);
+assert.equal(chooseSampleResponse([{ rank: 1 }, { rank: 8 }, { rank: 9 }], 10, 1, {}, () => 0.99).rank, 9, 'sample responder preserves strong cards');
+assert.equal(chooseSampleResponse([{ rank: 8 }, { rank: 13 }], 10, 2, {}, () => 0.5).jesterCount, 1);
 
 // Seeded matches are reproducible and run through all configured rounds.
 let matchA = createInitialState(players.slice(0, 4), { roundCount:5, turnTimeoutSeconds:0 }, 909);
