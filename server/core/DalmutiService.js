@@ -2,7 +2,7 @@ import { roomRepository } from './RoomRepository.js';
 import { broadcastRoomState, rooms } from '../shared/roomManager.js';
 import * as core from '../../packages/dalmuti-core/src/index.js';
 
-const PRESENTATION_FALLBACK_MS = 900;
+import { dalmutiPresentationDeadline } from '../../packages/protocol/src/dalmutiPresentation.js';
 const PRESENTATION_EVENT_TYPES = new Set(['ROUND_DEALT', 'OPENING_READY', 'PLAY_STARTED', 'SET_PLAYED', 'PASSED', 'TRICK_CLEARED', 'TAX_COMPLETED', 'REVOLUTION', 'GREAT_REVOLUTION', 'MERCHANT_EXCHANGED', 'ROUND_ENDED', 'MATCH_ENDED']);
 
 export class DalmutiService {
@@ -72,6 +72,7 @@ export class DalmutiService {
       const waiting = room.players.filter((player) => player.id !== hostId && !player.isReady && !player.isBot);
       if (waiting.length) throw new Error('모든 플레이어가 준비 완료해야 합니다.');
       let state = room.gameStateObject;
+      const previousVersion = state?.stateVersion ?? 0;
       if (!state || state.gameType !== 'DALMUTI' || state.matchState === 'GAME_OVER') {
         state = core.createInitialState(
           room.players.map((player) => this.playerFromRoom(player, room.hostId)),
@@ -85,6 +86,8 @@ export class DalmutiService {
           },
           room.seed || Date.now(),
         );
+        // A rematch shares the room; clients must not discard its opening as stale.
+        state.stateVersion = previousVersion;
       }
       const { nextState, events } = core.executeCommand(state, { type: 'START_MATCH', playerId: hostId });
       this.syncRoom(room, nextState);
@@ -147,7 +150,8 @@ export class DalmutiService {
     room.dalmutiPresentationGate = {
       eventId: last.eventId, stateVersion: last.stateVersion,
       waitingFor, acknowledged: [],
-      fallbackAt: Date.now() + Math.min(2700, envelopes.length * PRESENTATION_FALLBACK_MS),
+      openingEvents: envelopes[0]?.event.type === 'ROUND_DEALT' ? envelopes : [],
+      fallbackAt: Date.now() + dalmutiPresentationDeadline(envelopes.map(({ event }) => event)),
     };
     // The next turn/result clock starts only when this batch settles.
     room.gameStateObject.turnExpiresAt = 0;
@@ -307,6 +311,7 @@ export class DalmutiService {
         stateVersion: room.dalmutiPresentationGate.stateVersion,
         eventId: room.dalmutiPresentationGate.eventId,
         fallbackAt: room.dalmutiPresentationGate.fallbackAt,
+        openingEvents: room.dalmutiPresentationGate.openingEvents || [],
       } : null,
       chatMessages: (room.chatMessages || []).slice(-30),
       dalmuti: publicState,

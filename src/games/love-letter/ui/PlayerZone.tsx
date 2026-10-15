@@ -39,14 +39,16 @@ interface IdentityProps {
 export const PlayerIdentity: React.FC<IdentityProps> = ({ player, isSelf=false, isCurrentTurn, isTargetable, isSelectedTarget, isSpeaking=false, onSelect }) => {
   const step = useContext(PhysicalTableContext);
   const targeted = !!step && step.kind !== 'PLAY' && step.kind !== 'CLEANUP' && step.targetId === player.id;
+  const acting = !!step && step.actorId === player.id && !step.kind.startsWith('ROUND_');
+  const stateLabel = player.isEliminated ? '탈락' : targeted ? '대상' : acting ? '행동 중' : player.isProtected ? '보호 중' : isCurrentTurn ? '차례' : '';
   const anchor = useTableAnchor(player.id, 'identity');
   const imageAvatar = player.avatar && /^(https?:|\/)/.test(player.avatar);
   return <IdentityButton ref={anchor} as={motion.button} type="button" data-player-id={player.id} onClick={isTargetable ? onSelect : undefined}
     $turn={isCurrentTurn} $targetable={isTargetable} $selected={isSelectedTarget || targeted} $eliminated={player.isEliminated} $self={isSelf}
-    aria-label={`${player.nickname}${isTargetable ? ' 선택 가능' : ''}`} aria-disabled={!isTargetable} whileTap={isTargetable ? {scale:.98} : undefined}>
+    aria-label={`${player.nickname}${isTargetable ? ' 선택 가능' : stateLabel ? ` · ${stateLabel}` : ''}`} aria-disabled={!isTargetable} whileTap={isTargetable ? {scale:.98} : undefined}>
     <Avatar $turn={isCurrentTurn} $speaking={isSpeaking}>{imageAvatar ? <img src={player.avatar} alt=""/> : player.nickname.slice(0,1)}{player.isProtected && <Status><ShieldCheck size={10}/></Status>}{player.isEliminated && <Status><CircleSlash size={10}/></Status>}</Avatar>
     <IdentityCopy><Name>{player.nickname}</Name><Meta><Heart size={9} fill="currentColor"/> {player.tokens}{isSelf && <small>나</small>}</Meta></IdentityCopy>
-    {isCurrentTurn && <Turn>차례</Turn>}
+    {stateLabel && <Turn>{stateLabel}</Turn>}
   </IdentityButton>;
 };
 

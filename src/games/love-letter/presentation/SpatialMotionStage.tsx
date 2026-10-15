@@ -17,7 +17,7 @@ interface Props {
   onReviewVisible?: (actionId:string, version:number)=>void;
 }
 
-/** The visible card drives completion; there is no independent hidden clock. */
+/** Card travel drives completion; stationary results use the visible reading beat below. */
 function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=false, duration, onComplete, toOffset}: {
   identity:string;stepId:string;from:Point;to:Point;card?:CardInstance;faceUp:boolean;initialFaceUp?:boolean;duration:number;onComplete?:()=>void;toOffset?:{x:number;y:number;scale?:number};
 }) {
@@ -42,13 +42,14 @@ function TableCard({identity, stepId, from, to, card, faceUp, initialFaceUp=fals
 }
 
 function ResultDwell({duration,onComplete}:{duration:number;onComplete:()=>void}) {
-  return <motion.div aria-hidden="true" initial={{opacity:.99}} animate={{opacity:1}}
+  return <motion.div aria-hidden="true" initial={{scaleX:0}} animate={{scaleX:1}}
     transition={{duration,ease:'linear'}} onAnimationComplete={onComplete}
-    style={{position:'fixed',width:1,height:1,pointerEvents:'none'}}/>;
+    style={{position:'fixed',bottom:6,left:'calc(50% - 32px)',width:64,height:2,background:THEME.gold,transformOrigin:'left',pointerEvents:'none'}}/>;
 }
 
 export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,players,returnedActionId,onReturnCard,onReviewVisible,onPhaseComplete})=>{
   const registry=useTableAnchorRegistry();
+  const reducedMotion=useReducedMotion();
   const steps=buildPhysicalSequence(currentAction?.presentationEvents || []);
   const step=steps[currentAction?.presentationIndex || 0];
   const [geometry,setGeometry]=useState<Record<string,Point>|null>(null);
@@ -175,7 +176,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   // public pile, later effect beats (such as Handmaid's protection) must not
   // render the same overlay from the pile back to the play slot.
   const showPlayed=Boolean(played) && (cleanupIndex < 0 || (currentAction.presentationIndex ?? 0) <= cleanupIndex);
-  const drivingPlayed=showPlayed&&!resultDwell&&!privatePhase&&!handEffect&&!doubleEffect&&!comparisonStep&&!roundStep;
+  const drivingPlayed=showPlayed&&['PLAY','CLEANUP'].includes(step.kind);
   const returnCard=()=>{
     if(requesting)return;setRequesting(true);setError(null);
     onReturnCard(currentAction.actionId,currentAction.stateVersion,result=>{
@@ -183,10 +184,16 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     });
   };
   return <Layer data-physical-step={step.kind}>
+    {step.kind==='TARGET' && geometry && <svg aria-hidden="true" style={{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible'}}>
+      <motion.line x1={g.play.x+g.play.width/2} y1={g.play.y+g.play.height/2} x2={g.targetHand.x+g.targetHand.width/2} y2={g.targetHand.y+g.targetHand.height/2}
+        stroke={THEME.burgundy} strokeWidth={3} strokeLinecap="round" strokeDasharray="6 6"
+        initial={{pathLength:reducedMotion?1:0,opacity:.35}} animate={{pathLength:1,opacity:1}} transition={{duration:step.duration}} onAnimationComplete={finish}/>
+      <circle cx={g.targetHand.x+g.targetHand.width/2} cy={g.targetHand.y+g.targetHand.height/2} r={9} fill="none" stroke={THEME.burgundy} strokeWidth={3}/>
+    </svg>}
     {(comparisonStep || privatePhase) && <ComparisonVeil/>}
     {roundStep && (() => { const visible=Object.entries(step.cards || {}).filter(([id])=>g[`round:${id}`]&&g[`round-destination:${id}`]); return visible.map(([id, card]) => {
       const to=g[`round-destination:${id}`]; const winner=(step.apply?.winnerIds || []).includes(id);
-      return <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={step.kind==='ROUND_GATHER'?g[`round:${id}`]:to} to={to} toOffset={step.kind==='ROUND_RESULT'&&winner?{x:0,y:-10,scale:1.06}:undefined} card={card} faceUp={step.kind!=='ROUND_GATHER'} duration={step.duration} onComplete={()=>completeGroup(`round:${id}`,visible.length)}/>;
+      return <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={step.kind==='ROUND_GATHER'?g[`round:${id}`]:to} to={to} toOffset={step.kind==='ROUND_RESULT'&&winner?{x:0,y:-10,scale:1.06}:undefined} card={card} faceUp={step.kind!=='ROUND_GATHER'} duration={step.duration} onComplete={step.kind==='ROUND_RESULT'?undefined:()=>completeGroup(`round:${id}`,visible.length)}/>;
     }); })()}
     {comparisonStep && [step.actorId,step.targetId].filter((id):id is string=>Boolean(id)).map((id,index)=>{
       const isActor=index===0; const privateCard=isActor?comparisonActorCard:comparisonTargetCard; const card=comparisonCard(id,privateCard);
@@ -194,7 +201,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const isLoser=id===comparisonLoserId; const isWinner=id===comparisonWinnerId;
       const to=step.kind==='COMPARE_SETTLE'?(isLoser?g.comparisonDiscard:(isWinner?(isActor?g.actorHand:g.targetHand):fromHand)):stage;
       const phase=step.kind==='COMPARE_GATHER'?'gather':step.kind==='COMPARE_REVEAL'?'reveal':step.kind==='COMPARE_RESULT'?'result':'settle';
-      return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={step.id} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={()=>completeGroup(`comparison:${id}`,2)}/>;
+      return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={step.id} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={step.kind==='COMPARE_RESULT'?undefined:()=>completeGroup(`comparison:${id}`,2)}/>;
     })}
     {showPlayed && played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
       from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}
@@ -215,8 +222,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       to={step.kind==='SWAP'?(index?g.actorHand:g.targetHand):(index?g.targetReview:review)}
       card={comparison?.comparisonHands?.[index ? step.targetId! : step.actorId]}
       faceUp={false} duration={step.duration} onComplete={index===1?finish:undefined}/>) }
-    {resultDwell && <ResultDwell duration={step.duration} onComplete={finish}/>}
-    {passiveEffect && <ResultDwell duration={step.duration} onComplete={finish}/>}
+    {(resultDwell || step.kind==='COMPARE_RESULT' || step.kind==='ROUND_RESULT' || passiveEffect) && <ResultDwell key={step.id} duration={step.duration} onComplete={finish}/>}
     {step.kind==='REVIEW' && !returned && !actor?.isBot && localUserId===step.actorId && review && <ReviewControls style={{left:review.x+review.width/2,top:review.y+review.height+12}}>
       <span>{actorText.subject} {targetText.possessive} 카드를 확인 중</span>
       {localUserId===step.actorId && <button type="button" disabled={requesting} onClick={returnCard}>{requesting?'반환 요청 중…':'돌려주기'}</button>}
@@ -230,8 +236,8 @@ const CardObject=styled.div`position:absolute;left:0;top:0;width:154px;height:22
 const Front=styled.div`position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;`;
 const Back=styled(Front)`transform:rotateY(180deg);`;
 const ReviewControls=styled.div`
-  position:absolute;transform:translateX(-50%);width:min(220px,72vw);display:grid;justify-items:center;gap:7px;text-align:center;color:${THEME.primary};font-size:10px;pointer-events:auto;
+  position:absolute;transform:translateX(-50%);width:min(220px,72vw);display:grid;justify-items:center;gap:7px;text-align:center;color:${THEME.primary};font-size:${THEME.interaction.caption};pointer-events:auto;
   span{color:${THEME.mutedForeground};}
-  button{pointer-events:auto;width:min(220px,100%);min-height:40px;padding:0 18px;border:1px solid ${THEME.goldAntique};border-radius:9px;background:${THEME.gradients.obsidianButton};color:white;font:900 12px ${THEME.font.serif};cursor:pointer;box-shadow:0 4px 10px rgba(9,13,22,.14);}
+  button{pointer-events:auto;width:min(220px,100%);min-height:${THEME.interaction.touchTarget};padding:0 18px;border:1px solid ${THEME.goldAntique};border-radius:9px;background:${THEME.gradients.obsidianButton};color:white;font:900 ${THEME.interaction.body} ${THEME.font.serif};cursor:pointer;box-shadow:0 4px 10px rgba(9,13,22,.14);}
   button:disabled{opacity:.6;cursor:wait;}
 `;

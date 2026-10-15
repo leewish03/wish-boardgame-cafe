@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from 'react';
-import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation } from './presentationState.js';
+import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation, replayOpeningPresentation } from './presentationState.js';
 
 export function useDalmutiPresentation(socket, roomState) {
   const model = useRef(createPresentationState());
@@ -16,19 +16,25 @@ export function useDalmutiPresentation(socket, roomState) {
   }, [socket]);
 
   useLayoutEffect(() => {
-    observePresentation(model.current, roomState);
+    if (model.current.latest || !replayOpeningPresentation(model.current, roomState)) observePresentation(model.current, roomState);
     render();
   }, [roomState]);
 
   useEffect(() => {
-    synchronizePresentation(model.current, roomRef.current);
+    if (!model.current.current) synchronizePresentation(model.current, roomRef.current);
+    let openingView = true;
     const onEvent = (envelope) => { enqueuePresentation(model.current, envelope); render(); };
     const onState = (room) => {
       if (room?.code !== roomRef.current?.code || !room.dalmuti) return;
       if (syncRequested.current) {
         syncRequested.current = false;
-        synchronizePresentation(model.current, room);
-        acknowledge(room.presentationBatch?.eventId);
+        if (openingView && model.current.current?.stateVersion === room.stateVersion) {
+          observePresentation(model.current, room);
+        } else if (!openingView || !replayOpeningPresentation(model.current, room)) {
+          synchronizePresentation(model.current, room);
+          acknowledge(room.presentationBatch?.eventId);
+        }
+        openingView = false;
       } else observePresentation(model.current, room);
       render();
     };

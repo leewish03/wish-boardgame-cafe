@@ -36,7 +36,7 @@ function resultCopy(summary: any, players: PlayerPublic[], localUserId: string, 
     case 'BARON_TIE': return '남작 비교 결과 카드 숫자가 같습니다.';
     case 'HANDMAID_PROTECT': return actorId === localUserId ? '다음 내 차례까지 보호됩니다.' : `${actor.name}님이 다음 차례까지 보호됩니다.`;
     case 'PRINCE_PRINCESS_ELIMINATED': return targetId === localUserId ? '내 공주가 버려져 탈락했습니다.' : `공주가 버려져 ${target?.name || '상대'} 탈락`;
-    case 'PRINCE_DISCARD': return `${target?.subject || '상대가'} ${revealedName || '손패'} 카드를 버리고 새로 뽑았습니다.`;
+    case 'PRINCE_DISCARD': return `${target?.subject || '상대가'} 손패를 공개해 버린 뒤 새 카드 1장을 받습니다.`;
     case 'KING_SWAP': return `${actor.subject} ${target?.possessive || '상대의'} 손패와 맞바꿨습니다.`;
     // Countess has no public effect. Whether it was forced or a bluff is
     // hidden information, so do not imply a resolution or its reason.
@@ -73,6 +73,13 @@ export function deriveActionNarrative(action: PresentationAction | null | undefi
     return { title: `${player.subject} 카드 1장 뽑음` };
   }
   if (step?.kind === 'TARGET' && target) return { title: `${actor.subject} ${target.object} 지목`, detail: card?.name ? `${card.name} 사용` : undefined };
+  if (step?.kind === 'REVEAL' && target) return { title: `${target.possessive} 손패 공개`, detail: step.card ? `${step.card.value} ${step.card.name}` : undefined };
+  if (step?.kind === 'DISCARD_HAND' && target) return { title: `${target.possessive} 카드를 버린 패로 이동`, detail: step.card?.name };
+  if (step?.kind === 'DRAW') return { title: `${target?.subject || actor.subject} 새 카드 1장 받는 중`, detail: '덱에서 손패로 이동합니다' };
+  if (step?.kind === 'SWAP' && target) return { title: `${actor.name} ↔ ${target.name} 손패 교환`, detail: '두 사람의 카드를 서로 바꿉니다' };
+  if (step?.kind === 'PROTECT') return { title: `${actor.name} 보호 시작`, detail: '다음 자신의 차례까지 다른 플레이어의 카드 효과를 받지 않습니다' };
+  if (step?.kind === 'COMPARE_GATHER' || step?.kind === 'COMPARE_REVEAL') return { title: `${actor.name} ↔ ${target?.name || '상대'} 숫자 비교`, detail: '낮은 숫자가 탈락합니다 · 같은 숫자는 둘 다 생존' };
+  if (step?.kind === 'COMPARE_RESULT' && summary) return { title: '남작 비교 결과', result: resultCopy(summary, players, localUserId, actorId, targetId) };
   if (step?.kind === 'RESULT_DWELL' && summary) return { title: `${actor.name} · ${card?.name || '카드'} 사용`, result: resultCopy(summary, players, localUserId, actorId, targetId) };
   if (step?.kind === 'REVIEW' && target) return { title: `${actor.subject} ${target.possessive} 카드를 확인 중` };
   if (card) return { title: `${actor.name} · ${card.name || card.value} 사용`, detail: target ? `${target.object} 대상으로 선택` : undefined };

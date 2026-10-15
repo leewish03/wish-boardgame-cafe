@@ -24,7 +24,7 @@ const HandSlot: React.FC<{ playerId:string; index:number; cardId?:string; childr
 export const PlayerHand: React.FC<PlayerHandProps> = ({ playerId, hand, isMyTurn, canSelectCards, selectedCardId, interactionState, errorMessage, onSelectCard, actionSlot, isEliminated=false, presentationMessage }) => {
   const hasCountess = hand.some(c => c.value === 7);
   const hasPrinceOrKing = hand.some(c => c.value === 5 || c.value === 6);
-  const message = errorMessage || presentationMessage || (interactionState === 'TARGETING' ? '빛나는 플레이어 자리를 선택하세요' : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' ? '사용 내용을 확인한 뒤 확정하세요' : interactionState === 'SUBMITTING' ? '행동을 서버에 전달했습니다' : !isMyTurn ? '상대의 차례 · 내 카드를 확인할 수 있어요' : !canSelectCards ? '이전 행동을 확인하는 중' : '내 차례 · 카드를 선택하세요');
+  const message = errorMessage || presentationMessage || (interactionState === 'TARGETING' ? '빛나는 플레이어 자리를 선택하세요' : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' ? '사용 내용을 확인한 뒤 확정하세요' : interactionState === 'SUBMITTING' ? '행동을 서버에 전달했습니다' : !isMyTurn ? '상대의 차례 · 내 카드를 확인할 수 있어요' : !canSelectCards ? '이전 행동을 확인하는 중' : hasCountess && hasPrinceOrKing ? '왕자·국왕과 함께 가진 백작부인은 반드시 먼저 사용합니다' : '내 차례 · 2장 중 1장을 사용하세요');
   if (isEliminated) return <HandContainer data-player-id="self-seat" $eliminated><EliminatedRail><EliminatedMark><CircleSlash size={38}/></EliminatedMark><EliminatedCopy><small>ROUND SPECTATOR</small><strong>이번 라운드에서 탈락했습니다</strong><span>공개된 테이블을 관전하며 다음 라운드를 기다려 주세요</span></EliminatedCopy></EliminatedRail></HandContainer>;
   return <HandContainer data-player-id="self-seat">
     <HandHeader><span>{message}</span></HandHeader>

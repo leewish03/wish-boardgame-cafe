@@ -23,7 +23,8 @@ export function registerDalmutiController(io, service) {
     socket.on('dalmuti:presentation-ack', async (payload, callback) => {
       try {
         const { room, roomCode, userId } = requireDalmutiRoom(socket, payload);
-        callback?.(await service.acknowledgePresentation(roomCode, userId, payload?.eventId));
+        const result = await service.acknowledgePresentation(roomCode, userId, payload?.eventId);
+        callback?.(result);
       } catch (error) { fail(callback, error); }
     });
 

@@ -12,13 +12,16 @@ const CloseButton=styled.button`width:36px;height:36px;display:grid;place-items:
 const Feed = styled.div`flex:1;min-height:0;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:7px;`;
 const Line = styled.div`display:flex;gap:6px;font-size:12px;line-height:1.38;word-break:break-word;&[data-system='true']{justify-content:center;color:${THEME.mutedForeground};font-size:11px;font-weight:700;text-align:center;}&[data-self='true'] strong{color:${THEME.primary};}strong{flex:0 0 auto;color:${THEME.burgundy};font-size:11px;}span{min-width:0;}`;
 const Form = styled.form`display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;padding:8px;border-top:1px solid ${THEME.border};background:#fff;`;
-const SendButton=styled.button`min-width:58px;height:40px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.obsidianButton};color:#fff;font:800 11px ${THEME.font.sans};cursor:pointer;`;
+const SendButton=styled.button`min-width:58px;height:40px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.obsidianButton};color:#fff;font:800 11px ${THEME.font.sans};cursor:pointer;&:disabled{opacity:.55;cursor:wait;}`;
 const ViewportOverlay=styled.div`position:fixed;z-index:2000;pointer-events:auto;padding:8px;box-sizing:border-box;`;
 const ChatPanel=styled.div`height:100%;width:min(560px,100%);margin:0 auto;`;
 const Toggle = styled.button`position:${p=>p.$inline?'relative':'fixed'};right:${p=>p.$inline?'auto':'14px'};bottom:${p=>p.$inline?'auto':'max(14px,env(safe-area-inset-bottom))'};z-index:901;width:${p=>p.$inline?'40px':'44px'};height:${p=>p.$inline?'40px':'44px'};border-radius:50%;display:grid;place-items:center;border:1px solid ${THEME.gold};color:#fff;background:${THEME.primary};box-shadow:0 5px 12px rgba(9,13,22,.2);cursor:pointer;span{position:absolute;right:-3px;top:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:10px;display:grid;place-items:center;background:${THEME.burgundy};font-size:9px;font-weight:900;}`;
 
 export function RoomChat({ messages = [], onSend, mode = 'panel', currentUserId, onOpenChange, launcherPlacement = 'fixed' }) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const sendingRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(messages.length);
   const feedRef = useRef(null);
@@ -32,8 +35,20 @@ export function RoomChat({ messages = [], onSend, mode = 'panel', currentUserId,
   useEffect(() => { if (open || !compact) setSeen(messages.length); }, [messages.length, open, compact]);
   useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [messages.length, open]);
   useEffect(() => { if (!open) launcherRef.current?.focus(); }, [open]);
-  const submit = (event) => { event.preventDefault(); const value = text.trim(); if (!value) return; onSend?.(value); setText(''); };
-  const content = <Shell><ChatHeader><strong>게임 채팅</strong>{compact && <CloseButton type="button" onClick={close} aria-label="채팅 닫기"><X size={19}/></CloseButton>}</ChatHeader><Feed ref={feedRef}>{messages.map((message) => <Line key={message.id} data-system={message.type === 'system'} data-self={Boolean(currentUserId && message.userId === currentUserId)}>{message.type === 'system' ? <span>{message.text}</span> : <><strong>{currentUserId && message.userId === currentUserId ? '나' : message.nickname || '상대'}</strong><span>{message.text}</span></>}</Line>)}</Feed><Form onSubmit={submit} autoComplete="off"><Input type="text" name="game-chat-message" value={text} onChange={(event) => setText(event.target.value)} placeholder="메시지 입력…" maxLength={300} autoFocus={compact && open} autoComplete="off" inputMode="text" enterKeyHint="send" autoCapitalize="sentences" autoCorrect="on" spellCheck data-1p-ignore data-lpignore="true" data-bwignore="true"/><SendButton type="submit" aria-label="메시지 보내기"><Send size={15}/>전송</SendButton></Form></Shell>;
+  const submit = async (event) => {
+    event.preventDefault();
+    const value = text.trim();
+    if (!value || !onSend || sendingRef.current) return;
+    sendingRef.current = true; setSending(true); setSendError('');
+    try {
+      if (await onSend(value) !== false) setText(current => current.trim() === value ? '' : current);
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : '메시지를 보내지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      sendingRef.current = false; setSending(false);
+    }
+  };
+  const content = <Shell><ChatHeader><strong>게임 채팅</strong>{compact && <CloseButton type="button" onClick={close} aria-label="채팅 닫기"><X size={19}/></CloseButton>}</ChatHeader><Feed ref={feedRef}>{messages.map((message) => <Line key={message.id} data-system={message.type === 'system'} data-self={Boolean(currentUserId && message.userId === currentUserId)}>{message.type === 'system' ? <span>{message.text}</span> : <><strong>{currentUserId && message.userId === currentUserId ? '나' : message.nickname || '상대'}</strong><span>{message.text}</span></>}</Line>)}</Feed>{sendError && <p role="alert" style={{margin:'8px 12px',color:THEME.destructive,fontSize:13}}>{sendError}</p>}<Form onSubmit={submit} autoComplete="off"><Input type="text" name="game-chat-message" value={text} onChange={(event) => setText(event.target.value)} placeholder="메시지 입력…" maxLength={300} autoFocus={compact && open} autoComplete="off" inputMode="text" enterKeyHint="send" autoCapitalize="sentences" autoCorrect="on" spellCheck data-1p-ignore data-lpignore="true" data-bwignore="true"/><SendButton type="submit" disabled={sending} aria-label="메시지 보내기"><Send size={15}/>{sending ? '전송 중' : '전송'}</SendButton></Form></Shell>;
   if (!compact) return content;
   const panel = open && typeof document !== 'undefined' ? createPortal(<ViewportOverlay style={{top:viewport.top,left:viewport.left,width:viewport.width,height:viewport.height}}><ChatPanel>{content}</ChatPanel></ViewportOverlay>, document.body) : null;
   const inline = launcherPlacement === 'inline';

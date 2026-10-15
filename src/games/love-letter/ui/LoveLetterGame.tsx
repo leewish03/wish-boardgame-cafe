@@ -24,6 +24,7 @@ import { buildPhysicalSequence } from '../presentation/physicalSequence';
 import { PhysicalTableContext } from '../presentation/PhysicalTableContext';
 import { PresentationStagePlane } from '../presentation/PresentationStagePlane';
 import { playerCopy } from './playerCopy';
+import { deriveActionNarrative } from '../presentation/deriveActionNarrative';
 
 export interface LoveLetterGameProps {
   // Support both direct legacy props from App.jsx and pure GameState
@@ -456,6 +457,13 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const matchWinner = gameState.players.find(p => p.id === gameState.matchWinnerId);
   const targetPlayer = gameState.players.find(p => p.id === selectedTargetId);
   const selectedGuessName = selectedGuessValue ? CARD_DEFINITIONS[selectedGuessValue]?.name : null;
+  const currentNarrative = deriveActionNarrative(currentAction, visual.visualTable.players, activeUserId);
+  useEffect(() => {
+    const table = tableViewportRef.current;
+    if (!table) return;
+    if (interactionState === 'READY') table.scrollTo({ top: table.scrollHeight });
+    else if (interactionState === 'TARGETING' || isActionPlaying) table.scrollTo({ top: 0 });
+  }, [interactionState, isActionPlaying]);
   const tableStatus = !gameSocket.isConnected
     ? '연결을 복구하는 중'
     : gameState.playPhase === 'ROUND_START'
@@ -463,9 +471,17 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       : gameState.playPhase === 'TURN_PREPARING'
         ? turnPlayer?.id === activeUserId ? '내가 카드를 받는 중' : `${playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}님이 카드를 받는 중`
     : isActionPlaying
-      ? '이전 행동을 보여주는 중'
+      ? currentNarrative ? [currentNarrative.title, currentNarrative.result].filter(Boolean).join(' · ') : '행동을 처리하는 중'
+      : gameState.matchState === 'GAME_OVER'
+        ? '매치 종료'
+      : gameState.matchState === 'ROUND_END'
+        ? '라운드 결과'
+      : gameState.playPhase !== 'TURN_INPUT'
+        ? '테이블 정리 중'
       : interactionState === 'SUBMITTING'
         ? '서버에 행동을 확인하는 중'
+        : me?.isEliminated
+          ? '탈락 · 이번 라운드 관전 중'
         : isMyTurn
           ? '내 차례'
           : `${playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}의 차례`;
@@ -476,11 +492,11 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     ? 'DISCONNECTED'
     : isPaused
       ? 'PAUSED'
-      : isActionPlaying || hasPendingPresentation() || gameState.playPhase !== 'TURN_INPUT'
+      : isActionPlaying || hasPendingPresentation()
         ? 'PRESENTING'
         : gameState.matchState !== 'PLAYING'
           ? 'HIDDEN'
-          : 'RUNNING';
+          : gameState.playPhase !== 'TURN_INPUT' ? 'PRESENTING' : 'RUNNING';
 
   return (
     <TableAnchorProvider><PhysicalTableContext.Provider value={physicalStep}><BoardSurface $chatOpen={chatOpen} onPointerDown={() => sfx.unlockAndStart()}>
@@ -515,7 +531,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       {/* 2. OPPONENT RAIL (Section 3 Tier 2) */}
       <OpponentRail
         opponents={visual.visualTable.players.filter(p => p.id !== activeUserId)}
-        currentTurnPlayerId={gameState.currentTurnPlayerId}
+        currentTurnPlayerId={isActionPlaying ? null : gameState.currentTurnPlayerId}
         targetablePlayerIds={targetablePlayerIds}
         selectedTargetId={selectedTargetId}
         presentationAction={null}
@@ -527,6 +543,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       {/* 3 & 4. ACTION STAGE & DECK INFO (Section 3 Tier 3 & 4) */}
       <ActionStage
+        hideNarration={physicalStep?.kind === 'REVIEW' && physicalStep.actorId === activeUserId}
         deckCount={visual.visualTable.deckCount}
         setAsideCount={visual.visualTable.setAsideCount}
         players={visual.visualTable.players}
@@ -661,7 +678,14 @@ const BoardSurface = styled.div<{$chatOpen:boolean}>`
   box-sizing: border-box;
   font-family: ${THEME.font.sans};
   color: ${THEME.foreground};
+  @media(min-width:700px) and (max-height:500px) and (orientation:landscape){
+    grid-template-columns:minmax(0,1fr) 340px;
+    grid-template-rows:auto minmax(0,1fr);
+    >header{grid-column:1/-1;}
+    >main{grid-column:1;grid-row:2;}
+    >section{grid-column:2;grid-row:2;overflow-y:auto;border-left:1px solid ${THEME.border};}
+  }
 `;
-const TableViewport = styled.main`min-height:0;overflow:hidden;display:grid;grid-template-rows:auto auto;align-content:start;`;
+const TableViewport = styled.main`min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:thin;display:grid;grid-template-rows:auto auto;align-content:start;`;
 
 export default LoveLetterGame;

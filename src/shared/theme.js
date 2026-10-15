@@ -3,6 +3,7 @@
 // =========================================================================
 
 export const MARBLE_BASE_THEME = {
+  interaction: { touchTarget: '44px', caption: '12px', body: '14px', gap: '8px', padding: '12px' },
   // === Carrara Marble & Obsidian Surfaces ===
   background: '#f4f6f8',             // Warm Carrara tint
   backgroundSecondary: '#e9eef2',

@@ -33,7 +33,7 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
           as={motion.div}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0, pointerEvents: 'none' }}
           onClick={onCancel}
         >
           <SheetContainer

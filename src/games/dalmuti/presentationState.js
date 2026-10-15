@@ -10,6 +10,15 @@ export function synchronizePresentation(model, room) {
   model.generation += 1;
 }
 
+export function replayOpeningPresentation(model, room) {
+  const events = room?.presentationBatch?.openingEvents || [];
+  if (!room?.presentationPending || events[0]?.event.type !== 'ROUND_DEALT' || events.some(event => event.stateVersion !== room.stateVersion)) return false;
+  const generation = model.generation + 1;
+  Object.assign(model, createPresentationState(), { latest: room, display: room, generation });
+  events.forEach(event => enqueuePresentation(model, event));
+  return true;
+}
+
 export function enqueuePresentation(model, envelope) {
   if (!envelope?.eventId || envelope.stateVersion <= model.settledVersion || model.seen.has(envelope.eventId)) return;
   model.seen.add(envelope.eventId);

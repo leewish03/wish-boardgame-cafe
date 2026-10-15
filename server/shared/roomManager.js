@@ -248,6 +248,8 @@ export function getPublicRoomState(room, requestUserId = null) {
     serverTime: Date.now(),
     targetTokens: room.targetTokens || 4,
     maxPlayers: room.maxPlayers || 4,
+    minPlayers: room.minPlayers,
+    hostRole: room.hostRole,
     turnTimeLimit: room.turnTimeLimit ?? 60,
     roundCount: room.roundCount,
     deckCount: room.deck ? room.deck.length : 0,
@@ -290,11 +292,11 @@ export function getPublicRoomState(room, requestUserId = null) {
   };
 }
 
-export function broadcastRoomState(io, roomCode) {
+export function broadcastRoomState(io, roomCode, persist = true) {
   const room = rooms[roomCode];
   if (!room) return;
 
-  void roomRepository.saveRoom(room).catch((error) => {
+  if (persist) void roomRepository.saveRoom(room).catch((error) => {
     console.error('Failed to persist room state:', error);
   });
 
@@ -351,7 +353,7 @@ function openRoomSummary(room) {
 export async function handlePauseExpired(io, roomCode, userId) {
   const room = rooms[roomCode];
   if (!room) return;
-  if (room.gameType === 'DALMUTI' && lifecycleForRoom(room)?.disconnectExpired) {
+  if (lifecycleForRoom(room)?.disconnectExpired) {
     await lifecycleForRoom(room).disconnectExpired(roomCode, userId);
     return;
   }
@@ -414,7 +416,8 @@ export function initRoomManager(io) {
     socket.on('room:create', (payload, callback) => {
       try {
         const {
-          gameType = 'LOVE_LETTER',
+          gameType: requestedGameType = 'LOVE_LETTER',
+          hostRole = 'JACK',
           nickname = '방장',
           avatarUrl,
           targetTokens = 4,
@@ -426,6 +429,11 @@ export function initRoomManager(io) {
           merchantExchange = false,
         } = payload || {};
 
+        const gameType = String(requestedGameType).trim().toUpperCase();
+        if (!['LOVE_LETTER', 'DALMUTI', 'SIX_NIMMT', 'WHITECHAPEL', 'WHITEHALL'].includes(gameType)) throw new Error('지원하지 않는 게임입니다.');
+        const limits = { SIX_NIMMT: [2, 10], WHITECHAPEL: [2, 6], WHITEHALL: [2, 4] }[gameType];
+        const capacity = limits ? Math.min(limits[1], Math.max(limits[0], Math.trunc(Number(maxPlayers)) || 4)) : Number(maxPlayers) || 4;
+        if (limits && !['JACK', 'INVESTIGATOR'].includes(hostRole)) throw new Error('역할을 확인해 주세요.');
         const roomCode = generateRoomCode();
         const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const sessionToken = generateSessionToken(userId);
@@ -460,7 +468,8 @@ export function initRoomManager(io) {
           playPhase: 'LOBBY',
           stateVersion: 1,
           targetTokens: Number(targetTokens) || 4,
-          maxPlayers: Number(maxPlayers) || 4,
+          maxPlayers: capacity,
+          ...(limits ? { minPlayers: limits[0], hostRole } : {}),
           // Zero is an intentional setting for an untimed table. Do not use a
           // truthy fallback here or the waiting room and authoritative engine
           // silently disagree about the rule the host selected.
@@ -610,7 +619,7 @@ export function initRoomManager(io) {
         bindRoomSession(socket, session);
 
         // Check if room was paused because of this player (or any player)
-        if (room.isPaused && (room.gameType === 'DALMUTI' || room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
+        if (room.isPaused && (lifecycleForRoom(room)?.disconnectExpired || room.pausedPlayerId === player.id || !room.players.some((p) => p.isDisconnected))) {
           const pausedId = room.pausedPlayerId || player.id;
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
@@ -670,7 +679,7 @@ export function initRoomManager(io) {
         // from the keyboard without emitting a distinct reconnect flow. A
         // verified heartbeat is therefore sufficient to release a pause that
         // was created for this same player.
-        if (room.isPaused && (room.gameType === 'DALMUTI' || room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
+        if (room.isPaused && (lifecycleForRoom(room)?.disconnectExpired || room.pausedPlayerId === player.id || !room.players.some((member) => member.isDisconnected))) {
           const pausedId = room.pausedPlayerId || player.id;
           if (room.pauseTimeout) {
             clearTimeout(room.pauseTimeout);
@@ -805,7 +814,7 @@ export function initRoomManager(io) {
     });
 
     // 5. Chat Message
-    socket.on('chat:message', (payload, callback) => {
+    socket.on('chat:message', async (payload, callback) => {
       try {
         const { room, roomCode, userId } = resolveRoomAndUser(socket, payload);
         if (!room) throw new Error('방을 찾을 수 없습니다.');
@@ -813,7 +822,7 @@ export function initRoomManager(io) {
         const sender = room.players.find((p) => p.id === userId);
         if (!sender || !payload?.text?.trim()) throw new Error('메시지 내용을 입력해 주세요.');
 
-        const msg = appendRoomMessage(room, {
+        const msg = appendRoomMessage({ chatMessages: [] }, {
           type: 'chat',
           userId: sender.id,
           nickname: sender.nickname,
@@ -821,8 +830,13 @@ export function initRoomManager(io) {
           text: payload.text.trim(),
         });
 
+        try {
+          await roomRepository.saveRoom(room, current => ({ chatMessages: [...(current.chatMessages || []), msg].slice(-100) }));
+        } catch (error) {
+          console.error('Chat persistence failed:', error);
+          throw new Error('메시지를 저장하지 못했습니다. 잠시 후 다시 보내 주세요.');
+        }
         io.to(roomCode).emit('chat:message', msg);
-        void roomRepository.saveRoom(room);
         if (typeof callback === 'function') callback({ success: true, message: msg });
       } catch (err) {
         console.error('chat:message error:', err);
@@ -853,7 +867,7 @@ export function initRoomManager(io) {
         // Previously, if a connected player left while waiting for somebody
         // else, the core forfeit command cleared its expiry timer but the room
         // stayed flagged as paused forever.
-        if (room.isPaused && room.gameType !== 'DALMUTI') {
+        if (room.isPaused && !lifecycleForRoom(room)?.disconnectExpired) {
           if (room.pauseTimeout) clearTimeout(room.pauseTimeout);
           room.pauseTimeout = null;
           room.isPaused = false;
@@ -924,7 +938,7 @@ export function initRoomManager(io) {
         if (!room) { if (typeof callback === 'function') callback({ success: true }); return; }
         // Leaving a completed result screen must not run a forfeit command and
         // mutate the already-finished outcome.
-        if (room.gameStateObject?.matchState === 'PLAYING' || room.gameState === 'PLAYING' || (room.gameType === 'DALMUTI' && ['ROUND_END', 'GAME_OVER'].includes(room.gameState))) {
+        if (room.gameStateObject?.matchState === 'PLAYING' || room.gameState === 'PLAYING' || (lifecycleForRoom(room)?.disconnectExpired && ['ROUND_END', 'GAME_OVER'].includes(room.gameState))) {
           await handleForfeit(payload, callback);
           return;
         }
@@ -958,6 +972,7 @@ export function initRoomManager(io) {
 
     // 7. Socket Disconnect Handler
     socket.on('disconnect', async () => {
+      try {
       const mapping = socketToUser[socket.id];
       if (!mapping) return;
       const { roomCode, userId } = mapping;
@@ -1028,6 +1043,9 @@ export function initRoomManager(io) {
         }
 
         broadcastRoomState(io, roomCode);
+      }
+      } catch (error) {
+        console.error('Room disconnect persistence failed:', error);
       }
     });
   });

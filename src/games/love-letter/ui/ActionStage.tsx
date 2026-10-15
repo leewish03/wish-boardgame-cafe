@@ -10,6 +10,7 @@ import { deriveActionNarrative } from '../presentation/deriveActionNarrative';
 import { playerCopy } from './playerCopy';
 
 interface ActionStageProps {
+  hideNarration?: boolean;
   deckCount: number;
   setAsideCount?: number;
   players?: PlayerPublic[];
@@ -30,6 +31,7 @@ interface ActionStageProps {
 
 /** The centre of the table explains both the last action and the next legal action. */
 export const ActionStage: React.FC<ActionStageProps> = ({
+  hideNarration = false,
   deckCount,
   setAsideCount = 0,
   players = [],
@@ -51,19 +53,19 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   const selection = interactionState === 'TARGETING' && activeCard ? `${activeCard.name}의 대상을 선택하세요` : interactionState === 'GUESSING' ? '경비병이 추측할 카드를 고르세요' : interactionState === 'READY' && activeCard ? `${activeCard.name} 사용 준비 완료` : null;
   const activeDescription = activeCard && (activeCard.description || activeCard.desc || CARD_DEFINITIONS[activeCard.value]?.description);
   const idleMessage = isMyTurn
-    ? '카드를 선택해 행동을 준비하세요'
+    ? '2장 중 1장을 사용하고, 남은 1장을 지키세요'
     : `${turnPlayerName}의 차례 · 행동을 기다리는 중`;
 
   return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $hasControls={Boolean(activeCard)}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
-    <Narration aria-live="polite">{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong>{targetPlayerId && <span>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</span>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
+    <Narration aria-live="polite" aria-hidden={hideNarration} style={{ visibility: hideNarration ? 'hidden' : 'visible' }}>{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong><span>{activeDescription}</span>{targetPlayerId && <em>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</em>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
     {activeCard && <ActionControls><CancelButton type="button" onClick={onCancelAction} disabled={interactionState === 'SUBMITTING'}>취소</CancelButton><ConfirmButton type="button" disabled={!canConfirm} onClick={onConfirmAction}>{interactionState === 'SUBMITTING' ? '전달 중…' : '이 카드 사용'}</ConfirmButton></ActionControls>}
   </StageContainer>;
 };
 
 const StageContainer = styled.section<{$hasControls:boolean}>`
   position:relative;width:100%; min-width:0; min-height:${p=>p.$hasControls?'234px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
-  @media (max-height:650px){display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
+  @media (max-height:650px){min-height:0;display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
 const TableObjects = styled.div`display:flex;align-items:center;justify-content:center;gap:32px;width:100%;min-height:100px;@media(max-height:650px){min-height:72px;} `;

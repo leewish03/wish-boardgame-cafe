@@ -33,13 +33,14 @@ export function restoreRoom(state) {
   }
   room.isPaused = room.gameState === 'PLAYING' || room.gameState === 'ROUND_END';
   room.pausedPlayerId = room.isPaused ? room.pausedPlayerId || null : null;
-  room.pauseExpiresAt = room.gameType === 'DALMUTI' && room.isPaused ? room.pauseExpiresAt || Date.now() + 90_000 : null;
+  room.pauseExpiresAt = ['DALMUTI', 'SIX_NIMMT', 'WHITECHAPEL', 'WHITEHALL'].includes(room.gameType) && room.isPaused ? room.pauseExpiresAt || Date.now() + 90_000 : null;
   return room;
 }
 
 export class SupabaseRoomRepository {
   constructor(connectionString) {
     this._rooms = new Map();
+    this.writes = new Map();
     this.pool = new pg.Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
@@ -67,29 +68,45 @@ export class SupabaseRoomRepository {
     return this._rooms.get(String(id).toUpperCase().trim()) || null;
   }
 
-  async saveRoom(room) {
+  enqueueWrite(code, operation) {
+    const write = (this.writes.get(code) || Promise.resolve()).catch(() => {}).then(operation);
+    this.writes.set(code, write);
+    const cleanup = () => { if (this.writes.get(code) === write) this.writes.delete(code); };
+    write.then(cleanup, cleanup);
+    return write;
+  }
+
+  async saveRoom(room, changes) {
     if (!room?.code) return;
     const code = String(room.code).toUpperCase().trim();
-    room.updatedAt = Date.now();
-    this._rooms.set(code, room);
-
-    const state = clonePersistable(room);
-    await this.pool.query(
-      `insert into wish_private.rooms (room_code, state, state_version, created_at, updated_at)
+    return this.enqueueWrite(code, async () => {
+      const current = changes ? this._rooms.get(code) || room : room;
+      const patch = typeof changes === 'function' ? changes(current) : changes;
+      const updatedAt = Date.now();
+      const state = clonePersistable({ ...current, ...patch, updatedAt });
+      await this.pool.query(
+        `insert into wish_private.rooms (room_code, state, state_version, created_at, updated_at)
        values ($1, $2::jsonb, $3, to_timestamp($4 / 1000.0), now())
        on conflict (room_code) do update
        set state = excluded.state,
            state_version = excluded.state_version,
            updated_at = now()`,
-      [code, JSON.stringify(state), room.stateVersion || 1, room.createdAt || Date.now()]
-    );
+        [code, JSON.stringify(state), state.stateVersion || 1, state.createdAt || Date.now()]
+      );
+      // Re-evaluate append patches so synchronous room events during SQL keep their messages.
+      if (changes) Object.assign(current, typeof changes === 'function' ? changes(current) : patch);
+      current.updatedAt = updatedAt;
+      this._rooms.set(code, current);
+    });
   }
 
   async deleteRoom(id) {
     if (!id) return;
     const code = String(id).toUpperCase().trim();
-    this._rooms.delete(code);
-    await this.pool.query('delete from wish_private.rooms where room_code = $1', [code]);
+    return this.enqueueWrite(code, async () => {
+      await this.pool.query('delete from wish_private.rooms where room_code = $1', [code]);
+      this._rooms.delete(code);
+    });
   }
 
   async listRooms() {

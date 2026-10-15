@@ -1,15 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { css } from 'styled-components';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Crown, LogOut, Mic, Trophy, Users, Volume2 } from 'lucide-react';
+import { Crown, LogOut, Mic, Trophy, Users, Volume2, X } from 'lucide-react';
 import { THEME } from '../../shared/theme';
 import { RoomChat } from '../../shared/RoomChat';
 import { RoomVoiceControls } from '../love-letter/ui/GameMenuDrawer';
 import { GameHud } from '../love-letter/ui/GameHud';
 import { DALMUTI_RANKS } from '../../../packages/dalmuti-core/src/index.js';
 import { useDalmutiPresentation } from './useDalmutiPresentation.js';
-import { DalmutiMotionLayer } from './DalmutiMotionLayer.jsx';
+import { DalmutiMotionLayer, DalmutiTableCard } from './DalmutiMotionLayer.jsx';
+import { DalmutiResults } from './DalmutiResults.jsx';
 import { toggleTaxSelection, visibleSetRanks } from './presentationState.js';
+import { dalmutiActionNarrative } from './actionNarrative.js';
 
 const rankName = (rank) => DALMUTI_RANKS[rank] || `계급 ${rank}`;
 const groupCards = (cards = []) => {
@@ -42,6 +44,12 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     socket?.on('disconnect', unlock);
     return () => { socket?.off('disconnect', unlock); clearTimeout(pending.current?.timer); };
   }, [socket, unlock]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
 
   const playersById = useMemo(() => new Map((game?.players || []).map((player) => [player.id, player])), [game?.players]);
   const me = playersById.get(myId);
@@ -61,7 +69,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     const version = roomState.stateVersion;
     pending.current = { version, timer: setTimeout(() => { unlock(); requestSync(); setError('응답을 확인하는 중입니다. 다시 동기화합니다.'); }, 5000) };
     setSubmitting(true);
-    socket.emit('dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: version } }, (result) => {
+    socket.emit(command.type === 'START_MATCH' ? 'dalmuti:start' : 'dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: version } }, (result) => {
       if (!result?.success) {
         unlock();
         const message = result?.error || '행동을 처리하지 못했습니다.';
@@ -108,21 +116,22 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
   if (!game || !me) return null;
 
   const displayedSets = game.trick.sets;
+  const narrative = dalmutiActionNarrative(active?.event, game.players, myId);
   const inputLocked = busy || submitting || roomState.isPaused || socket?.connected === false;
 
   const phaseMessage = (() => {
     if (roomState.isPaused) return '플레이어 재접속을 기다리는 중';
-    if (busy) return active?.event?.type === 'SET_PLAYED' ? `${playersById.get(active.event.actorId)?.nickname || '플레이어'}의 카드 제출` : '테이블 행동을 표시하는 중';
+    if (busy) return narrative?.title || '테이블을 정리하는 중';
     if (game.playPhase === 'REVOLUTION_DECISION') return `${currentPlayer?.nickname || '플레이어'}의 혁명 결정`;
     if (game.playPhase === 'TAX_RETURN') return `${currentPlayer?.nickname || '달무티'}가 세금 반환 카드를 고르는 중`;
     if (game.playPhase === 'MERCHANT_EXCHANGE') return `${currentPlayer?.nickname || '상인'}의 상인 교환`;
     if (game.matchState === 'ROUND_END') return `${game.roundNumber}라운드 신분 재편`;
     if (game.matchState === 'GAME_OVER') return '최종 계급전 종료';
     if (isMyTurn) {
-      if (game.trick.requiredCount == null) return '내가 새로운 트릭을 이끕니다';
+      if (game.trick.requiredCount == null) return '내 차례 · 같은 숫자를 모아 원하는 장수로 시작';
       if (game.trick.topRank === 1) return `달무티(1) ${game.trick.requiredCount}장 · 이 트릭은 패스만 가능합니다`;
       if (!legalPlays.length) return `${game.trick.requiredCount}장 · 낼 수 있는 카드가 없어 패스합니다`;
-      return `${game.trick.requiredCount}장 · ${game.trick.topRank}보다 강한 계급`;
+      return `내 차례 · ${game.trick.topRank}보다 낮은 숫자 ${game.trick.requiredCount}장 또는 패스`;
     }
     return `${currentPlayer?.nickname || '상대'}의 차례`;
   })();
@@ -148,7 +157,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
           <Avatar src={player.avatarUrl} alt=""/>
           <Identity><strong>{player.nickname}</strong><span>{player.role}</span></Identity>
           <Stats><b>{player.handCount}</b><small>패</small><i>{player.score}점</i></Stats>
-          {player.id === game.currentTurnPlayerId && <TurnFlag>차례</TurnFlag>}
+          {(active?.event.actorId === player.id || (!busy && player.id === game.currentTurnPlayerId)) && <TurnFlag>{busy ? '행동 중' : '차례'}</TurnFlag>}
           {(player.passed || (active?.event.type === 'PASSED' && active.event.actorId === player.id)) && <PassFlag>패스</PassFlag>}
           {player.finishedPosition && <FinishFlag>{player.finishedPosition}위 확정</FinishFlag>}
         </PlayerTile>)}
@@ -156,19 +165,19 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
 
       <CenterStage>
         <TrickMeta>
-          <span>공용 트릭</span>
+          <span>{game.trick.lastPlayerId ? `${playersById.get(game.trick.lastPlayerId)?.nickname || '플레이어'}의 카드` : '중앙 더미'}</span>
           <b>{game.trick.requiredCount ? `${game.trick.requiredCount}장 · ${game.trick.topRank} ${rankName(game.trick.topRank)}` : '새로운 선'}</b>
           <small>연속 패스 {game.trick.passPlayerIds.length} · 완료 트릭 {game.trick.completedCount}</small>
         </TrickMeta>
-        <Pile ref={anchor('pile')} aria-label="현재 중앙 카드 더미" style={{ opacity: active?.event.type === 'TRICK_CLEARED' ? .2 : 1 }}>
+        <Pile ref={anchor('pile')} aria-label="현재 중앙 카드 더미" style={{ opacity: active?.event.type === 'TRICK_CLEARED' ? 0 : 1 }}>
           {displayedSets.slice(-4).map((set, index, visible) => <SetLayer key={set.id} as={motion.div} initial={false} animate={{ rotate: (index - visible.length + 1) * 1.4 }} transition={{ duration: reduceMotion ? .12 : .2 }} $offset={index}>
-            {visibleSetRanks(set).map((rank, cardIndex) => <MiniCard key={cardIndex} $jester={rank === 13} style={{ marginLeft: cardIndex ? '-34px' : 0 }}><b>{rank === 13 ? 'J' : rank}</b><span>{rankName(rank)}</span></MiniCard>)}
+            {visibleSetRanks(set).map((rank, cardIndex) => <DalmutiTableCard key={cardIndex} $jester={rank === 13} style={{ marginLeft: cardIndex ? '-34px' : 0 }}><b>{rank === 13 ? 'J' : rank}</b><span>{rankName(rank)}</span></DalmutiTableCard>)}
             <SetCount>{set.count}장{set.jesterCount > 0 && ` · J ${set.jesterCount}장`}</SetCount>
           </SetLayer>)}
           {!displayedSets.length && <EmptyPile><Crown size={22}/><span>선 플레이를 기다립니다</span></EmptyPile>}
         </Pile>
         <Archive ref={anchor('archive')} aria-label="완료 트릭 보관부">완료 트릭 {game.trick.completedCount}</Archive>
-        <ActionError>{error}</ActionError>
+        <ActionError role="alert">{error}</ActionError>
       </CenterStage>
 
       <LocalArea>
@@ -185,7 +194,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
               const legal = legalPlays.some((play) => play.rank === group.rank) || mixedJester;
               const selected = selection?.rank === group.rank;
               const highlighted = jesterMode && legalPlays.some((play) => play.rank === group.rank && play.jesterCount > 0);
-              return <RankStack ref={anchor(`rank:${group.rank}`)} key={group.rank} as={motion.button} type="button" onClick={() => chooseRank(group.rank)} disabled={!legal || !isMyTurn} $legal={legal && isMyTurn} $selected={selected || highlighted} aria-pressed={selected} title={mixedJester ? '숫자와 함께 사용 가능 · 먼저 숫자 묶음을 선택하세요' : undefined} whileTap={legal ? { y:-2 } : undefined}>
+              return <RankStack ref={anchor(`rank:${group.rank}`)} key={group.rank} as={motion.button} type="button" onClick={() => chooseRank(group.rank)} disabled={!legal || !isMyTurn} $legal={legal && isMyTurn} $selected={selected || highlighted} aria-pressed={selected} title={mixedJester ? '숫자와 함께 사용 가능 · 먼저 숫자 묶음을 선택하세요' : undefined} whileTap={legal && !reduceMotion ? { y:-2 } : undefined}>
                 <CardNumber>{group.rank === 13 ? 'J' : group.rank}</CardNumber><CardName>{rankName(group.rank)}</CardName><CountBadge>× {group.count}</CountBadge>
                 {mixedJester && <JesterHint>함께 사용</JesterHint>}
               </RankStack>;
@@ -204,21 +213,21 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       </LocalArea>
     </Table>
 
-    <DalmutiMotionLayer active={active} anchors={anchors} surfaceRef={surfaceRef} myId={myId} finish={finish} reduced={reduceMotion}/>
-    <AnimatePresence>{(game.matchState === 'ROUND_END' || game.matchState === 'GAME_OVER') && <Overlay as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><ResultCard as={motion.section} initial={reduceMotion ? {opacity:0}:{opacity:0,y:24}} animate={{opacity:1,y:0}}><Trophy size={28}/><h2>{game.matchState === 'GAME_OVER' ? '최종 계급전 결과' : `${game.roundNumber}라운드 결과`}</h2><ResultList>{game.outcome.finishOrder.map((id,index) => { const player=playersById.get(id); return <div key={id}><b>{index+1}</b><span>{player?.nickname}</span><em>{player?.score}점</em></div>; })}</ResultList>{game.matchState === 'ROUND_END' ? <><p>8초 후 새 신분으로 자리를 바꿉니다.</p>{roomState.hostId === myId && <Primary disabled={inputLocked} onClick={() => send({type:'ADVANCE_ROUND'})}>바로 다음 라운드</Primary>}</> : <p>{game.outcome.winnerIds.map((id)=>playersById.get(id)?.nickname).join(', ')}{game.outcome.winnerIds.length > 1 ? ' 공동 우승' : ' 최종 우승'}</p>}</ResultCard></Overlay>}</AnimatePresence>
-    <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer as={motion.aside} initial={{x:320}} animate={{x:0}} exit={{x:320}} onClick={(event)=>event.stopPropagation()}><h3>달무티 살롱</h3><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={myId} launcherPlacement="inline"/><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
+    <DalmutiMotionLayer active={active} anchors={anchors} surfaceRef={surfaceRef} myId={myId} finish={finish} reduced={reduceMotion} pileSets={displayedSets}/>
+    <DalmutiResults game={game} isHost={roomState.hostId === myId} locked={inputLocked} submitting={submitting} error={error} onAdvance={() => send({ type: 'ADVANCE_ROUND' })} onRematch={() => send({ type: 'START_MATCH' })} onLeave={() => onLeave?.()}/>
+    <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer as={motion.aside} role="dialog" aria-modal="true" aria-label="달무티 살롱 메뉴" initial={{x:reduceMotion ? 0 : 320}} animate={{x:0}} exit={{x:reduceMotion ? 0 : 320}} onClick={(event)=>event.stopPropagation()}><DrawerHeader><h3>달무티 살롱</h3><CloseMenu type="button" aria-label="게임 메뉴 닫기" onClick={() => setMenuOpen(false)}><X size={20}/></CloseMenu></DrawerHeader><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={myId} launcherPlacement="inline"/><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
     {roomState.isPaused && <PauseLayer><strong>게임 일시정지</strong><span>연결이 돌아오지 않으면 AI가 자리를 이어받습니다.</span></PauseLayer>}
   </Surface>;
 }
 
 const Surface=styled.div`width:100%;height:100%;min-height:0;overflow:hidden;background:${THEME.gradients.marbleTextureUrl},radial-gradient(circle at 50% 42%,#fff 0%,#eef1f4 74%,#dfe4e8 100%);background-size:cover;color:${THEME.foreground};display:flex;flex-direction:column;position:relative;`;
-const Table=styled.main`width:100%;min-width:0;flex:1;min-height:0;display:grid;grid-template-rows:minmax(78px,24%) minmax(0,1fr) auto;overflow:hidden;`;
+const Table=styled.main`width:100%;min-width:0;flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(120px,1fr) auto;overflow:auto;@media(min-width:700px) and (max-height:500px) and (orientation:landscape){grid-template-columns:minmax(0,1fr) minmax(320px,44%);grid-template-rows:auto minmax(0,1fr);>section:first-child{grid-column:1;grid-row:1;} >section:nth-child(2){grid-column:1;grid-row:2;overflow:auto;}>section:last-child{grid-column:2;grid-row:1/3;overflow:auto;}}`;
 const OpponentBoard=styled.section`width:min(900px,100%);margin:0 auto;padding:6px 8px 2px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;&[data-count="1"]{grid-template-columns:minmax(0,260px);justify-content:center;}&[data-count="2"],&[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr));}&[data-count="3"],&[data-count="5"],&[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr));}@media(max-width:560px){grid-template-columns:repeat(3,minmax(0,1fr))!important;padding-inline:4px;gap:3px;}`;
 const PlayerTile=styled.article`min-width:0;height:54px;display:flex;align-items:center;gap:5px;padding:5px 7px;box-sizing:border-box;position:relative;border:1px solid ${p=>p.$turn?THEME.gold:THEME.border};border-radius:8px;background:${p=>p.$turn?'#fffdf2':'rgba(255,255,255,.92)'};box-shadow:${p=>p.$turn?'0 5px 16px rgba(197,160,89,.24)':'0 2px 7px rgba(9,13,22,.06)'};opacity:${p=>p.$finished?.62:1};@media(max-width:560px){height:50px;padding:4px;gap:3px;}`;
 const RankMedal=styled.b`width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:${THEME.primary};color:${THEME.goldLight};font:900 9px ${THEME.font.serif};flex:0 0 18px;`;
 const Avatar=styled.img`width:27px;height:27px;border-radius:50%;object-fit:cover;border:1px solid ${THEME.gold};flex:0 0 27px;@media(max-width:420px){display:none;}`;
-const Identity=styled.div`min-width:0;display:flex;flex-direction:column;flex:1;strong{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}strong small{font-size:7px;color:${THEME.goldAntique};}span{font-size:8px;color:${THEME.burgundy};font-weight:800;}`;
-const Stats=styled.div`display:grid;grid-template-columns:auto auto;align-items:end;b{font:900 15px ${THEME.font.serif};line-height:1;}small{font-size:7px;color:${THEME.mutedForeground};}i{grid-column:1/-1;font-size:7px;font-style:normal;color:${THEME.goldAntique};font-weight:900;}`;
+const Identity=styled.div`min-width:0;display:flex;flex-direction:column;flex:1;strong{font-size:${THEME.interaction.caption};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}strong small{font-size:10px;color:${THEME.goldAntique};}span{font-size:11px;color:${THEME.burgundy};font-weight:700;}`;
+const Stats=styled.div`display:grid;grid-template-columns:auto auto;align-items:end;b{font:900 18px ${THEME.font.serif};line-height:1;}small{font-size:10px;color:${THEME.mutedForeground};}i{grid-column:1/-1;font-size:10px;font-style:normal;color:${THEME.goldAntique};font-weight:700;}`;
 const badge=css`position:absolute;top:-5px;border-radius:8px;padding:1px 5px;font-size:7px;font-weight:950;letter-spacing:.04em;`;
 const TurnFlag=styled.span`${badge};right:5px;background:${THEME.gold};color:#111;`;
 const PassFlag=styled.span`${badge};left:26px;background:${THEME.primary};color:#fff;`;
@@ -230,34 +239,31 @@ const SetLayer=styled.div`position:absolute;inset:9px;display:flex;align-items:c
 const SetCount=styled.span`position:absolute;bottom:-7px;right:0;padding:2px 5px;border-radius:5px;background:#fffdf7;font-size:9px;color:${THEME.foreground};`;
 const Archive=styled.div`align-self:flex-end;padding:5px 8px;border:1px solid ${THEME.border};border-radius:6px;font-size:9px;color:${THEME.goldAntique};`;
 const JesterHint=styled.span`font-size:8px;color:${THEME.goldAntique};`;
-const MiniCard=styled.div`width:60px;height:88px;flex:0 0 60px;border:1px solid ${p=>p.$jester?THEME.burgundy:THEME.gold};border-radius:7px;background:${p=>p.$jester?THEME.gradients.burgundySeal:'#fffdf7'};color:${p=>p.$jester?'#fff':THEME.foreground};box-shadow:0 5px 13px rgba(9,13,22,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;b{font:900 25px ${THEME.font.serif};}span{font-size:7px;font-weight:800;}`;
 const EmptyPile=styled.div`display:flex;flex-direction:column;align-items:center;gap:4px;color:${THEME.goldAntique};font-size:9px;`;
-const Beat=styled.div`position:absolute;padding:5px 13px;border-radius:12px;background:${THEME.primary};color:#fff;font:900 11px ${THEME.font.serif};z-index:10;`;
-const ActionError=styled.div`height:13px;color:${THEME.rose};font-size:9px;font-weight:800;`;
-const LocalArea=styled.section`width:100%;min-width:0;box-sizing:border-box;border-top:1px solid rgba(197,160,89,.42);background:rgba(255,255,255,.84);display:flex;flex-direction:column;padding:3px 8px 6px;gap:3px;box-shadow:0 -6px 20px rgba(9,13,22,.05);`;
+const ActionError=styled.div`min-height:16px;color:${THEME.rose};font-size:${THEME.interaction.caption};font-weight:700;text-align:center;`;
+const LocalArea=styled.section`width:100%;min-width:0;box-sizing:border-box;border-top:1px solid ${THEME.borderGold};background:${THEME.surfaceCardGlass};display:flex;flex-direction:column;padding:8px 8px max(12px,env(safe-area-inset-bottom));gap:8px;box-shadow:0 -6px 20px rgba(9,13,22,.05);`;
 const SelfBar=styled.div`height:31px;display:flex;align-items:center;gap:6px;width:min(760px,100%);margin:0 auto;padding:1px 5px;box-sizing:border-box;border-bottom:2px solid ${p=>p.$turn?THEME.gold:'transparent'};${Avatar}{width:23px;height:23px;display:block;flex-basis:23px;}`;
-const HandRail=styled.div`height:67px;min-width:0;display:flex;align-items:center;gap:5px;overflow-x:auto;overflow-y:hidden;width:min(900px,100%);max-width:100%;margin:0 auto;padding:2px;box-sizing:border-box;scrollbar-width:thin;`;
-const RankStack=styled.button`width:57px;height:62px;flex:0 0 57px;border:1px solid ${p=>p.$selected?THEME.burgundy:p.$legal?THEME.gold:THEME.border};border-width:${p=>p.$selected?2:1}px;border-radius:8px;background:${p=>p.$selected?'#fff5f5':'#fffdf9'};box-shadow:${p=>p.$selected?'0 6px 13px rgba(99,19,38,.16)':'0 2px 6px rgba(9,13,22,.08)'};color:${THEME.foreground};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:${p=>p.$legal?'pointer':'not-allowed'};opacity:${p=>p.disabled?.45:1};transform:${p=>p.$selected?'translateY(-2px)':'none'};`;
+const HandRail=styled.div`min-height:112px;min-width:0;display:flex;align-items:center;gap:8px;overflow-x:auto;overflow-y:hidden;width:min(900px,100%);max-width:100%;margin:0 auto;padding:6px 2px;box-sizing:border-box;scrollbar-width:thin;overscroll-behavior-x:contain;@media(max-height:650px){min-height:96px;}`;
+const RankStack=styled.button`width:72px;height:100px;flex:0 0 72px;border:1px solid ${p=>p.$selected?THEME.burgundy:p.$legal?THEME.gold:THEME.border};border-width:${p=>p.$selected?2:1}px;border-radius:${THEME.radius.lg};background:${p=>p.$selected?'#fff5f5':'#fffdf9'};box-shadow:0 2px 6px rgba(9,13,22,.08);color:${THEME.foreground};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:${p=>p.$legal?'pointer':'default'};transform:${p=>p.$selected?'translateY(-3px)':'none'};&:focus-visible{outline:2px solid ${THEME.burgundy};outline-offset:2px;}&:disabled{background:${THEME.muted};}@media(max-height:650px){width:64px;height:84px;flex-basis:64px;}@media(prefers-reduced-motion:reduce){transform:none;}`;
 const CardNumber=styled.b`font:900 21px ${THEME.font.serif};line-height:1;`;
-const CardName=styled.span`font-size:7px;font-weight:850;color:${THEME.burgundy};margin-top:2px;`;
-const CountBadge=styled.i`font-size:8px;font-style:normal;font-weight:900;color:${THEME.goldAntique};margin-top:3px;`;
+const CardName=styled.span`font-size:11px;font-weight:750;color:${THEME.burgundy};margin-top:6px;`;
+const CountBadge=styled.i`font-size:${THEME.interaction.caption};font-style:normal;font-weight:800;color:${THEME.foreground};margin-top:6px;`;
 const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(110px,1fr) auto;align-items:center;gap:5px;min-height:35px;.options{grid-column:1/-1;display:flex;max-width:100%;overflow-x:auto;padding-bottom:1px;}&>div:last-child{grid-column:2;grid-row:1;}@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;gap:4px;}`;
-const SelectionText=styled.div`min-width:0;display:flex;flex-direction:column;b{font:900 12px ${THEME.font.serif};}span{font-size:9px;color:${THEME.mutedForeground};}`;
+const SelectionText=styled.div`min-width:0;display:flex;flex-direction:column;gap:4px;b{font:900 16px ${THEME.font.serif};}span{font-size:${THEME.interaction.caption};line-height:1.4;color:${THEME.mutedForeground};}`;
 const OptionRow=styled.div.attrs({className:'options'})`display:flex;gap:3px;`;
 const Option=styled.button`min-width:44px;height:44px;flex:0 0 auto;padding:0 9px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:11px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
 const ButtonRow=styled.div`display:flex;gap:5px;`;
 const FinishedHand=styled.div`width:min(760px,100%);min-height:82px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:9px;color:${THEME.goldAntique};strong{display:block;font:900 13px ${THEME.font.serif};color:${THEME.foreground};}span{display:block;margin-top:3px;font-size:9px;font-weight:750;color:${THEME.mutedForeground};}`;
-const Secondary=styled.button`height:36px;padding:0 12px;border:1px solid ${THEME.border};border-radius:8px;background:#fff;color:${THEME.foreground};font-size:10px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
-const Primary=styled.button`height:36px;padding:0 16px;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.obsidianButton};color:#fff;font:900 10px ${THEME.font.serif};cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
+const Secondary=styled.button`min-height:${THEME.interaction.touchTarget};padding:0 12px;border:1px solid ${THEME.border};border-radius:${THEME.radius.md};background:${THEME.surfaceCard};color:${THEME.foreground};font-size:${THEME.interaction.body};font-weight:750;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}&:focus-visible{outline:2px solid ${THEME.burgundy};outline-offset:2px;}`;
+const Primary=styled.button`min-height:${THEME.interaction.touchTarget};padding:0 16px;border:1px solid ${THEME.goldAntique};border-radius:${THEME.radius.md};background:${THEME.gradients.obsidianButton};color:${THEME.primaryForeground};font:800 ${THEME.interaction.body} ${THEME.font.sans};cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}&:focus-visible{outline:2px solid ${THEME.burgundy};outline-offset:2px;}`;
 const DecisionTray=styled.div`width:min(680px,100%);margin:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;strong{font:900 15px ${THEME.font.serif};}span{font-size:9px;color:${THEME.mutedForeground};}`;
 const TaxGroups=styled.div`display:flex;gap:4px;max-width:100%;overflow-x:auto;`;
 const TaxChip=styled.button`width:56px;height:58px;flex:0 0 56px;border:1px solid ${p=>p.$selected?THEME.burgundy:THEME.border};border-radius:7px;background:${p=>p.$selected?'#fff1f2':'#fff'};display:flex;flex-direction:column;align-items:center;justify-content:center;b{font:900 17px ${THEME.font.serif};}span{font-size:7px;}i{font-size:8px;font-style:normal;font-weight:900;color:${THEME.burgundy};}`;
 const TargetRow=styled.div`display:flex;gap:5px;flex-wrap:wrap;justify-content:center;`;
-const Overlay=styled.div`position:absolute;inset:42px 0 0;z-index:40;background:rgba(9,13,22,.58);display:grid;place-items:center;padding:15px;`;
-const ResultCard=styled.section`width:min(430px,100%);max-height:90%;overflow:auto;padding:20px;box-sizing:border-box;border:1px solid ${THEME.gold};border-radius:14px;background:${THEME.gradients.marbleTextureUrl},#fff;background-size:cover;text-align:center;box-shadow:0 24px 60px rgba(9,13,22,.28);h2{margin:6px 0 12px;font:900 21px ${THEME.font.serif};}p{font-size:10px;color:${THEME.mutedForeground};}`;
-const ResultList=styled.div`display:flex;flex-direction:column;gap:4px;margin-bottom:10px;div{height:30px;display:grid;grid-template-columns:28px 1fr auto;align-items:center;padding:0 9px;border:1px solid ${THEME.border};border-radius:7px;background:rgba(255,255,255,.88);text-align:left;}b{font-family:${THEME.font.serif};color:${THEME.goldAntique};}span{font-size:10px;font-weight:850;}em{font-style:normal;font-size:9px;font-weight:900;color:${THEME.burgundy};}`;
 const DrawerShade=styled.div`position:absolute;inset:0;z-index:60;background:rgba(9,13,22,.35);display:flex;justify-content:flex-end;`;
-const Drawer=styled.aside`width:min(310px,88vw);height:100%;padding:20px;box-sizing:border-box;background:#fff;border-left:1px solid ${THEME.gold};box-shadow:-16px 0 35px rgba(9,13,22,.16);h3{font:900 18px ${THEME.font.serif};margin:0 0 18px;}`;
+const Drawer=styled.aside`width:min(340px,100%);height:100%;overflow-y:auto;padding:16px 16px max(16px,env(safe-area-inset-bottom));box-sizing:border-box;background:${THEME.surfaceCard};border-left:1px solid ${THEME.gold};box-shadow:-16px 0 35px rgba(9,13,22,.16);h3{font:900 18px ${THEME.font.serif};margin:0;}`;
+const DrawerHeader=styled.div`display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px;`;
+const CloseMenu=styled.button`width:${THEME.interaction.touchTarget};height:${THEME.interaction.touchTarget};display:grid;place-items:center;border:1px solid ${THEME.border};border-radius:${THEME.radius.md};background:${THEME.surfaceCard};color:${THEME.foreground};cursor:pointer;`;
 const InfoLine=styled.div`height:38px;display:flex;align-items:center;gap:8px;border-bottom:1px solid ${THEME.border};font-size:10px;color:${THEME.mutedForeground};`;
 const Danger=styled.button`width:100%;height:40px;margin-top:20px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid ${THEME.rose};border-radius:8px;background:#fff1f2;color:${THEME.rose};font-weight:900;cursor:pointer;`;
 const PauseLayer=styled.div`position:absolute;inset:42px 0 0;z-index:55;background:rgba(255,255,255,.86);backdrop-filter:blur(5px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;strong{font:900 22px ${THEME.font.serif};}span{font-size:11px;color:${THEME.mutedForeground};}`;

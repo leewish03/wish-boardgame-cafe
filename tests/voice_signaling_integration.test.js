@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { io as ClientIO } from 'socket.io-client';
 import { initRoomManager, rooms, socketToUser } from '../server/shared/roomManager.js';
 import { initWebRTCSignaling } from '../server/shared/webrtcSignaling.js';
+import { initSTTBroadcast } from '../server/shared/sttBroadcast.js';
 
 function once(socket, event, timeout = 3_000) {
   return new Promise((resolve, reject) => {
@@ -26,6 +27,7 @@ async function main() {
   const io = new Server(server, { cors: { origin: '*' } });
   initRoomManager(io);
   initWebRTCSignaling(io);
+  initSTTBroadcast(io);
   await new Promise((resolve) => server.listen(0, resolve));
 
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -41,6 +43,20 @@ async function main() {
     const joined = await emit(b, 'room:join', { roomCode, nickname: 'Bob' });
     assert.equal(created.success, true);
     assert.equal(joined.success, true);
+    const received = [];
+    b.on('stt:transcript', (message) => received.push(message));
+    assert.equal((await emit(a, 'stt:transcript', { roomCode, userId: joined.userId, text: '위조 자막' })).success, false);
+    assert.equal((await emit(a, 'stt:transcript', { roomCode: 'OTHER', text: '다른 방' })).success, false);
+    assert.equal((await emit(a, 'stt:transcript', null)).success, false);
+    assert.equal((await emit(a, 'stt:transcript', { roomCode, text: { invalid: true } })).success, false);
+    assert.equal((await emit(a, 'stt:transcript', { roomCode, text: 'x'.repeat(2001) })).success, false);
+    const caption = once(b, 'stt:transcript');
+    assert.equal((await emit(a, 'stt:transcript', { roomCode, userId: created.userId, text: ' 정상 자막 ', timestamp: 1 })).success, true);
+    const message = await caption;
+    assert.equal(message.userId, created.userId);
+    assert.equal(message.text, '정상 자막');
+    assert.ok(message.timestamp > 1);
+    assert.equal(received.length, 1, 'rejected captions never reach peers');
 
     assert.deepEqual(await emit(a, 'voice:join', { roomCode }), { success: true, peers: [] });
     const joinedNotice = once(a, 'voice:peer-joined');

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation, toggleTaxSelection, visibleSetRanks, anchorPoint } from '../src/games/dalmuti/presentationState.js';
+import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation, toggleTaxSelection, visibleSetRanks, anchorPoint, replayOpeningPresentation } from '../src/games/dalmuti/presentationState.js';
 
 const room = (version, pending = false) => ({ code: 'TABLE', stateVersion: version, presentationPending: pending, dalmuti: {
   roundNumber: 1, hierarchy: ['p0', 'p1'], players: [{ id: 'p0', handCount: 2 }, { id: 'p1', handCount: 3 }],
@@ -7,6 +7,18 @@ const room = (version, pending = false) => ({ code: 'TABLE', stateVersion: versi
 } });
 const envelope = (type, index, count = 2, version = 2) => ({ eventId: `${type}-${version}`, stateVersion: version, eventIndex: index, eventCount: count, event: { id: `${type}-${version}`, type, actorId: 'p0', rank: 4, count: 1, jesterCount: 0, handCount: 1 } });
 const model = createPresentationState();
+const opening = room(1, true);
+opening.mySecret = {hand:[{id:'private',rank:8}]};
+opening.presentationBatch = { openingEvents: [envelope('ROUND_DEALT',0,2,1),envelope('OPENING_READY',1,2,1)] };
+assert.equal(replayOpeningPresentation(model, opening), true);
+assert.equal(model.current.event.type, 'ROUND_DEALT', 'a table mounted after start still plays the server deal');
+assert.deepEqual(model.display.mySecret.hand, [], 'the hand appears after cards arrive');
+assert.equal(opening.mySecret.hand.length, 1, 'presentation must not mutate the authoritative hand');
+completePresentation(model,model.current.eventId,model.current.generation);
+assert.equal(model.current.event.type, 'OPENING_READY');
+completePresentation(model,model.current.eventId,model.current.generation);
+assert.equal(model.display,opening);
+assert.equal(replayOpeningPresentation(model, room(2,false)), false, 'settled reconnects do not replay a deal');
 observePresentation(model, room(1));
 enqueuePresentation(model, envelope('TRICK_CLEARED', 1));
 enqueuePresentation(model, envelope('PASSED', 0));

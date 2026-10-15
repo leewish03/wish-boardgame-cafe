@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { useDialogFocus } from '../../../shared/useDialogFocus';
 import { THEME } from '../../../shared/theme';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
@@ -70,6 +71,8 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   voice,
 }) => {
   const [copied, setCopied] = useState(false);
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
+  const reducedMotion = useReducedMotion();
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [musicOn, setMusicOn] = useState(sfx.getSettings().musicEnabled);
   const [musicVolume, setMusicVolume] = useState(Math.round(sfx.getSettings().musicVolume * 100));
@@ -118,10 +121,15 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
           onClick={onClose}
         >
           <DrawerContainer
+            ref={dialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="러브레터 살롱 메뉴"
             as={motion.div}
-            initial={{ x: '100%' }}
+            initial={{ x: reducedMotion ? 0 : '100%' }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            exit={{ x: reducedMotion ? 0 : '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
             onClick={e => e.stopPropagation()}
           >
@@ -129,7 +137,7 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
               <HeaderTitle>
                 러브레터 살롱 메뉴
               </HeaderTitle>
-              <CloseBtn onClick={onClose}>
+              <CloseBtn onClick={onClose} aria-label="게임 메뉴 닫기">
                 <X size={16} />
               </CloseBtn>
             </DrawerHeader>
@@ -280,7 +288,8 @@ const CloseBtn = styled.button`
   border: 1px solid ${THEME.border};
   color: ${THEME.mutedForeground};
   width: 28px;
-  height: 28px;
+  min-width: ${THEME.interaction.touchTarget};
+  height: ${THEME.interaction.touchTarget};
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -470,7 +479,7 @@ const VoiceControls = styled.div`
 
 const VoiceButton = styled.button<{ $active: boolean }>`
   min-width: 0;
-  min-height: 32px;
+  min-height: ${THEME.interaction.touchTarget};
   display: inline-flex;
   align-items: center;
   justify-content: center;

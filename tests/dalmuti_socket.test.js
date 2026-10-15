@@ -82,7 +82,13 @@ try {
     if (!gate) return;
     await Promise.all(gate.waitingFor.map((id) => emit(clientById.get(id), 'dalmuti:presentation-ack', { roomCode:created.roomCode, eventId:gate.eventId })));
   };
-  await acknowledgePendingPresentation();
+  const settledOpening = waitForMatching(clients[0], 'room:state', view => !view.presentationPending, 1500);
+  const openingGate = rooms[created.roomCode].dalmutiPresentationGate;
+  for (const id of openingGate.waitingFor) {
+    clientById.get(id).emit('dalmuti:presentation-ack', { roomCode:created.roomCode, eventId:openingGate.eventId });
+  }
+  await settledOpening;
+  assert.equal(rooms[created.roomCode].dalmutiPresentationGate, null, 'the browser sends completion without a reply callback; release immediately');
   let room = rooms[created.roomCode];
   let guard = 0;
   while (room.gameStateObject.playPhase !== 'TURN_INPUT' && guard++ < 10) {
@@ -114,6 +120,22 @@ try {
     command:{ ...chooseBotCommand(rooms[created.roomCode].gameStateObject, rooms[created.roomCode].gameStateObject.currentTurnPlayerId), expectedStateVersion:staleVersion },
   });
   assert.equal(staleResult.success, false, 'stale commands are rejected');
+  const finishedVersion = 500;
+  room.gameStateObject.matchState = 'GAME_OVER';
+  room.gameStateObject.stateVersion = finishedVersion;
+  room.stateVersion = finishedVersion;
+  room.players.forEach((player) => { player.isReady = true; });
+  assert.equal((await emit(clients[1], 'dalmuti:start', { roomCode:created.roomCode })).success, false, 'only the host can restart');
+  const rematchSnapshot = waitForMatching(clients[0], 'room:state', (view) => view.stateVersion > finishedVersion);
+  const restarted = await emit(clients[0], 'dalmuti:start', { roomCode:created.roomCode });
+  assert.ok(restarted.success, restarted.error);
+  const rematchView = await rematchSnapshot;
+  assert.equal(rematchView.dalmuti.roundNumber, 1);
+  assert.ok(rematchView.dalmuti.players.every((player) => player.score === 0));
+  assert.ok(rematchView.mySecret.hand.length > 0);
+  assert.equal(JSON.stringify(rematchView.dalmuti).includes('"hand"'), false);
+  assert.equal((await emit(clients[0], 'dalmuti:start', { roomCode:created.roomCode })).success, false, 'duplicate restart cannot reset an active match');
+  await acknowledgePendingPresentation();
   service.clearTimers(created.roomCode);
   clients[1].disconnect();
   await waitForMatching(clients[0], 'room:state', (view) => view.isPaused);

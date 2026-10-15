@@ -11,9 +11,10 @@ export class MemoryRoomRepository {
     return this._rooms.get(code) || null;
   }
 
-  async saveRoom(room) {
+  async saveRoom(room, changes) {
     if (!room || !room.code) return;
     const code = String(room.code).toUpperCase().trim();
+    if (changes) Object.assign(room, typeof changes === 'function' ? changes(room) : changes);
     room.updatedAt = Date.now();
     this._rooms.set(code, room);
   }

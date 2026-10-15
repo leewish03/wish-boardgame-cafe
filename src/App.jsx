@@ -1,6 +1,7 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import styled, { css } from 'styled-components';
 import { THEME } from './shared/theme';
+import { GAME_CATALOG, gameEvent, roomRules, waitingRole } from './shared/gameCatalog';
 import {
   Button,
   Card,
@@ -56,6 +57,9 @@ import {
 
 const LoveLetterGame = React.lazy(() => import('./games/love-letter/ui/LoveLetterGame'));
 const DalmutiGame = React.lazy(() => import('./games/dalmuti/DalmutiGame'));
+const SixNimmtGame = React.lazy(() => import('./games/six-nimmt/SixNimmtGame'));
+const HiddenMovementGame = React.lazy(() => import('./games/hidden-movement/HiddenMovementGame'));
+const GAME_COMPONENTS = { LOVE_LETTER: LoveLetterGame, DALMUTI: DalmutiGame, SIX_NIMMT: SixNimmtGame, WHITECHAPEL: HiddenMovementGame, WHITEHALL: HiddenMovementGame };
 
 // =========================================================================
 // App Container & Layout
@@ -505,6 +509,8 @@ export default function App() {
   const [useStrippedDeck, setUseStrippedDeck] = useState(true);
   const [philanthropicScoring, setPhilanthropicScoring] = useState(false);
   const [merchantExchange, setMerchantExchange] = useState(false);
+  const [hostRole, setHostRole] = useState('JACK');
+  const ActiveGame = GAME_COMPONENTS[roomState?.gameType];
 
   // Chat message in waiting room
   const [chatInput, setChatInput] = useState('');
@@ -565,7 +571,8 @@ export default function App() {
             };
             setCurrentUser(restoredUser);
             setRoomState(res.gameState);
-            socket.emit(res.gameState?.gameType === 'DALMUTI' ? 'dalmuti:view-ready' : 'game:view-ready', { roomCode: res.roomCode, userId: res.userId, requestId: request.requestId });
+            const readyEvent = gameEvent(res.gameState?.gameType, 'view-ready');
+            if (readyEvent) socket.emit(readyEvent, { roomCode: res.roomCode, userId: res.userId, requestId: request.requestId });
             if (res.gameState?.gameState === 'LOBBY') {
               setScreen('waitingRoom');
             } else {
@@ -802,7 +809,7 @@ export default function App() {
 
   // Open Room Creation Dialog
   const handleOpenCreateDialog = (gameKey) => {
-    if (gameKey !== 'LOVE_LETTER' && gameKey !== 'DALMUTI') {
+    if (!GAME_CATALOG[gameKey]) {
       setToastMessage('해당 게임은 현재 개발 중입니다! 곧 출시됩니다.');
       return;
     }
@@ -811,7 +818,7 @@ export default function App() {
       setMaxPlayers((value) => value < 4 ? 6 : Math.min(8, value));
       setTurnTimeLimit((value) => value === 60 ? 30 : value);
     } else {
-      setMaxPlayers((value) => Math.min(6, value));
+      setMaxPlayers((value) => Math.max(GAME_CATALOG[gameKey].min, Math.min(GAME_CATALOG[gameKey].max, value)));
     }
     setCreateDialogOpen(true);
   };
@@ -839,6 +846,7 @@ export default function App() {
         useStrippedDeck,
         philanthropicScoring,
         merchantExchange,
+        hostRole,
       },
       (res) => {
         if (!roomSessionRef.current.isCurrent(request)) return;
@@ -965,9 +973,11 @@ export default function App() {
   // Host Starts Game
   const handleStartGame = () => {
     if (!socket) return;
+    const startEvent = gameEvent(roomState?.gameType, 'start');
+    if (!startEvent) { setToastMessage('지원하지 않는 게임입니다.'); return; }
     sfx.playCardPlay();
     socket.emit(
-      roomState?.gameType === 'DALMUTI' ? 'dalmuti:start' : 'game:start',
+      startEvent,
       {
         roomCode: roomState?.code,
         userId: currentUser?.id,
@@ -984,13 +994,20 @@ export default function App() {
   const handleSendChat = (eventOrText) => {
     eventOrText?.preventDefault?.();
     const text = typeof eventOrText === 'string' ? eventOrText.trim() : chatInput.trim();
-    if (!text || !socket) return;
-    socket.emit('chat:message', {
-      roomCode: roomState?.code,
-      userId: currentUser?.id,
-      text,
+    if (!text) return Promise.resolve(false);
+    if (!socket?.connected) return Promise.reject(new Error('연결이 끊겼습니다. 다시 연결된 후 보내 주세요.'));
+    return new Promise((resolve, reject) => {
+      socket.timeout(5000).emit('chat:message', {
+        roomCode: roomState?.code,
+        userId: currentUser?.id,
+        text,
+      }, (error, result) => {
+        if (error) return reject(new Error('전송 결과를 확인하지 못했습니다. 채팅을 확인한 뒤 다시 시도해 주세요.'));
+        if (!result?.success) return reject(new Error(result?.error || '메시지를 저장하지 못했습니다. 다시 시도해 주세요.'));
+        setChatInput('');
+        resolve(true);
+      });
     });
-    setChatInput('');
   };
 
   // Copy Room Code to Clipboard
@@ -1004,7 +1021,7 @@ export default function App() {
 
   // Leave Room
   const handleLeaveRoom = ({ immediate = false } = {}) => {
-    const isPlaying = roomState?.gameState === 'PLAYING';
+    const isPlaying = ['PLAYING', 'ROUND_END'].includes(roomState?.gameState);
     if (isPlaying && !immediate && !window.confirm('진행 중인 게임에서 나가면 기권 처리됩니다. 나갈까요?')) return;
     const departingSession = loadSession();
     invalidateRoomSession();
@@ -1257,6 +1274,18 @@ export default function App() {
                     </CardFooter>
                   </Card>
 
+                  {Object.entries(GAME_CATALOG).filter(([, game]) => game.cover).map(([key, game]) => (
+                    <Card key={key}>
+                      <CardHeader>
+                        <img src={`/assets/new-games/${game.cover}-cover.png`} alt="" loading="lazy" width="1536" height="1024" style={{ width: '100%', height: 'auto', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: THEME.radius.md }} />
+                        <CardTitle>{game.name}</CardTitle>
+                        <CardDescription style={{ wordBreak: 'keep-all' }}>{game.min}~{game.max}인 · {game.subtitle}</CardDescription>
+                      </CardHeader>
+                      <CardContent><p style={{ fontSize: '14px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.5, wordBreak: 'keep-all' }}>{game.description}</p></CardContent>
+                      <CardFooter><Button $fullWidth onClick={() => handleOpenCreateDialog(key)} aria-label={`${game.name} 테이블 생성`} style={{ minHeight: '44px' }}><Play size={14} />입장 / 테이블 생성</Button></CardFooter>
+                    </Card>
+                  ))}
+
                   {/* Game 3: Liar Game (Coming Soon) */}
                   <Card $hoverable onClick={() => handleOpenCreateDialog('LIAR_GAME')} style={{ opacity: 0.6 }}>
                     <CardHeader>
@@ -1333,7 +1362,7 @@ export default function App() {
                   {openRooms.map((room) => (
                     <Card key={room.id} style={{ cursor: 'default' }}>
                       <CardContent style={{ padding: '13px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 {room.gameType === 'DALMUTI' ? '달무티' : '러브레터'}</strong><div style={{ fontSize: '11px', color: THEME.mutedForeground, marginTop: '4px' }}>라운드 {room.roundNumber} · {room.gameType === 'DALMUTI' ? `${room.roundCount || 10}라운드제` : `목표 ${room.targetTokens}`} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
+                        <div style={{ minWidth: 0 }}><strong style={{ fontSize: '14px' }}>{room.hostName}의 {GAME_CATALOG[room.gameType]?.name || '알 수 없는 게임'}</strong><div style={{ fontSize: '12px', color: THEME.mutedForeground, marginTop: '4px' }}>{roomRules(room)} · 사람 {room.humanCount} / AI {room.botCount}</div></div>
                         <div style={{ textAlign: 'right', fontSize: '11px', fontWeight: 800 }}><Badge $variant={room.status === 'PLAYING' ? 'burgundy' : room.status === 'RECONNECTING' ? 'outline' : 'emerald'}>{room.status === 'RECONNECTING' ? '재접속 대기' : room.status}</Badge><div style={{ marginTop: '5px', color: THEME.mutedForeground }}>{room.connectedCount}/{room.playerCount} 연결 · 최대 {room.maxPlayers}</div></div>
                       </CardContent>
                     </Card>
@@ -1353,9 +1382,9 @@ export default function App() {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <CardTitle>{roomState?.gameType === 'DALMUTI' ? '달무티 계급 살롱' : '러브레터 살롱'}</CardTitle>
+                  <CardTitle>{GAME_CATALOG[roomState?.gameType]?.name || '알 수 없는 게임'} 살롱</CardTitle>
                   <CardDescription>
-                    {roomState?.gameType === 'DALMUTI' ? `${roomState?.roundCount || 10}라운드 · 4~8인` : `목표 토큰 ${roomState?.targetTokens || 4}개`} · 턴 제한시간 {roomState?.turnTimeLimit === 0 ? '무제한' : `${roomState?.turnTimeLimit ?? 60}초`}
+                    {roomRules(roomState)} · 턴 제한시간 {roomState?.turnTimeLimit === 0 ? '무제한' : `${roomState?.turnTimeLimit ?? 60}초`}
                   </CardDescription>
                 </div>
 
@@ -1369,7 +1398,7 @@ export default function App() {
             <CardContent>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, textTransform: 'uppercase' }}>
-                  PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}) · {roomState?.gameType === 'DALMUTI' ? '최소 4인' : '최소 2인'}
+                  PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}) · 최소 {GAME_CATALOG[roomState?.gameType]?.min || 2}인
                 </div>
                 {isHost && (
                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -1429,6 +1458,7 @@ export default function App() {
                             {isPlayerHost && <Crown size={14} color={THEME.gold} />}
                             {isMe && <span style={{ fontSize: '11px', color: THEME.goldAntique }}>(나)</span>}
                           </div>
+                          {waitingRole(roomState, p.id) && <div style={{ fontSize: '12px', color: THEME.mutedForeground, marginTop: '4px' }}>{waitingRole(roomState, p.id)}</div>}
                         </div>
                       </div>
 
@@ -1483,7 +1513,7 @@ export default function App() {
                   <Button
                     $variant="gold"
                     onClick={handleStartGame}
-                    disabled={(roomState?.players?.length || 0) < (roomState?.gameType === 'DALMUTI' ? 4 : 2) || !allReady}
+                    disabled={!ActiveGame || (roomState?.players?.length || 0) < (GAME_CATALOG[roomState?.gameType]?.min || 2) || !allReady}
                   >
                     <Play size={16} />
                     <span>게임 시작</span>
@@ -1499,7 +1529,7 @@ export default function App() {
         {/* ========================================================= */}
         {screen === 'game' && roomState && (
           <Suspense fallback={<GameLoadingScreen><div>TABLE PREPARING<span>게임 테이블을 준비하고 있습니다</span></div></GameLoadingScreen>}>
-          {roomState.gameType === 'DALMUTI' ? <DalmutiGame
+          {ActiveGame ? <ActiveGame
             roomState={roomState}
             currentUser={currentUser}
             socket={socket}
@@ -1509,16 +1539,7 @@ export default function App() {
             onSendChat={handleSendChat}
             onLeave={handleLeaveRoom}
             onRoomUnavailable={handleRoomUnavailable}
-          /> : <LoveLetterGame
-            roomState={roomState}
-            currentUser={currentUser}
-            socket={socket}
-            webrtc={webrtc}
-            stt={stt}
-            chatMessages={roomState?.chatMessages || []}
-            onSendChat={handleSendChat}
-            onLeave={handleLeaveRoom}
-          />}
+          /> : <Card><CardContent>지원하지 않는 게임입니다.</CardContent><CardFooter><Button onClick={handleLeaveRoom}>로비로 나가기</Button></CardFooter></Card>}
           </Suspense>
         )}
       </MainContent>
@@ -1528,8 +1549,8 @@ export default function App() {
       {/* ========================================================= */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogHeader>
-          <DialogTitle>{selectedGameForCreate === 'DALMUTI' ? '달무티 계급 살롱 테이블 생성' : '러브레터 살롱 테이블 생성'}</DialogTitle>
-          <DialogDescription>{selectedGameForCreate === 'DALMUTI' ? '라운드 수와 공식 선택 규칙을 설정하세요.' : '게임 목표 토큰 및 규칙을 설정하세요.'}</DialogDescription>
+          <DialogTitle>{GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성</DialogTitle>
+          <DialogDescription>{GAME_CATALOG[selectedGameForCreate]?.rules || '게임 목표와 규칙을 설정하세요.'}</DialogDescription>
         </DialogHeader>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '16px 0' }}>
@@ -1562,19 +1583,28 @@ export default function App() {
             </div>
           </div>}
 
+          {GAME_CATALOG[selectedGameForCreate]?.hiddenMovement && <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend style={{ fontSize: '14px', marginBottom: '8px' }}>내 역할</legend>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[['JACK', '잭 · 비밀 이동'], ['INVESTIGATOR', '수사관 · 협력 추적']].map(([role, label]) => <Button key={role} type="button" aria-pressed={hostRole === role} $variant={hostRole === role ? 'default' : 'secondary'} onClick={() => setHostRole(role)} style={{ flex: 1, minHeight: '44px' }}>{label}</Button>)}
+            </div>
+            <p style={{ fontSize: '12px', color: THEME.mutedForeground }}>수사관을 선택하면 다음 참가자가 잭을 맡습니다. AI를 추가해 혼자서도 양쪽 역할로 플레이할 수 있습니다.</p>
+          </fieldset>}
+
           <div>
             <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               MAX PLAYERS (최대 플레이 인원): {maxPlayers}명
             </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {(selectedGameForCreate === 'DALMUTI' ? [4, 5, 6, 7, 8] : [2, 3, 4, 5, 6]).map((num) => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {Array.from({ length: GAME_CATALOG[selectedGameForCreate].max - GAME_CATALOG[selectedGameForCreate].min + 1 }, (_, index) => GAME_CATALOG[selectedGameForCreate].min + index).map((num) => (
                 <Button
                   key={num}
                   type="button"
                   $variant={maxPlayers === num ? 'default' : 'secondary'}
                   $size="sm"
                   onClick={() => setMaxPlayers(num)}
-                  style={{ flex: 1, borderColor: maxPlayers === num ? THEME.gold : THEME.border }}
+                  aria-pressed={maxPlayers === num}
+                  style={{ flex: '1 0 44px', minHeight: '44px' }}
                 >
                   {num}인
                 </Button>

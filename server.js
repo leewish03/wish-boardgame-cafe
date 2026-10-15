@@ -16,6 +16,8 @@ import { broadcastRoomState } from './server/shared/roomManager.js';
 import { createLoveLetterService } from './server/core/LoveLetterService.js';
 import { initializeRoomRepository } from './server/core/RoomRepository.js';
 import { createDalmutiService } from './server/core/DalmutiService.js';
+import { boardGameCores, createBoardGameService } from './server/core/BoardGameService.js';
+import { registerBoardGameController } from './server/games/boardGameController.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,6 +78,7 @@ if (fs.existsSync(distPath)) {
 
 export const loveLetterService = createLoveLetterService(io, { broadcastRoomState });
 export const dalmutiService = createDalmutiService(io);
+export const boardGameService = createBoardGameService(io);
 
 async function startServer() {
   await initializeRoomRepository();
@@ -96,10 +99,19 @@ async function startServer() {
   await loveLetterService.restorePendingTurnPresentations();
   await loveLetterService.restorePendingRoundPresentations();
   await dalmutiService.restoreRooms();
+  for (const gameType of Object.keys(boardGameCores)) configureGameLifecycle(gameType, {
+    pause: (code, id) => boardGameService.pauseRoom(code, id),
+    resume: code => boardGameService.resumeRoom(code),
+    disconnectExpired: code => boardGameService.disconnectExpired(code),
+    forfeit: (code, id) => boardGameService.finalizeDeparture(code, id),
+    projectPublicState: (room, id) => boardGameService.projectRoomState(room, id),
+  });
+  await boardGameService.restoreRooms();
   initWebRTCSignaling(io);
   initSTTBroadcast(io);
   registerLoveLetterController(io, loveLetterService);
   registerDalmutiController(io, dalmutiService);
+  registerBoardGameController(io, boardGameService);
 
   server.listen(PORT, () => {
     console.log(`====================================================`);
