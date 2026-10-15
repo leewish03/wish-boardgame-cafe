@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation, toggleTaxSelection, visibleSetRanks, anchorPoint, replayOpeningPresentation } from '../src/games/dalmuti/presentationState.js';
+import { createPresentationState, enqueuePresentation, observePresentation, synchronizePresentation, completePresentation, toggleTaxSelection, visibleSetRanks, anchorPoint, replayOpeningPresentation, selectRankPlay } from '../src/games/dalmuti/presentationState.js';
+
+const selectionPlays=[{rank:7,count:2,jesterCount:1},{rank:13,count:1,jesterCount:1},{rank:7,count:2,jesterCount:0},{rank:7,count:1,jesterCount:0}];
+assert.deepEqual(selectRankPlay(selectionPlays,13,null),{rank:13,count:1,jesterCount:1},'joker rank selects the standalone play, never a mixed rank');
+assert.deepEqual(selectRankPlay(selectionPlays,7,null),{rank:7,count:1,jesterCount:0},'lead defaults to the smallest natural set');
+assert.deepEqual(selectRankPlay(selectionPlays.filter(p=>p.count===2),7,2),{rank:7,count:2,jesterCount:0},'follow conserves jokers when the natural set is legal');
+assert.equal(selectRankPlay(selectionPlays,5,null),null,'unplayable rank has no selection');
 
 const room = (version, pending = false) => ({ code: 'TABLE', stateVersion: version, presentationPending: pending, dalmuti: {
   roundNumber: 1, hierarchy: ['p0', 'p1'], players: [{ id: 'p0', handCount: 2 }, { id: 'p1', handCount: 3 }],

@@ -114,6 +114,12 @@ export function toggleTaxSelection(selection, rank, available, needed) {
   return total - current + next > needed ? selection : { ...selection, [rank]: next };
 }
 
+export function selectRankPlay(legalPlays, rank, requiredCount) {
+  return legalPlays.filter(play => play.rank === rank).sort((a,b) =>
+    (requiredCount == null ? a.count-b.count : 0) || a.jesterCount-b.jesterCount
+  )[0] ?? null;
+}
+
 export function visibleSetRanks(set) {
   const jesters = Math.min(set.jesterCount || 0, 6);
   const natural = Math.min(set.count - (set.jesterCount || 0), 6 - jesters);
