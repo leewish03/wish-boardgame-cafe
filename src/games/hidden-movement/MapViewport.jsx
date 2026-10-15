@@ -4,11 +4,13 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { THEME } from '../../shared/theme';
 import { boards, ink, colorName, crossingLabel, waterGroups, mapFocusView, patrolHitRadius } from './model';
 import useMapGestures from './useMapGestures';
+import { mapHitChoices, revealMapPoint } from './mapInput';
 
 const Frame = styled.div`position:relative;flex:1;min-width:0;min-height:0;padding-top:60px;box-sizing:border-box;overflow:hidden;background:${ink.paper};border:1px solid ${THEME.goldAntique};border-radius:${THEME.radius.lg};box-shadow:inset 0 0 35px #302b2420;svg{display:block;width:100%;height:100%;touch-action:none;user-select:none;}svg [role=button]:focus{outline:none;stroke:${THEME.foreground};stroke-width:4px;}svg text{pointer-events:none;font-family:${THEME.font.sans};}@media(orientation:landscape) and (max-height:500px){padding-top:0;padding-right:108px;}`;
 const Tools = styled.div`position:absolute;top:8px;left:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:calc(100% - 16px);button{min-width:44px;min-height:44px;border:1px solid ${THEME.borderGold};border-radius:6px;background:#fffdf5ee;color:${ink.text};font:700 12px ${THEME.font.sans};cursor:pointer;padding:0 10px;&:hover{background:${THEME.secondary};}&:active{box-shadow:inset 0 0 0 2px ${THEME.goldAntique};}&:focus-visible{outline:3px solid ${THEME.gold};}}@media(orientation:landscape) and (max-height:500px){left:auto;right:8px;display:grid;grid-template-columns:44px 44px;button{padding:2px;font-size:11px;}}`;
 const Compass = styled.div`position:absolute;right:12px;bottom:12px;color:${ink.text};font:700 12px ${THEME.font.serif};pointer-events:none;text-align:center;`;
 const Legend = styled.div`position:absolute;bottom:8px;left:8px;max-width:75%;padding:6px 8px;background:#fffdf5e8;border-radius:4px;font-size:11px;color:${ink.text};pointer-events:none;@media(orientation:landscape) and (max-height:500px){display:none;}`;
+const Nearby = styled.div`position:absolute;z-index:1;left:8px;right:8px;bottom:8px;max-height:55%;overflow:auto;padding:8px;background:${THEME.surfaceCard};border:1px solid ${THEME.border};border-radius:${THEME.radius.md};color:${THEME.foreground};font-size:14px;display:flex;flex-wrap:wrap;gap:8px;strong{flex:1;align-self:center;}button{min-height:44px;min-width:44px;padding:8px;border:1px solid ${THEME.border};border-radius:${THEME.radius.md};background:${THEME.surfaceCard};color:${THEME.foreground};font:inherit;cursor:pointer;}button:focus-visible{outline:3px solid ${THEME.gold};} .choices{width:100%;display:flex;flex-wrap:wrap;gap:8px;}`;
 
 function roadPath(board, from, to) {
   if (from == null || to == null || !board.byId[from] || !board.byId[to]) return [];
@@ -26,10 +28,11 @@ function roadPath(board, from, to) {
   return [];
 }
 
-export default function MapViewport({ game, secret, targets, selectedKeys=[], onPick, focusKey, preview=[], draftPatrols=[], activeOfficer, selectableOfficers=[], onSelectOfficer, events=[], batchId, disabled }) {
+export default function MapViewport({ game, secret, targets, selectedKeys=[], onPick, focusKey, focusedKey, preview=[], draftPatrols=[], activeOfficer, selectableOfficers=[], onSelectOfficer, events=[], batchId, disabled }) {
   const board = boards[game.gameType], reduced = useReducedMotion();
   const [view,setView] = useState({x:0,y:0,w:board.width,h:board.height});
   const [size,setSize] = useState({width:600,height:400});
+  const [nearby,setNearby] = useState([]);
   const svgRef=useRef(null);
   const {moved,handlers}=useMapGestures(svgRef,view,setView,board);
   useEffect(()=>{
@@ -38,6 +41,10 @@ export default function MapViewport({ game, secret, targets, selectedKeys=[], on
     return()=>observer.disconnect();
   },[]);
   const screenUnit=Math.max(view.w/Math.max(1,size.width),view.h/Math.max(1,size.height));
+  const reveal=key=>setView(v=>revealMapPoint(v,board.byKey[key],screenUnit));
+  useEffect(()=>{if(focusedKey)reveal(focusedKey);},[focusedKey]);
+  const targetSignature=[...targets].join('|');
+  useEffect(()=>setNearby([]),[targetSignature,activeOfficer,disabled,game.stateVersion]);
   const fit=()=>setView({x:0,y:0,w:board.width,h:board.height});
   const focus=(key)=>{const next=mapFocusView(board,[key]);if(next)setView(next);};
   const zoom=(factor)=>setView(v=>{const w=Math.max(board.width*.18,Math.min(board.width*1.3,v.w*factor));const h=w*board.height/board.width;return{x:v.x+(v.w-w)/2,y:v.y+(v.h-h)/2,w,h};});
@@ -69,12 +76,30 @@ export default function MapViewport({ game, secret, targets, selectedKeys=[], on
   const moving=useMemo(()=>Object.fromEntries(events.filter(e=>e.type==='POLICE_MOVED').map(e=>[e.officerId ?? e.pawnId,roadPath(board,e.from,e.to)])),[board,events]);
   const feedback=events.filter(e=>['CLUE_SEARCHED','ARREST_ATTEMPTED','DISCOVERY_REVEALED'].includes(e.type));
   const privateGoals=privateRole ? secret.discoveries ?? (secret.hideout != null ? [secret.hideout] : []) : [];
-  const pick=(n)=>{if(!moved.current&&!disabled&&targets.has(n.key))onPick(n.key);};
+  const nodeRadius=n=>n.kind==='location'?(game.gameType==='WHITEHALL'?12:8):4;
+  const inputItems=[...targets].map(key=>board.byKey[key]).filter(Boolean).map(n=>({...n,radius:nodeRadius(n),label:n.kind==='location'?`장소 ${n.value}`:crossingLabel(game.gameType,n.value)}));
+  for(const p of visiblePolice.filter(p=>selectableOfficers.includes(p.id))) {
+    const n=board.byKey[`c:${p.position}`];
+    if(!n)continue;
+    if(p.id===activeOfficer&&targets.has(n.key)) {
+      const target=inputItems.find(item=>item.key===n.key);
+      target.radius=Math.max(target.radius,12);
+    } else inputItems.push({...n,key:`officer:${p.id}`,officerId:p.id,radius:12,label:`${colorName[p.id.toLowerCase()]} 경찰 선택`});
+  }
+  const activate=item=>{if(disabled)return;setNearby([]);if(item.officerId)onSelectOfficer?.(item.officerId);else onPick(item.key);};
+  const mapClick=e=>{
+    if(disabled||moved.current||e.detail===0)return;
+    const matrix=svgRef.current?.getScreenCTM();
+    if(!matrix)return;
+    const point=new window.DOMPoint(e.clientX,e.clientY).matrixTransform(matrix.inverse());
+    const choices=mapHitChoices(inputItems,point,1/Math.hypot(matrix.a,matrix.b));
+    if(choices.length===1)activate(choices[0]);else setNearby(choices);
+  };
   const previewNodes=preview.map(key=>board.byKey[key]).filter(Boolean);
   const previewPath=previewNodes.length===2&&preview[0]?.startsWith('c:')?roadPath(board,previewNodes[0].id,previewNodes[1].id):previewNodes;
   return <Frame aria-label="사건 지도">
     <svg ref={svgRef} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} aria-label={game.gameType==='WHITEHALL'?'화이트홀 지도':'화이트채플 지도'}
-      {...handlers}>
+      {...handlers} onClick={mapClick}>
       <defs><pattern id="case-paper" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M0 16h32M16 0v32" stroke={ink.road} strokeOpacity=".13" strokeWidth=".5"/></pattern><filter id="token-shadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" floodOpacity=".25"/></filter></defs>
       <rect x="-500" y="-500" width={board.width+1000} height={board.height+1000} fill={ink.paper}/><rect width={board.width} height={board.height} fill="url(#case-paper)"/>
       {game.gameType==='WHITEHALL'&&<>{waterGroups.map((group,i)=><polyline key={i} points={group.map(id=>board.byKey[`n:${id}`]).map(n=>`${n.x},${n.y}`).join(' ')} stroke={ink.river} strokeWidth="32" strokeLinejoin="round" strokeLinecap="round" fill="none" opacity=".65"/>)}<path d="M600 20v1160M20 600h1160" stroke={ink.road} strokeDasharray="6 10" opacity=".5"/>{[['북서',40,45],['북동',1080,45],['남서',40,1170],['남동',1080,1170]].map(([t,x,y])=><text key={t} x={x} y={y} fontSize="18" fill={ink.water}>{t}</text>)}</>}
@@ -83,7 +108,8 @@ export default function MapViewport({ game, secret, targets, selectedKeys=[], on
       {route.length>1&&<polyline points={route.map(n=>board.byKey[`n:${n}`]).filter(Boolean).map(n=>`${n.x},${n.y}`).join(' ')} fill="none" stroke={ink.crime} strokeWidth="2" strokeDasharray="5 5" opacity=".65"/>}
       {previewPath.length>1&&<motion.polyline key={preview.join('-')} initial={{opacity:0}} animate={{opacity:1}} transition={{duration:reduced?.01:.18}} points={previewPath.map(n=>`${n.x},${n.y}`).join(' ')} fill="none" stroke={ink.water} strokeWidth={3*screenUnit} strokeDasharray={`${6*screenUnit} ${4*screenUnit}`} pointerEvents="none"/>}
       {board.nodes.map(n=>{const location=n.kind==='location',active=targets.has(n.key)&&!disabled,selected=selectedKeys.includes(n.key),radius=location?(game.gameType==='WHITEHALL'?12:8):4;
-        return <g key={n.key} transform={`translate(${n.x},${n.y})`} role={active?'button':undefined} tabIndex={active?0:undefined} aria-label={active?`${location?`장소 ${n.value}`:crossingLabel(game.gameType,n.value)} 선택`:undefined} onClick={()=>pick(n)} onKeyDown={e=>{if(active&&(e.key==='Enter'||e.key===' ')){e.preventDefault();onPick(n.key);}}} style={{cursor:active?'pointer':'default'}}>
+        return <g key={n.key} transform={`translate(${n.x},${n.y})`} role={active?'button':undefined} tabIndex={active?0:undefined} aria-pressed={active?selected:undefined} aria-label={active?`${location?`장소 ${n.value}`:crossingLabel(game.gameType,n.value)} 선택`:undefined} onFocus={()=>{if(active)reveal(n.key);}} onKeyDown={e=>{if(active&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setNearby([]);onPick(n.key);}}} style={{cursor:active?'pointer':'default'}}>
+          {active&&<circle r={22*screenUnit} fill="transparent"/>}
           {active&&<circle r={patrolPoints.some(p=>p.key===n.key)?patrolHitRadius(n,patrolPoints,screenUnit):radius+5} fill={THEME.goldLight} fillOpacity={draftPatrols.length ? .3 : 1} stroke={ink.text} strokeWidth="1"/>}
           <circle r={radius} fill={location?(n.color==='blue'?ink.river:n.isCrimeSite?ink.crime:n.color==='black'?ink.text:'#fffaf0'):(n.isPoliceStart?THEME.gold:ink.text)} stroke={ink.road} strokeWidth=".8"/>
           {location&&<text textAnchor="middle" dominantBaseline="central" fontSize={game.gameType==='WHITEHALL'?10:7} fontWeight="700" fill={n.isCrimeSite||n.color==='black'?'#fff':ink.text}>{n.number}</text>}
@@ -102,12 +128,14 @@ export default function MapViewport({ game, secret, targets, selectedKeys=[], on
       {feedback.map((e,i)=>{const n=board.byKey[`n:${e.location??e.to}`];if(!n)return null;const hit=e.found||e.caught||e.type==='DISCOVERY_REVEALED';return <motion.g key={`${batchId}-${i}`} initial={{opacity:0}} animate={{opacity:[0,1,1]}} transition={{duration:reduced?.1:.65}} pointerEvents="none"><circle cx={n.x} cy={n.y} r="20" fill={hit?THEME.goldLight:'#fffdf5'} fillOpacity=".8" stroke={hit?ink.crime:ink.text} strokeWidth="2"/><text x={n.x} y={n.y} dominantBaseline="central" textAnchor="middle" fontSize="16" fill={ink.text}>{hit?'!':'×'}</text></motion.g>;})}
       {visiblePolice.filter(p=>selectableOfficers.includes(p.id)).map(p=>{
         const n=board.byKey[`c:${p.position}`];if(!n)return null;
-        return <g key={`select-${p.id}`} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={disabled?-1:0} aria-label={`${colorName[p.id.toLowerCase()]} 경찰 선택`} aria-pressed={activeOfficer===p.id} onClick={()=>{if(!disabled&&!moved.current)onSelectOfficer?.(p.id);}} onKeyDown={e=>{if(!disabled&&(e.key==='Enter'||e.key===' ')){e.preventDefault();onSelectOfficer?.(p.id);}}} style={{cursor:disabled?'default':'pointer'}}>
+        const stay=activeOfficer===p.id&&targets.has(n.key);
+        return <g key={`select-${p.id}`} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={disabled?-1:0} aria-label={`${colorName[p.id.toLowerCase()]} 경찰 ${stay?'현재 위치 선택':'선택'}`} aria-pressed={stay?selectedKeys.includes(n.key):activeOfficer===p.id} onFocus={()=>reveal(n.key)} onKeyDown={e=>{if(!disabled&&(e.key==='Enter'||e.key===' ')){e.preventDefault();activate(stay?{key:n.key}:{officerId:p.id});}}} style={{cursor:disabled?'default':'pointer'}}>
           <circle r={22*screenUnit} fill="transparent"/>
           {activeOfficer===p.id&&<><circle r={12*screenUnit} fill="none" stroke={ink.text} strokeWidth={2*screenUnit} strokeDasharray={`${3*screenUnit} ${3*screenUnit}`} pointerEvents="none"/><text y={-16*screenUnit} textAnchor="middle" fontSize={12*screenUnit} fill={ink.text} pointerEvents="none">선택</text></>}
         </g>;
       })}
     </svg>
+    {nearby.length>1&&<Nearby aria-label="가까운 지도 대상"><strong role="status">가까운 대상 {nearby.length}곳 · 하나를 고르세요</strong><button onClick={()=>setNearby([])} aria-label="가까운 대상 닫기">닫기</button><div className="choices">{nearby.map(item=><button key={item.key} aria-pressed={!item.officerId&&selectedKeys.includes(item.key)} onClick={()=>activate(item)}>{item.label}</button>)}</div></Nearby>}
     <Tools aria-label="지도 조작"><button onClick={()=>zoom(.7)} aria-label="지도 확대">＋</button><button onClick={()=>zoom(1.4)} aria-label="지도 축소">−</button><button onClick={fit}>전체 지도</button><button onClick={()=>focus(focusKey??(jack?jack.key:null)??`c:${game.police?.[game.pawnIndex??0]?.position}`)}>현재 말</button></Tools>
     <Compass>북<br/>↑<br/>N</Compass><Legend>번호: 잭 이동 · 교차로: 수사관 · 금색 점: 흔적<br/>지도를 끌어 이동 · ＋로 확대</Legend>
   </Frame>;

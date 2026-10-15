@@ -46,6 +46,7 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
   const game=roomState.game, secret=roomState.mySecret??{}, me=currentUser?.id??currentUser?.userId;
   const hall=game?.gameType==='WHITEHALL', reduced=useReducedMotion();
   const [selected,setSelected]=useState(null),[filter,setFilter]=useState(''),[officer,setOfficer]=useState(''),[origin,setOrigin]=useState(''),[via,setVia]=useState(''),[query,setQuery]=useState('');
+  const [focusedKey,setFocusedKey]=useState(null);
   const [draft,setDraft]=useState(()=>initialDraft(secret)),[error,setError]=useState(''),[sending,setSending]=useState(false),[showHelp,setShowHelp]=useState(false),[escape,setEscape]=useState(true),[leaving,setLeaving]=useState(false);
   const inFlight=useRef(false),acked=useRef(new Set()),trayRef=useRef(null),exitRef=useRef(null);
   useEffect(()=>{if(leaving&&!exitRef.current?.open)exitRef.current?.showModal();else if(!leaving&&exitRef.current?.open)exitRef.current.close();},[leaving]);
@@ -86,6 +87,7 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
   const origins=[...new Set(actorCommands.map(c=>c.from).filter(n=>n!=null))];
   const activeFilter=modes.includes(filter)?filter:modes[0];
   const activeOrigin=origins.some(n=>String(n)===origin)?Number(origin):origins[0];
+  useEffect(()=>{setQuery('');setSelected(null);setVia('');},[activeOfficer,activeFilter,activeOrigin]);
   const modeCommands=actorCommands.filter(c=>(!activeFilter||(c.mode??c.type)===activeFilter)&&(!origins.length||c.from===activeOrigin));
   const vias=[...new Set(modeCommands.map(commandVia).filter(n=>n!=null))];
   const activeVia=vias.find(n=>String(n)===String(via));
@@ -118,7 +120,7 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
     <Header><img src={`/assets/new-games/${hall?'whitehall':'whitechapel'}-cover.png`} alt=""/><div className="title"><h1>{title}</h1><p>{secret.role==='JACK'?'잭 · 비밀 경로':'수사관 · 공동 수사'} · 방 {roomState.code}</p></div><GameScreenControls/><Button onClick={()=>setShowHelp(v=>!v)} aria-expanded={showHelp}>안내</Button><Button onClick={()=>game.matchState==='GAME_OVER'?onLeave({immediate:true}):setLeaving(true)}>나가기</Button><RoomChat mode="sheet" launcherPlacement="inline" messages={chatMessages} onSend={onSendChat} currentUserId={me}/></Header>
     <Layout><BoardArea>
       <Status><strong>{hall?`${game.roundNumber}번째 추적`:`제${game.roundNumber}야`}</strong><span>{hall?`이동 ${game.moveCount??0} / 15`:`남은 이동 ${Math.max(0,15-(game.track??0))}칸`}</span>{Object.entries(game.specials??{}).map(([k,v])=><span key={k}>{modeName[k]} {v}</span>)}{!hall&&<span>기다림 {game.wait}/5</span>}{(hall?game.revealed:game.nightCrimes)?.length>0&&<span>{hall?'공개된 발견 장소':'이번 밤 사건'}: {(hall?game.revealed:game.nightCrimes).join(' · ')}번</span>}<TurnClock expiresAt={roomState.turnExpiresAt} serverTime={roomState.serverTime} paused={roomState.isPaused}/></Status>
-      <MapViewport game={game} secret={secret} targets={targets} selectedKeys={selectedKeys} onPick={onPick} focusKey={focusKey} preview={preview} draftPatrols={draftPatrols} activeOfficer={activeOfficer} selectableOfficers={figures} onSelectOfficer={id=>{setOfficer(id);setSelected(null);setVia('');}} events={presentation?.events??[]} batchId={batchId} disabled={disabled}/>
+      <MapViewport game={game} secret={secret} targets={targets} selectedKeys={selectedKeys} onPick={onPick} focusKey={focusKey} focusedKey={focusedKey} preview={preview} draftPatrols={draftPatrols} activeOfficer={activeOfficer} selectableOfficers={figures} onSelectOfficer={id=>{setOfficer(id);setSelected(null);setVia('');}} events={presentation?.events??[]} batchId={batchId} disabled={disabled}/>
       <Notice key={batchId??'initial'} role="status" aria-live="polite" initial={{opacity:.65}} animate={{opacity:1}} transition={{duration:reduced ? .12 : 1.1}} onAnimationComplete={acknowledge}>{events.length?events.map(e=>eventLabel(e,game.gameType)).join(' · '):lastMessage}</Notice>
     </BoardArea><ActionPanel><TurnHeading><h2>{phaseNames[game.playPhase]??'사건 진행'}</h2><strong>{ownTurn&&!ending?`내 차례${activeOfficer?` · ${colorName[activeOfficer.toLowerCase()]} 경찰`:''}`:ending?'':`${actors.join(' · ')||'상대'}의 차례`}</strong>{pending&&<span>테이블 정리 중</span>}{sending&&<span>전달 중…</span>}</TurnHeading><Tray ref={trayRef} aria-label="현재 행동">
       {ending&&<Result><h2>{game.matchState==='ROUND_END'?'잭이 귀환했습니다':game.outcome?.winner==='JACK'?'잭의 승리':'수사관의 승리'}</h2><p>{game.matchState==='ROUND_END'?`${game.roundNumber}번째 밤 종료. 다음 밤에는 순찰을 다시 배치합니다.`:({ARREST:'잭을 현장에서 검거했습니다.',TIME_EXPIRED:'제한 시간 안에 목적지에 도착하지 못했습니다.',TRAPPED:'모든 도주로가 막혔습니다.',BLOCKED:'모든 도주로가 막혔습니다.',FOUR_ESCAPES:'잭이 네 번의 밤 모두 은신처로 돌아갔습니다.',ALL_DISCOVERIES:'잭이 모든 발견 장소에 도착했습니다.'}[game.outcome?.reason]??'수사가 끝났습니다.')}</p>{host&&<Button disabled={disabled} onClick={()=>game.matchState==='ROUND_END'?send({type:'ADVANCE_ROUND'}):send({},true)}>{game.matchState==='ROUND_END'?'다음 밤 시작':'다시 플레이'}</Button>}</Result>}
@@ -127,14 +129,15 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
       {error&&<ErrorText role="alert">{error}</ErrorText>}
       {showHelp&&<section aria-label="살롱 안내"><h3>음성 대화</h3><RoomVoiceControls voice={webrtc} compact/><Help hall={hall} role={secret.role}/></section>}
       {!ending&&!placingPatrols&&<p>{forcedWomen?`배치 장소는 정해져 있습니다. 지도에서 실제 여성 ${secret.legal.real}곳을 고르세요.`:choosingVia?`지도에서 ${viaLabel}를 고르세요.`:vias.length?`${activeVia}번 → 지도에서 두 번째 장소를 고르세요.`:game.playPhase==='JACK_MOVE'?'지도에서 도착할 번호를 고르세요.':phaseHelp[game.playPhase]??'다음 행동을 기다려 주세요.'}</p>}
-      {setup?<SetupTray game={game} secret={secret} draft={draft} setDraft={setDraft} disabled={disabled} Button={Button} Row={Row}/>:!ending&&ownTurn?<>
+      {setup?<div onBlur={()=>setFocusedKey(null)}><SetupTray game={game} secret={secret} draft={draft} setDraft={setDraft} disabled={disabled} Button={Button} Row={Row} onFocusTarget={setFocusedKey}/></div>:!ending&&ownTurn?<>
         {figures.length>1&&<Row>{figures.map(id=><Button key={id} $active={id===activeOfficer} aria-pressed={id===activeOfficer} onClick={()=>{setOfficer(id);setSelected(null);}}>{colorName[id.toLowerCase()]} 경찰</Button>)}</Row>}
         {origins.length>1&&<label>이동할 여성 <select value={activeOrigin} onChange={e=>{setOrigin(e.target.value);setSelected(null);}}>{origins.map(n=><option key={n} value={n}>{n}번 여성</option>)}</select></label>}
         {modes.length>1&&<Row>{modes.map(m=><Button key={m} $active={m===activeFilter} aria-pressed={m===activeFilter} onClick={()=>{setFilter(m);setSelected(null);setVia('');}}>{modeName[m]??({SEARCH:'수색',ARREST:'체포',PASS:'마치기',END_ACTION:'마치기',WAIT:'기다리기',MURDER:'범행'}[m]??m)}</Button>)}</Row>}
-        {choosingVia&&<Row>{vias.map(n=><Button key={n} disabled={disabled} onClick={()=>setVia(String(n))}>{n}번 {viaLabel}</Button>)}</Row>}
+        {choosingVia&&<Row>{vias.map(n=><Button key={n} disabled={disabled} onFocus={()=>setFocusedKey(`n:${n}`)} onBlur={()=>setFocusedKey(null)} onClick={()=>setVia(String(n))}>{n}번 {viaLabel}</Button>)}</Row>}
         {!choosingVia&&<details key={`${game.playPhase}-${activeOfficer}-${activeFilter}`} open={filtered.every(c=>!commandTarget(c))?true:undefined}><summary>번호 목록에서 선택 ({visible.length})</summary>
-          {filtered.length>15&&<label>번호로 찾기 <input aria-label="목적지 번호 찾기" inputMode="numeric" value={query} onChange={e=>setQuery(e.target.value)} placeholder="번호" style={{width:90}}/></label>}
-          <CommandList aria-label="가능한 행동">{visible.map(c=><Button key={JSON.stringify(c)} disabled={disabled} $active={JSON.stringify(c)===JSON.stringify(selected)} aria-pressed={JSON.stringify(c)===JSON.stringify(selected)} onClick={()=>setSelected(c)}>{commandLabel(c,game.gameType)}</Button>)}</CommandList>
+          {(filtered.length>15||query)&&<Row><label>번호로 찾기 <input aria-label="목적지 번호 찾기" inputMode="numeric" value={query} onChange={e=>setQuery(e.target.value)} placeholder="번호" style={{width:90}}/></label>{query&&<Button onClick={()=>setQuery('')}>검색 지우기</Button>}</Row>}
+          {!visible.length&&query&&<p role="status">일치하는 목적지가 없습니다. 검색을 지워 다시 선택하세요.</p>}
+          <CommandList aria-label="가능한 행동">{visible.map(c=><Button key={JSON.stringify(c)} disabled={disabled} $active={JSON.stringify(c)===JSON.stringify(selected)} aria-pressed={JSON.stringify(c)===JSON.stringify(selected)} onFocus={()=>setFocusedKey(commandTarget(c))} onBlur={()=>setFocusedKey(null)} onClick={()=>setSelected(c)}>{commandLabel(c,game.gameType)}</Button>)}</CommandList>
         </details>}
       </>:!ending&&<p>상대가 행동하고 있습니다. 공개된 흔적과 수사관의 위치를 살펴보세요.</p>}
       {!showHelp&&<Help hall={hall} role={secret.role}/>}
