@@ -14,7 +14,7 @@ const JS_GLOBALS = new Set([
   'window', 'document', 'navigator', 'localStorage', 'sessionStorage',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'requestAnimationFrame', 'cancelAnimationFrame',
-  'console', 'Math', 'Date', 'JSON', 'Object', 'Array', 'String', 'Number',
+  'console', 'Math', 'Date', 'JSON', 'Object', 'Array', 'String', 'Number', 'structuredClone',
   'Boolean', 'Set', 'Map', 'Promise', 'Error', 'Uint8Array', 'Audio',
   'AudioContext', 'webkitAudioContext', 'SpeechRecognition', 'webkitSpeechRecognition',
   'RTCPeerConnection', 'RTCSessionDescription', 'RTCIceCandidate',

@@ -713,7 +713,7 @@ function rolloutControlChance(state, view, playerId, play, modelWeight) {
     const start = view.hierarchy.indexOf(playerId);
     for (let offset = 1; offset < view.hierarchy.length; offset += 1) {
       const id = view.hierarchy[(start + offset) % view.hierarchy.length];
-      if (id === playerId || !hands.has(id)) continue;
+      if (id === playerId || view.finishOrder.includes(id) || !hands.has(id)) continue;
       const hand = hands.get(id);
       weight *= passLikelihood(view, id, hand, modelWeight);
       const stats = view.opponentStats[id] || {};
@@ -761,8 +761,8 @@ function forecastLeadRun(view, hand, depth = 2) {
   }));
 }
 
-export function getBotPerspective(state, playerId) {
-  const profile = botProfileFor(state, playerId);
+export function getBotPerspective(state, playerId, profileOverride = null) {
+  const profile = BOT_PROFILES[profileOverride] || botProfileFor(state, playerId);
   const memory = rememberedEvents(state, profile);
   const ownHand = clone(state.secrets[playerId]?.hand || []);
   const deckCounts = handCounts(createDeck(state.config, state.players.length));
@@ -798,6 +798,13 @@ function dynamicJesterCost(hand, play, profile) {
   return preserveValue - (completesGroup ? 12 : 0) + (play.rank === 13 && hand.length > play.count ? 90 : 0);
 }
 
+function currentFinishThreats(view, playerId) {
+  return view.players.filter((player) => player.id !== playerId
+    && player.id !== view.trick.lastPlayerId && !view.finishOrder.includes(player.id)
+    && !view.trick.passPlayerIds.includes(player.id)
+    && player.handCount > 0 && player.handCount === view.trick.requiredCount);
+}
+
 function evaluateBotPlay(state, view, playerId, play, profile) {
   const hand = view.ownHand;
   const counts = handCounts(hand);
@@ -807,7 +814,7 @@ function evaluateBotPlay(state, view, playerId, play, profile) {
   const beforeShape = handShape(hand);
   const afterShape = handShape(remainingHand);
   const controlChance = rolloutControlChance(state, view, playerId, play, profile.modelWeight);
-  const nearFinishers = view.players.filter((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 3).length;
+  const nearFinishers = currentFinishThreats(view, playerId).length;
   const clearsNaturalGroup = play.rank !== 13 && (counts.get(play.rank) || 0) === play.count - play.jesterCount;
   let score = play.rank * 3 + play.count * profile.shedWeight;
   score += (beforeShape.groups - afterShape.groups) * 18 + (beforeShape.singles - afterShape.singles) * 7;
@@ -819,8 +826,9 @@ function evaluateBotPlay(state, view, playerId, play, profile) {
   if (play.rank <= 3 && remaining > 0) score -= (4 - play.rank) * (10 - riskNeed(view, playerId) * 5);
   if (isLead) score += (play.count - 1) * profile.chainWeight;
   else {
-    score += Math.max(0, view.trick.topRank - play.rank) * 7;
-    score += nearFinishers * profile.blockWeight;
+    const splitsGroup = !clearsNaturalGroup && play.rank !== 13;
+    if (splitsGroup) score -= 32 + (counts.get(play.rank) - (play.count - play.jesterCount)) * 8;
+    score += nearFinishers * profile.blockWeight * controlChance;
     score -= (1 - controlChance) * (42 - riskNeed(view, playerId) * 24);
   }
   return { score, controlChance };
@@ -864,10 +872,10 @@ function decisionRandom(state, playerId, salt = 0) {
   return makeSeededRandom(seed >>> 0);
 }
 
-function rankBotDecisionOptions(state, playerId) {
+function rankBotDecisionOptions(state, playerId, profileOverride = null) {
   if (state.playPhase !== 'TURN_INPUT' || state.currentTurnPlayerId !== playerId) return [];
-  const profile = botProfileFor(state, playerId);
-  const view = getBotPerspective(state, playerId);
+  const view = getBotPerspective(state, playerId, profileOverride);
+  const profile = view.profile;
   const plays = getLegalPlays(state, playerId);
   const naturalLeadExists = state.trick.requiredCount == null && plays.some((play) => play.rank !== 13 && play.jesterCount === 0);
   const candidates = naturalLeadExists ? plays.filter((play) => play.rank !== 13) : plays;
@@ -876,9 +884,12 @@ function rankBotDecisionOptions(state, playerId) {
     .sort((a, b) => b.score - a.score || b.play.count - a.play.count || b.play.rank - a.play.rank);
   if (state.trick.requiredCount != null) {
     const ownShape = handShape(view.ownHand);
-    const bestPlayScore = ranked[0]?.score || 0;
-    const nearFinishThreat = view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 3) ? 24 : 0;
-    const passScore = bestPlayScore - profile.responseCommitment + ownShape.jokers * profile.jesterReserve * 0.4 - nearFinishThreat - riskNeed(view, playerId) * 20;
+    const retainedGroups = [...handCounts(view.ownHand)].filter(([rank, count]) => rank !== 13 && count > 1).length;
+    const leader = view.players.find((player) => player.id === view.trick.lastPlayerId);
+    const nextLeadThreat = leader && !view.finishOrder.includes(leader.id) && leader.handCount > 0 && leader.handCount <= 3 ? profile.blockWeight * 0.35 : 0;
+    const passScore = 36 + retainedGroups * 18 + ownShape.jokers * profile.jesterReserve * 0.4
+      - profile.responseCommitment - currentFinishThreats(view, playerId).length * profile.blockWeight
+      - nextLeadThreat - riskNeed(view, playerId) * 20;
     ranked.push({ play: null, score: passScore, controlChance: 0 });
   }
   return ranked.sort((a, b) => b.score - a.score || (b.play?.count || 0) - (a.play?.count || 0));
@@ -908,7 +919,7 @@ function decisionEntropy(candidates) {
 
 export function analyzeBotDecision(state, playerId, profileOverride = null) {
   const profile = BOT_PROFILES[profileOverride] || botProfileFor(state, playerId);
-  const view = getBotPerspective(state, playerId);
+  const view = getBotPerspective(state, playerId, profileOverride);
   let command = null;
   let candidates = [];
   if (state.playPhase === 'REVOLUTION_DECISION' && state.revolutionCandidateId === playerId) {
@@ -926,11 +937,11 @@ export function analyzeBotDecision(state, playerId, profileOverride = null) {
     const targetId = chooseMerchantTarget(view, playerId);
     command = { type: 'SELECT_MERCHANT_EXCHANGE_TARGET', playerId, targetId: state.merchantExchange.eligibleTargetIds.includes(targetId) ? targetId : state.merchantExchange.eligibleTargetIds[0] };
   } else if (state.playPhase === 'TURN_INPUT' && state.currentTurnPlayerId === playerId) {
-    const rankedCandidates = rankBotDecisionOptions(state, playerId);
+    const rankedCandidates = rankBotDecisionOptions(state, playerId, profileOverride);
     if (!rankedCandidates.length) command = { type: 'PASS', playerId };
     else {
       const finishing = rankedCandidates.find((candidate) => candidate.play && candidate.play.count === view.ownHand.length);
-      const urgent = view.trick.requiredCount != null && view.players.some((player) => player.id !== playerId && player.handCount > 0 && player.handCount <= 2)
+      const urgent = currentFinishThreats(view, playerId).length > 0
         ? rankedCandidates.find((candidate) => candidate.play && candidate.controlChance >= 0.7) : null;
       candidates = withSoftmaxProbabilities(rankedCandidates, profile.temperature);
       const selected = finishing || urgent || selectCandidate(state, playerId, candidates);

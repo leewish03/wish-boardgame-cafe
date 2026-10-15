@@ -142,6 +142,75 @@ assert.ok(analysis.candidates.length >= 2, 'AI exposes scored legal candidates o
 assert.ok(analysis.candidates.every((candidate) => candidate.probability > 0), 'softmax keeps near legal choices available');
 assert.ok(getBotThinkDelay(analysisState, 'p0') >= 250 && getBotThinkDelay(analysisState, 'p0') <= 1600, 'bot thinking time is bounded and deterministic');
 
+const tacticalState = (ranks, count = 1, seed = 61) => {
+  const fixture = createInitialState(players.slice(0, 4), {}, seed);
+  fixture.matchState = 'PLAYING'; fixture.playPhase = 'TURN_INPUT'; fixture.currentTurnPlayerId = 'p0';
+  fixture.players.forEach((player) => { player.handCount = 7; player.botProfile = 'DEFENSIVE'; });
+  fixture.secrets.p0.hand = ranks.map((rank, index) => ({ id: `c${index}`, rank }));
+  fixture.players[0].handCount = ranks.length;
+  fixture.trick.requiredCount = count; fixture.trick.topRank = 10; fixture.trick.lastPlayerId = 'p3';
+  return fixture;
+};
+const tacticalFixtures = {
+  preserveGroup: tacticalState([7, 7, 7, 11, 12]),
+  efficientResponse: tacticalState([9, 11, 12]),
+  completeHand: tacticalState([7, 7], 2),
+  actualBlock: tacticalState([1, 11, 12]),
+  pairFalseThreat: tacticalState([1, 13, 11, 12], 2),
+  pairWithoutForcedBlock: tacticalState([3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 13, 13], 2, 2),
+};
+tacticalFixtures.actualBlock.players[1].handCount = 1;
+tacticalFixtures.pairFalseThreat.players[1].handCount = 1;
+tacticalFixtures.pairWithoutForcedBlock.players[1].handCount = 1;
+const tacticalResults = Object.fromEntries(Object.entries(tacticalFixtures).map(([name, fixture]) => [name, analyzeBotDecision(fixture, 'p0')]));
+assert.equal(tacticalResults.preserveGroup.command.type, 'PASS', 'preserve a useful triple instead of splitting for a poor single response');
+assert.equal(tacticalResults.efficientResponse.command.rank, 9, 'shed an efficient singleton rather than pass');
+assert.equal(tacticalResults.completeHand.command.count, 2, 'always finish with a legal complete-hand response');
+assert.equal(tacticalResults.actualBlock.command.rank, 1, 'take certain control against an eligible one-card finisher');
+assert.ok(tacticalResults.pairWithoutForcedBlock.candidates.some((candidate) => candidate.play && candidate.controlChance >= 0.7));
+assert.equal(tacticalResults.pairWithoutForcedBlock.command.type, 'PASS', 'one-card opponent must not force a high-control pair response');
+const passScore = (fixture) => analyzeBotDecision(fixture, 'p0').candidates.find((candidate) => !candidate.play).score;
+const noPairThreat = structuredClone(tacticalFixtures.pairFalseThreat);
+noPairThreat.players[1].handCount = 4;
+assert.equal(passScore(tacticalFixtures.pairFalseThreat), passScore(noPairThreat), 'a one-card opponent cannot finish a pair trick');
+const passedThreat = structuredClone(tacticalFixtures.actualBlock);
+passedThreat.trick.passPlayerIds = ['p1'];
+assert.ok(passScore(passedThreat) > passScore(tacticalFixtures.actualBlock), 'a prior passer is not an immediate current-set finisher');
+const responseControl = (fixture) => analyzeBotDecision(fixture, 'p0').candidates.filter((candidate) => candidate.play).map((candidate) => candidate.controlChance);
+const passedResponse = structuredClone(tacticalFixtures.efficientResponse);
+passedResponse.trick.passPlayerIds = ['p1', 'p2'];
+assert.deepEqual(responseControl(passedResponse), responseControl(tacticalFixtures.efficientResponse), 'new plays reactivate prior passers in control rollouts');
+const nextLeadThreat = structuredClone(passedThreat);
+nextLeadThreat.players[3].handCount = 1;
+assert.ok(passScore(nextLeadThreat) < passScore(passedThreat), 'retaining the lead with one card creates a separate next-lead risk');
+const finishedThreat = structuredClone(tacticalFixtures.actualBlock);
+finishedThreat.finishOrder = ['p1'];
+assert.equal(passScore(finishedThreat), passScore(passedThreat), 'finished opponents cannot create immediate finishing pressure');
+const noOpponent = tacticalState([9, 11, 12]);
+noOpponent.finishOrder = ['p1', 'p2', 'p3'];
+assert.ok(responseControl(noOpponent).every((chance) => chance === 1), 'finished players cannot contest sampled control');
+
+const profileFixture = tacticalState([7, 7, 7, 11, 12]);
+profileFixture.botMemory.roundEvents = Array.from({ length: 60 }, (_, index) => ({ id: `seen${index}`, type: 'SET_PLAYED', actorId: 'p1', rank: 12, count: 1, jesterCount: 0 }));
+for (const profile of ['AGGRESSIVE', 'DEFENSIVE', 'CALCULATING', 'STRATEGIC', 'INFORMATIVE']) {
+  const storedProfile = structuredClone(profileFixture);
+  storedProfile.players[0].botProfile = profile;
+  assert.deepEqual(getBotPerspective(profileFixture, 'p0', profile), getBotPerspective(storedProfile, 'p0'), `${profile} override controls remembered events as well as weights`);
+  assert.deepEqual(analyzeBotDecision(profileFixture, 'p0', profile), analyzeBotDecision(storedProfile, 'p0'), `${profile} override equals the same stored profile`);
+}
+for (const [name, fixture] of Object.entries(tacticalFixtures)) {
+  assert.deepEqual(analyzeBotDecision(fixture, 'p0'), tacticalResults[name], `${name} decision is reproducible`);
+  const hiddenChanged = structuredClone(fixture);
+  for (const player of hiddenChanged.players.filter((player) => player.id !== 'p0')) {
+    hiddenChanged.secrets[player.id].hand = Array.from({ length: player.handCount }, (_, index) => ({ id: `hidden-${player.id}-${index}`, rank: 1 }));
+  }
+  assert.deepEqual(analyzeBotDecision(hiddenChanged, 'p0'), tacticalResults[name], `${name} ignores hidden opponent cards`);
+  const command = tacticalResults[name].command;
+  assert.ok(command.type === 'PASS' || getLegalPlays(fixture, 'p0').some((play) => play.rank === command.rank && play.count === command.count && play.jesterCount === command.jesterCount), `${name} command is legal`);
+  assert.doesNotThrow(() => executeCommand(fixture, command), `${name} command passes engine validation`);
+}
+console.log(`DALMUTI_TACTICAL_EVIDENCE ${JSON.stringify(tacticalResults)}`);
+
 // Passing is temporary: a player remains eligible after somebody else plays.
 let playState = createInitialState(players.slice(0, 4), { turnTimeoutSeconds: 0 }, 7);
 ({ nextState: playState } = executeCommand(playState, { type: 'START_MATCH', playerId: 'p0' }));
