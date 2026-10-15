@@ -75,6 +75,7 @@ const AppContainer = styled.div`
       ? css`
           height: 100dvh;
           max-height: 100dvh;
+          min-height: 0;
           overflow: hidden;
         `
       : css`
@@ -230,7 +231,7 @@ const MainContent = styled.main`
   box-sizing: border-box;
   margin: 0 auto;
   ${({ $isEntry, $entryViewportHeight }) => $isEntry && css`
-    min-height: ${$entryViewportHeight || '100dvh'}px;
+    min-height: ${$entryViewportHeight ? `${$entryViewportHeight}px` : '100dvh'};
     padding-top: max(20px, env(safe-area-inset-top));
     padding-bottom: max(28px, env(safe-area-inset-bottom));
     overflow-y: auto;
@@ -238,13 +239,18 @@ const MainContent = styled.main`
   ${({ $isGame }) =>
     $isGame &&
     css`
-      height: 100dvh;
-      max-height: 100dvh;
+      min-height: 0;
       overflow: hidden;
       padding: 0;
     `}
 `;
 
+
+const CreateSettingsBoundary = styled.div`
+  button { min-height: ${THEME.interaction.touchTarget}; }
+  label { box-sizing: border-box; }
+  label:has(input[type="checkbox"]) { min-height: ${THEME.interaction.touchTarget}; }
+`;
 
 const GameLoadingScreen = styled.div`
   width: min(400px, calc(100% - 32px));
@@ -462,6 +468,7 @@ export default function App() {
   }, [roomState?.players, currentUser, avatarSeed]);
 
   const roomSessionRef = useRef(createRoomSessionBoundary());
+  const departureGenerationRef = useRef(null);
   const invalidateRoomSession = useCallback(() => {
     roomOperationRef.current.cancel();
     roomSessionRef.current.invalidate();
@@ -1049,6 +1056,7 @@ export default function App() {
 
   // Leave Room
   const handleLeaveRoom = ({ immediate = false } = {}) => {
+    if (departureGenerationRef.current === roomSessionRef.current.version()) return;
     if (leavePrompt?.pending) return;
     const isPlaying = ['PLAYING', 'ROUND_END'].includes(roomState?.gameState);
     if (isPlaying && !immediate) {
@@ -1059,6 +1067,7 @@ export default function App() {
     const departingSession = loadSession();
     invalidateRoomSession();
     const departureGeneration = roomSessionRef.current.version();
+    departureGenerationRef.current = departureGeneration;
 
     let completed = false;
     const finishLeave = () => {
@@ -1502,7 +1511,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Create Room Settings */}
       {/* ========================================================= */}
-      <div onMouseDownCapture={stopRepeatedCreateDialogActivation} onClickCapture={stopRepeatedCreateDialogActivation}>
+      <CreateSettingsBoundary onMouseDownCapture={stopRepeatedCreateDialogActivation} onClickCapture={stopRepeatedCreateDialogActivation}>
       <Dialog open={createDialogOpen} label={`${GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성`} onClose={() => { if (!pendingRoomOperation) setCreateDialogOpen(false); }}>
         <DialogHeader>
           <DialogTitle>{GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성</DialogTitle>
@@ -1511,7 +1520,7 @@ export default function App() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', margin: '16px 0' }}>
           {selectedGameForCreate === 'LOVE_LETTER' && <div>
-            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.foreground, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               VICTORY TARGET (승리 목표 토큰): {targetTokens}개
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -1531,7 +1540,7 @@ export default function App() {
           </div>}
 
           {selectedGameForCreate === 'DALMUTI' && <div>
-            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.foreground, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               MATCH ROUNDS (매치 라운드): {roundCount}
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -1548,10 +1557,10 @@ export default function App() {
           </fieldset>}
 
           <div>
-            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.foreground, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               MAX PLAYERS (최대 플레이 인원): {maxPlayers}명
             </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(44px, 1fr))', gap: '8px' }}>
               {Array.from({ length: GAME_CATALOG[selectedGameForCreate].max - GAME_CATALOG[selectedGameForCreate].min + 1 }, (_, index) => GAME_CATALOG[selectedGameForCreate].min + index).map((num) => (
                 <Button
                   key={num}
@@ -1560,7 +1569,7 @@ export default function App() {
                   $size="sm"
                   onClick={() => setMaxPlayers(num)}
                   aria-pressed={maxPlayers === num}
-                  style={{ flex: '1 0 44px', minHeight: '44px' }}
+                  style={{ minWidth: 0, minHeight: '44px' }}
                 >
                   {num}인
                 </Button>
@@ -1569,7 +1578,7 @@ export default function App() {
           </div>
 
           <div>
-            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
+            <label style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.foreground, display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
               TURN TIME LIMIT (턴 제한시간): {turnTimeLimit === 0 ? '무제한' : `${turnTimeLimit}초`}
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -1609,7 +1618,7 @@ export default function App() {
           </Button>
         </DialogFooter>
       </Dialog>
-      </div>
+      </CreateSettingsBoundary>
 
       {/* ========================================================= */}
       {/* DIALOG: Edit Profile Modal */}

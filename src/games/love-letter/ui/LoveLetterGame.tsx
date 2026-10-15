@@ -664,10 +664,10 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
 const BoardSurface = styled.div<{$chatOpen:boolean}>`
   position:relative;
-  height:100dvh;
+  height:100%;
   width: 100%;
   min-width: 0;
-  min-height:100dvh;
+  min-height:0;
   background-color: ${THEME.background};
   background-image: ${THEME.gradients.marbleBase};
   display:grid;
