@@ -118,7 +118,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
   })();
 
   return <Surface ref={surfaceRef}>
-    <GameHud
+    <SocialHeader><GameHud
       roundNumber={game.roundNumber}
       turnPlayerNickname={currentPlayer?.nickname || '플레이어'}
       isMyTurn={isMyTurn}
@@ -129,7 +129,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
       turnTimeoutSeconds={game.config.turnTimeoutSeconds}
       clockMode={roomState.isPaused ? 'PAUSED' : busy ? 'PRESENTING' : 'RUNNING'}
       onOpenSettings={() => setMenuOpen(true)}
-    />
+    /><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={myId} launcherPlacement="inline"/></SocialHeader>
 
     <Table>
       <OpponentBoard data-count={opponents.length}>
@@ -196,11 +196,12 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
 
     <DalmutiMotionLayer active={active} anchors={anchors} surfaceRef={surfaceRef} myId={myId} finish={finish} reduced={reduceMotion} pileSets={displayedSets}/>
     <DalmutiResults game={game} isHost={roomState.hostId === myId} locked={inputLocked} submitting={submitting} error={error} onAdvance={() => send({ type: 'ADVANCE_ROUND' })} onRematch={() => send({ type: 'START_MATCH' })} onLeave={() => onLeave?.()}/>
-    <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer ref={menuRef} tabIndex={-1} as={motion.aside} role="dialog" aria-modal="true" aria-label="달무티 살롱 메뉴" initial={{x:reduceMotion ? 0 : 320}} animate={{x:0}} exit={{x:reduceMotion ? 0 : 320}} onClick={(event)=>event.stopPropagation()}><DrawerHeader><h3>달무티 살롱</h3><CloseMenu type="button" aria-label="게임 메뉴 닫기" onClick={() => setMenuOpen(false)}><X size={20}/></CloseMenu></DrawerHeader><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><RoomChat messages={chatMessages} onSend={onSendChat} mode="sheet" currentUserId={myId} launcherPlacement="inline"/><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
+    <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer ref={menuRef} tabIndex={-1} as={motion.aside} role="dialog" aria-modal="true" aria-label="달무티 살롱 메뉴" initial={{x:reduceMotion ? 0 : 320}} animate={{x:0}} exit={{x:reduceMotion ? 0 : 320}} onClick={(event)=>event.stopPropagation()}><DrawerHeader><h3>달무티 살롱</h3><CloseMenu type="button" aria-label="게임 메뉴 닫기" onClick={() => setMenuOpen(false)}><X size={20}/></CloseMenu></DrawerHeader><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
     {roomState.isPaused && <PauseLayer><strong>게임 일시정지</strong><span>연결이 돌아오지 않으면 AI가 자리를 이어받습니다.</span></PauseLayer>}
   </Surface>;
 }
 
+const SocialHeader=styled.div`isolation:isolate;display:flex;align-items:center;flex-shrink:0;background:${THEME.surfaceCard};>header{flex:1;min-width:0;}>button{flex-shrink:0;margin-inline-end:${THEME.interaction.gap};}`;
 const Surface=styled.div`width:100%;height:100%;min-height:0;overflow:hidden;background:${THEME.gradients.marbleTextureUrl},radial-gradient(circle at 50% 42%,#fff 0%,#eef1f4 74%,#dfe4e8 100%);background-size:cover;color:${THEME.foreground};display:flex;flex-direction:column;position:relative;`;
 const Table=styled.main`width:100%;min-width:0;flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(120px,1fr) auto;overflow:auto;@media(min-width:700px) and (max-height:500px) and (orientation:landscape){grid-template-columns:minmax(0,1fr) minmax(320px,44%);grid-template-rows:auto minmax(0,1fr);>section:first-child{grid-column:1;grid-row:1;} >section:nth-child(2){grid-column:1;grid-row:2;overflow:auto;}>section:last-child{grid-column:2;grid-row:1/3;overflow:auto;}}`;
 const OpponentBoard=styled.section`width:min(900px,100%);margin:0 auto;padding:6px 8px 2px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;&[data-count="1"]{grid-template-columns:minmax(0,260px);justify-content:center;}&[data-count="2"],&[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr));}&[data-count="3"],&[data-count="5"],&[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr));}@media(max-width:560px){grid-template-columns:repeat(3,minmax(0,1fr))!important;padding-inline:4px;gap:3px;}`;

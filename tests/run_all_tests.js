@@ -34,6 +34,7 @@ const testSuites = [
   { name: '6.1.0.4 Shared Dialog Focus', file: 'tests/shared_dialog_focus.test.js' },
   { name: '6.1.0.5 Shared Result Dialog', file: 'tests/shared_result_dialog.test.js' },
   { name: '6.1.1 Physical Card Presentation', file: 'tests/physical_presentation.test.js' },
+  { name: '6.1.5 Room Chat Lifecycle', file: 'tests/room_chat.test.js' },
   { name: '6.1.6 Room Chat Socket Validation', file: 'tests/room_chat_socket.test.js' },
   { name: '6.2 Voice Signalling Reconnect Integration', file: 'tests/voice_signaling_integration.test.js' },
   { name: '7. Section 50: Secret Leakage Security Tests (0-Leak Verification)', file: 'tests/secret_leakage.test.js' },
