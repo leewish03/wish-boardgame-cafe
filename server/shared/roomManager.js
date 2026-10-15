@@ -864,7 +864,9 @@ export function initRoomManager(io) {
         if (!room) throw new Error('방을 찾을 수 없습니다.');
 
         const sender = room.players.find((p) => p.id === userId);
-        if (!sender || !payload?.text?.trim()) throw new Error('메시지 내용을 입력해 주세요.');
+        if (!sender || typeof payload?.text !== 'string') throw new Error('메시지를 문자로 입력해 주세요.');
+        if (payload.text.length > 300) throw new Error('메시지는 300자 이내로 입력해 주세요.');
+        if (!payload.text.trim()) throw new Error('메시지 내용을 입력해 주세요.');
 
         const msg = appendRoomMessage({ chatMessages: [] }, {
           type: 'chat',
