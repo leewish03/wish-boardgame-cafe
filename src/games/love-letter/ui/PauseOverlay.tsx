@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Clock3 } from 'lucide-react';
+import { useDialogFocus } from '../../../shared/useDialogFocus';
 import { THEME } from '../../../shared/theme';
 
 interface PauseOverlayProps {
@@ -17,9 +18,13 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
   pauseExpiresAt,
   onLeaveLobby,
 }) => {
+  const dialogRef = useDialogFocus<HTMLDivElement>(isPaused);
+  const reducedMotion = useReducedMotion();
+  const [hasPaused, setHasPaused] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!isPaused) return undefined;
+    setHasPaused(true);
     setNow(Date.now());
     const interval = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(interval);
@@ -27,6 +32,8 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
   const remainingMs = Math.max(0, Number(pauseExpiresAt || 0) - now);
   const remainingSeconds = Math.ceil(remainingMs / 1_000);
   return (
+    <>
+    <ResumeStatus role="status">{hasPaused && !isPaused ? '연결이 복구되어 게임을 계속합니다.' : ''}</ResumeStatus>
     <AnimatePresence>
       {isPaused && (
         <Overlay
@@ -36,14 +43,20 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
           exit={{ opacity: 0 }}
         >
           <PauseBox
+            ref={dialogRef}
+            tabIndex={-1}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ll-pause-title"
+            aria-describedby="ll-pause-description"
             as={motion.div}
-            initial={{ scale: 0.8 }}
+            initial={{ scale: reducedMotion ? 1 : 0.8 }}
             animate={{ scale: 1 }}
-            exit={{ scale: 0.8 }}
+            exit={{ scale: reducedMotion ? 1 : 0.8 }}
           >
             <ClockIcon><Clock3 size={32} strokeWidth={1.6} aria-hidden="true" /></ClockIcon>
-            <PauseTitle>연결 복구 대기 중</PauseTitle>
-            <PauseDesc>
+            <PauseTitle id="ll-pause-title">연결 복구 대기 중</PauseTitle>
+            <PauseDesc id="ll-pause-description">
               <strong>{pausedPlayerName}</strong> 님의 네트워크 연결을 복구하고 있습니다…
               <br />
               <SubNotice>{remainingSeconds > 0
@@ -55,6 +68,7 @@ export const PauseOverlay: React.FC<PauseOverlayProps> = ({
         </Overlay>
       )}
     </AnimatePresence>
+    </>
   );
 };
 
@@ -63,7 +77,7 @@ const Overlay = styled.div`
   inset: 0;
   background: rgba(9, 13, 22, 0.75);
   backdrop-filter: blur(8px);
-  z-index: 1800;
+  z-index: 3000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -114,6 +128,7 @@ const SubNotice = styled.span`
 `;
 
 const ForfeitBtn = styled.button`
+  min-height: ${THEME.interaction.touchTarget};
   padding: 10px 18px;
   background: ${THEME.destructive};
   color: #ffffff;
@@ -128,3 +143,5 @@ const ForfeitBtn = styled.button`
     background: #881337;
   }
 `;
+
+const ResumeStatus = styled.span`position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;`;

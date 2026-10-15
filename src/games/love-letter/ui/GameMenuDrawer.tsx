@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useDialogFocus } from '../../../shared/useDialogFocus';
@@ -70,7 +70,9 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   onLeaveRoom,
   voice,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'pending' | 'copied' | 'error'>('idle');
+  const copyRequest = useRef(0);
+  useEffect(() => { copyRequest.current += 1; setCopyState('idle'); return () => { copyRequest.current += 1; }; }, [isOpen, roomCode]);
   const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
   const reducedMotion = useReducedMotion();
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
@@ -79,11 +81,16 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
   const [sfxVolume, setSfxVolume] = useState(Math.round(sfx.getSettings().sfxVolume * 100));
   const [activeTab, setActiveTab] = useState<'rules' | 'settings'>('rules');
 
-  const handleCopyCode = () => {
-    if (!roomCode) return;
-    navigator.clipboard.writeText(roomCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyCode = async () => {
+    if (!roomCode || copyState === 'pending') return;
+    const request = ++copyRequest.current;
+    setCopyState('pending');
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      if (copyRequest.current === request) setCopyState('copied');
+    } catch (error) {
+      if (copyRequest.current === request) setCopyState('error');
+    }
   };
 
   const handleToggleSfx = () => {
@@ -149,12 +156,14 @@ export const GameMenuDrawer: React.FC<GameMenuDrawerProps> = ({
                   <CodeLabel>SALON TABLE CODE</CodeLabel>
                   <CodeValue>{roomCode}</CodeValue>
                 </CodeInfo>
-                <CopyButton onClick={handleCopyCode} title="코드 복사">
-                  {copied ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
-                  <span>{copied ? '복사됨' : '복사'}</span>
+                <CopyButton disabled={copyState === 'pending'} onClick={handleCopyCode} title="코드 복사">
+                  {copyState === 'copied' ? <Check size={14} color={THEME.emerald} /> : <Copy size={14} />}
+                  <span aria-live="polite">{copyState === 'copied' ? '복사됨' : copyState === 'pending' ? '복사 중…' : '복사'}</span>
                 </CopyButton>
               </RoomCodeCard>
             )}
+
+            {copyState === 'error' && <VoiceError role="alert">코드를 복사하지 못했습니다. 코드를 직접 선택해 복사해 주세요.</VoiceError>}
 
             {/* Tabs */}
             <TabsRow>
@@ -436,13 +445,10 @@ const CardCountTag = styled.span`
 
 const CardDesc = styled.p`
   margin: 0;
-  font-size: 10px;
+  font-size: ${THEME.interaction.caption};
   color: ${THEME.mutedForeground};
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 `;
 
 const VoiceBlock = styled.section<{ $compact: boolean }>`

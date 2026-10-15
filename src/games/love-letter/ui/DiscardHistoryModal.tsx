@@ -1,10 +1,11 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ScrollText, X } from 'lucide-react';
 import { CardInstance, CardValue } from '../../../../packages/love-letter-core/src/types';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
+import { useDialogFocus } from '../../../shared/useDialogFocus';
 import { THEME } from '../../../shared/theme';
 
 interface DiscardHistoryModalProps {
@@ -20,6 +21,8 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
   discardPile,
   onClose,
 }) => {
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
+  const reducedMotion = useReducedMotion();
   return (
     <AnimatePresence>
       {isOpen && (
@@ -31,17 +34,22 @@ export const DiscardHistoryModal: React.FC<DiscardHistoryModalProps> = ({
           onClick={onClose}
         >
           <ModalBox
+            ref={dialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${playerName} 사용한 카드 히스토리`}
             as={motion.div}
-            initial={{ scale: 0.9, y: 15 }}
+            initial={{ scale: reducedMotion ? 1 : 0.9, y: reducedMotion ? 0 : 15 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 15 }}
+            exit={{ scale: reducedMotion ? 1 : 0.9, y: reducedMotion ? 0 : 15 }}
             onClick={e => e.stopPropagation()}
           >
             <HeaderRow>
               <ModalTitle>
                 <ScrollText size={16} aria-hidden="true" /> <strong>[{playerName}]</strong> 사용한 카드 히스토리 ({discardPile.length}장)
               </ModalTitle>
-              <CloseBtn onClick={onClose} aria-label="히스토리 닫기"><X size={14} /></CloseBtn>
+              <CloseBtn type="button" onClick={onClose} aria-label="히스토리 닫기"><X size={14} /></CloseBtn>
             </HeaderRow>
 
             {discardPile.length === 0 ? (
@@ -124,8 +132,9 @@ const CloseBtn = styled.button`
   background: #f1f5f9;
   border: 1px solid ${THEME.border};
   color: ${THEME.mutedForeground};
-  width: 24px;
-  height: 24px;
+  width: ${THEME.interaction.touchTarget};
+  min-width: ${THEME.interaction.touchTarget};
+  height: ${THEME.interaction.touchTarget};
   border-radius: 50%;
   font-size: 12px;
   font-weight: 800;
@@ -199,9 +208,9 @@ const CardName = styled.span`
 `;
 
 const CardDesc = styled.span`
-  font-size: 10px;
+  font-size: ${THEME.interaction.caption};
   color: ${THEME.mutedForeground};
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 `;

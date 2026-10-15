@@ -182,6 +182,9 @@ export function useGameSocket({
   const [returnedActionId, setReturnedActionId] = useState<string | null>(null);
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
 
+  const cancelCommandRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelCommandRef.current?.(), [socket, roomCode, currentUser?.id]);
+
   const myUserId = currentUser?.id || '';
 
   // Update raw room state when initialRoomState prop changes
@@ -235,7 +238,7 @@ export function useGameSocket({
     };
 
     const handleGameSnapshot = (snapshot: GameSnapshot) => {
-      if (!snapshot?.publicState || snapshot.stateVersion < latestStateVersionRef.current) return;
+      if (!snapshot?.publicState || snapshot.roomId !== (roomCode || initialRoomState?.code) || snapshot.privateState?.id !== myUserId || snapshot.stateVersion < latestStateVersionRef.current) return;
       const incomingRound = snapshot.publicState.roundNumber;
       const isNewRound = seenRound.current !== null && seenRound.current !== incomingRound;
       if (isNewRound) {
@@ -355,9 +358,43 @@ export function useGameSocket({
       }
       const code = roomCode || rawRoomState?.code;
 
+      if (cancelCommandRef.current) return;
       sfx.hapticSnap();
       sfx.playCardPlay();
-
+      const submittedVersion = latestStateVersionRef.current;
+      let reconciling = false;
+      let finished = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const cleanup = () => {
+        finished = true;
+        clearTimeout(timer);
+        socket.off(SOCKET_EVENTS.GAME_SNAPSHOT, observeSnapshot);
+        socket.off('disconnect', disconnected);
+        cancelCommandRef.current = null;
+      };
+      const finish = (result: { success: boolean; error?: string }) => {
+        if (finished) return;
+        cleanup();
+        callback?.(result);
+      };
+      const observeSnapshot = (snapshot: GameSnapshot) => {
+        if (snapshot.roomId !== code || snapshot.privateState?.id !== myUserId || snapshot.stateVersion < submittedVersion) return;
+        if (snapshot.stateVersion > submittedVersion && snapshot.privateState && !snapshot.privateState.hand.some(card => card.id === cardId)) {
+          finish({ success: true });
+        } else if (reconciling) {
+          finish({ success: false, error: '현재 손패를 확인했습니다. 사용할 카드를 다시 선택해 주세요.' });
+        }
+      };
+      const disconnected = () => finish({ success: false, error: '연결이 끊겼습니다. 재접속 후 현재 손패를 확인해 주세요.' });
+      cancelCommandRef.current = cleanup;
+      socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, observeSnapshot);
+      socket.on('disconnect', disconnected);
+      timer = setTimeout(() => {
+        reconciling = true;
+        timer = setTimeout(() => finish({ success: false, error: '서버 상태를 확인하지 못했습니다. 연결을 확인한 뒤 다시 선택해 주세요.' }), 4000);
+        // Query current state once; never replay an uncertain card command.
+        socket.emit(SOCKET_EVENTS.GAME_VIEW_READY, { roomCode: code, userId: myUserId });
+      }, 4000);
       socket.emit(
         SOCKET_EVENTS.GAME_COMMAND,
         {
@@ -367,11 +404,8 @@ export function useGameSocket({
           timestamp: Date.now(),
           command: { type: 'PLAY_CARD', cardId, targetId, guessValue },
         },
-        (res: any) => {
-          if (res && !res.success && res.error) {
-            console.error('Play card error:', res.error);
-          }
-          callback?.(res || { success: false, error: '서버 응답을 받지 못했습니다.' });
+        (result: { success: boolean; error?: string } | undefined) => {
+          if (result?.success === false) finish(result);
         }
       );
     },

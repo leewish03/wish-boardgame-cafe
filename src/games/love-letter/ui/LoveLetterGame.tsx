@@ -132,16 +132,18 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   const [resultRequestError, setResultRequestError] = useState<string | null>(null);
   const [actionRequestError, setActionRequestError] = useState<string | null>(null);
   const submissionInFlightRef = useRef(false);
+  const pureSubmissionRef = useRef<{ cardId: string; version: number } | null>(null);
 
   // Modal States
-  const [inspectingPlayer, setInspectingPlayer] = useState<{ name: string; discards: CardInstance[] } | null>(null);
+  const [inspectingPlayerId, setInspectingPlayerId] = useState<string | null>(null);
+  const inspectingPlayer = visual.visualTable.players.find(player => player.id === inspectingPlayerId);
   const me = gameState.players.find(p => p.id === activeUserId);
   const opponents = gameState.players.filter(p => p.id !== activeUserId);
   const isMyTurn = gameState.currentTurnPlayerId === activeUserId && !me?.isEliminated;
   // The server snapshot decides when input is legal.  Presentation remains on
   // screen to explain the previous action, but must never make the next human
   // turn feel stalled.
-  const canInteract = !gameSocket.isPaused && isMyTurn && gameState.playPhase === 'TURN_INPUT' && !isActionPlaying && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
+  const canInteract = !(propIsPaused ?? gameSocket.isPaused) && isMyTurn && gameState.playPhase === 'TURN_INPUT' && !isActionPlaying && interactionState !== 'SUBMITTING' && gameSocket.isConnected;
 
   // A transport restoration invalidates DOM coordinates and any in-flight
   // projection. The next server snapshot is the only safe settled table.
@@ -211,15 +213,16 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
   }, []);
 
   useEffect(() => {
-    if (interactionState !== 'SUBMITTING') return;
-    if (gameState.lastAction?.actorId !== activeUserId) return;
+    const submitted = pureSubmissionRef.current;
+    if (!submitted || gameState.stateVersion <= submitted.version || myHand.some(card => card.id === submitted.cardId)) return;
+    pureSubmissionRef.current = null;
     submissionInFlightRef.current = false;
     setSelectedCardId(null);
     setSelectedTargetId(null);
     setSelectedGuessValue(null);
     setIsGuessOpen(false);
     setInteractionState('IDLE');
-  }, [interactionState, gameState.stateVersion, gameState.lastAction?.actorId, activeUserId]);
+  }, [gameState.stateVersion, myHand]);
 
   const selectedCard = useMemo(() => {
     return myHand.find(c => c.id === selectedCardId) || null;
@@ -269,21 +272,21 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       setInteractionState('SUBMITTING');
       setActionRequestError(null);
       if (propOnPlayCard) {
+        pureSubmissionRef.current = { cardId, version: gameState.stateVersion };
         propOnPlayCard(cardId, targetId, guessValue);
       } else {
         gameSocket.playCard(cardId, targetId, guessValue, result => {
-          if (result.success) return;
           setSelectedCardId(null);
           setSelectedTargetId(null);
           setSelectedGuessValue(null);
           setIsGuessOpen(false);
           setInteractionState('IDLE');
           submissionInFlightRef.current = false;
-          setActionRequestError(result.error || '카드를 사용하지 못했습니다. 다시 시도하세요.');
+          setActionRequestError(result.success ? null : result.error || '카드를 사용하지 못했습니다. 다시 시도하세요.');
         });
       }
     },
-    [propOnPlayCard, gameSocket]
+    [propOnPlayCard, gameSocket, gameState.stateVersion]
   );
 
   // Card selection remains local until the player explicitly confirms it.
@@ -376,15 +379,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     setInteractionState('IDLE');
   };
 
-  const handleInspectDiscards = (playerId: string) => {
-    const player = gameState.players.find(p => p.id === playerId);
-    if (player) {
-      setInspectingPlayer({
-        name: playerCopy(gameState.players, player.id, activeUserId).name,
-        discards: player.discardPile || [],
-      });
-    }
-  };
+  const handleInspectDiscards = (playerId: string) => setInspectingPlayerId(playerId);
 
   const handleStartNextRound = () => {
     if (propOnStartNextRound) {
@@ -592,7 +587,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             chatMessages={chatMessages}
             onSendChat={onSendChat}
             onChatOpenChange={handleChatOpenChange}
-            decisionControls={<ActionConfirmation cardName={!isActionPlaying && selectedCard ? selectedCard.name : isMyTurn ? '손패에서 사용할 카드를 선택하세요' : '상대의 행동을 기다립니다'} targetName={targetPlayer?.nickname} guessName={selectedGuessName} hasSelection={Boolean(selectedCard) && !isActionPlaying} submitting={interactionState === 'SUBMITTING'} canConfirm={canConfirmAction} onCancel={handleCancelAction} onConfirm={handleConfirmAction} onEditGuess={!isActionPlaying && selectedCard?.value === 1 && selectedTargetId ? () => {setInteractionState('GUESSING');setIsGuessOpen(true);} : undefined}/>}
+            decisionControls={<ActionConfirmation cardName={!isActionPlaying && selectedCard ? selectedCard.name : isMyTurn ? '손패에서 사용할 카드를 선택하세요' : '상대의 행동을 기다립니다'} targetName={targetPlayer?.nickname} noEligibleTarget={needsTarget && targetablePlayerIds.length === 0 && canInteract} guessName={selectedGuessName} hasSelection={Boolean(selectedCard) && !isActionPlaying} submitting={interactionState === 'SUBMITTING'} canConfirm={canConfirmAction} onCancel={handleCancelAction} onConfirm={handleConfirmAction} onEditGuess={!isActionPlaying && selectedCard?.value === 1 && selectedTargetId ? () => {setInteractionState('GUESSING');setIsGuessOpen(true);} : undefined}/>}
           />
       )}
 
@@ -608,9 +603,9 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       <DiscardHistoryModal
         isOpen={!!inspectingPlayer}
-        playerName={inspectingPlayer?.name || ''}
-        discardPile={inspectingPlayer?.discards || []}
-        onClose={() => setInspectingPlayer(null)}
+        playerName={inspectingPlayer ? playerCopy(visual.visualTable.players, inspectingPlayer.id, activeUserId).name : ''}
+        discardPile={inspectingPlayer?.discardPile || []}
+        onClose={() => setInspectingPlayerId(null)}
       />
 
       <RoundResultModal
@@ -656,6 +651,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
 
       <GameMenuDrawer
         isOpen={menuDrawerOpen}
+        voice={webrtc}
         roomCode={propRoomState?.code}
         targetTokens={gameState.config?.targetTokens || 4}
         onClose={() => setMenuDrawerOpen(false)}

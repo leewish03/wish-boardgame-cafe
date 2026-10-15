@@ -4,6 +4,7 @@ import { THEME } from '../../../shared/theme';
 
 interface ActionConfirmationProps {
   readonly cardName: string;
+  readonly noEligibleTarget?: boolean;
   readonly targetName?: string;
   readonly guessName?: string | null;
   readonly submitting: boolean;
@@ -14,9 +15,10 @@ interface ActionConfirmationProps {
   readonly onEditGuess?: () => void;
 }
 
-export const ActionConfirmation: FC<ActionConfirmationProps> = ({cardName,targetName,guessName,submitting,hasSelection,canConfirm,onCancel,onConfirm,onEditGuess}) => (
+export const ActionConfirmation: FC<ActionConfirmationProps> = ({cardName,noEligibleTarget,targetName,guessName,submitting,hasSelection,canConfirm,onCancel,onConfirm,onEditGuess}) => (
   <Dock aria-label="선택한 카드 사용">
     <strong aria-live="polite">{cardName}{targetName && ` → ${targetName}`}{guessName && ` · ${guessName} 추측`}</strong>
+    {hasSelection && noEligibleTarget && <strong role="status">선택할 수 있는 상대가 없어 카드 효과 없이 버립니다.</strong>}
     <div>
       <Choice type="button" disabled={submitting || !hasSelection} onClick={onCancel}>취소</Choice>
       {onEditGuess && <Choice type="button" disabled={submitting} onClick={onEditGuess}>{guessName ? '추측 변경' : '번호 추측'}</Choice>}

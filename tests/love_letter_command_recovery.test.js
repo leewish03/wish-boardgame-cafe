@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { transformSync } from 'esbuild';
+import { mock } from 'node:test';
+const require = createRequire(import.meta.url);
+const listeners = new Map();
+const sent = [];
+const socket = { connected: true, on(event, fn) { const list = listeners.get(event) || []; list.push(fn); listeners.set(event,list); }, off(event, fn) { listeners.set(event,(listeners.get(event)||[]).filter(item=>item!==fn)); }, emit(event, payload, callback) { sent.push({event,payload,callback}); } };
+const dispatch = (event,payload) => [...(listeners.get(event)||[])].forEach(fn=>fn(payload));
+const cleanups=[];
+const react = { useState: initial=>[typeof initial==='function'?initial():initial,()=>{}], useRef:value=>({current:value}),useCallback:fn=>fn,useMemo:fn=>fn(),useEffect:fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup);} };
+const cache=new Map();
+function load(file) { if(cache.has(file))return cache.get(file); const code=transformSync(fs.readFileSync(file,'utf8'),{loader:'ts',format:'cjs'}).code; const module={exports:{}};new Function('module','exports','require',code)(module,module.exports,name=> { if(name==='react')return react;if(name.endsWith('/sfx'))return {sfx:{hapticSnap(){},playCardPlay(){}}};if(name.startsWith('.')) {const resolved=path.resolve(path.dirname(file),name);return load(fs.existsSync(resolved+'.ts')?resolved+'.ts':resolved);} return require(name);});cache.set(file,module.exports);return module.exports; }
+const {useGameSocket}=load(fs.realpathSync('src/games/love-letter/hooks/useGameSocket.ts'));
+const snapshot=(version,hand)=>({roomId:'TEST',stateVersion:version,serverTime:Date.now(),publicState:{stateVersion:version,roundNumber:1,matchState:'PLAYING',playPhase:'TURN_INPUT',config:{},players:[],lastAction:{actorId:'me'}},privateState:{id:'me',hand}});
+mock.timers.enable({apis:['setTimeout']});
+try {
+ const hook=useGameSocket({socket,roomCode:'TEST',currentUser:{id:'me',nickname:'Me'},initialRoomState:{stateVersion:10}});
+ dispatch('game:snapshot',snapshot(10,[{id:'c1'}]));
+ const results=[];hook.playCard('c1',undefined,undefined,result=>results.push(result));
+ dispatch('game:snapshot',snapshot(10,[{id:'c1'}]));
+ dispatch('game:snapshot',{...snapshot(11,[]),roomId:'OTHER'});
+ dispatch('game:snapshot',{...snapshot(11,[]),privateState:{id:'other',hand:[]}});
+ assert.equal(results.length,0,'Old actor action and unchanged unsolicited snapshot cannot release request');
+ mock.timers.tick(4000);
+ assert.equal(sent.filter(x=>x.event==='game:view-ready').length,2,'Dropped command must request one authoritative reconciliation after deadline');
+ dispatch('game:snapshot',snapshot(10,[{id:'c1'}]));
+ dispatch('game:snapshot',{...snapshot(11,[]),roomId:'OTHER'});
+ dispatch('game:snapshot',{...snapshot(11,[]),privateState:{id:'other',hand:[]}});
+ assert.equal(results.length,1,'Unchanged reconciliation must release pending with visible error');assert.equal(results[0].success,false);
+ const first=sent.find(x=>x.event==='game:command');first.callback({success:true});assert.equal(results.length,1,'Late ACK cannot complete expired request again');
+ const next=[];hook.playCard('c1',undefined,undefined,result=>next.push(result));first.callback({success:false,error:'late rejection'});assert.equal(next.length,0,'Old callback cannot release newer request');
+ dispatch('game:snapshot',snapshot(11,[]));assert.deepEqual(next,[{success:true}],'Accepted command without ACK settles from newer own-hand snapshot');
+ mock.timers.tick(9000);assert.equal(next.length,1);
+ assert.equal(sent.filter(x=>x.event==='game:command').length,2,'Recovery never replays a command');
+ const ordered=[];hook.playCard('c4',undefined,undefined,result=>ordered.push(result));sent.filter(item=>item.event==='game:command').at(-1).callback({success:true});assert.equal(ordered.length,0,'Success ACK alone waits for authoritative state');dispatch('game:snapshot',snapshot(12,[]));assert.deepEqual(ordered,[{success:true}],'ACK-before-snapshot settles once');
+ const disconnected=[];hook.playCard('c2',undefined,undefined,result=>disconnected.push(result));dispatch('disconnect');assert.equal(disconnected[0]?.success,false,'Disconnect releases request once');
+ socket.connected=false;const before=sent.length;const offline=[];hook.playCard('offline',undefined,undefined,result=>offline.push(result));assert.equal(sent.length,before,'Disconnected submit is never buffered');assert.equal(offline[0].success,false);socket.connected=true;
+ const unanswered=[];hook.playCard('c3',undefined,undefined,result=>unanswered.push(result));mock.timers.tick(4000);mock.timers.tick(4000);assert.equal(unanswered[0]?.success,false,'Unanswered resync is bounded');
+ const unmounted=[];hook.playCard('disposed',undefined,undefined,result=>unmounted.push(result));cleanups.forEach(fn=>fn());mock.timers.tick(9000);dispatch('game:snapshot',snapshot(99,[]));assert.equal(unmounted.length,0,'Unmount cancels request without callback');
+ console.log('PASS command/ACK drop, unchanged reconciliation, stale ACK, identity/version, disconnect, bounded resync, no replay');
+} finally {cleanups.forEach(fn=>fn());mock.timers.reset();}
