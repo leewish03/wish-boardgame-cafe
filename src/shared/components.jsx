@@ -293,7 +293,7 @@ export const CardFooter = styled.div`
 const DialogOverlayWrapper = styled.div`
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  z-index: 2200;
   background-color: rgba(9, 13, 22, 0.75);
   backdrop-filter: blur(10px);
   animation: ${fadeIn} 0.2s ease-out;
