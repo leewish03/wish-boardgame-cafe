@@ -10,6 +10,8 @@ const io = { to: () => ({ emit() {} }) }, service = new BoardGameService(io), sc
 for (const type of Object.keys(boardGameCores)) configureGameLifecycle(type, { projectPublicState: (room, id) => service.projectRoomState(room, id) });
 try {
   const sql = new SupabaseRoomRepository('postgres://unused');
+  assert.doesNotThrow(() => sql.pool.emit('error', new Error('connection terminated')),
+    'an idle database connection failure must not crash the game process');
   sql._rooms = roomRepository._rooms;
   const originalSave = roomRepository.saveRoom;
   const writes = [];

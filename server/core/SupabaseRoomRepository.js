@@ -47,6 +47,10 @@ export class SupabaseRoomRepository {
       max: 5,
       idleTimeoutMillis: 20_000,
     });
+    // pg removes failed idle clients; handling the event keeps other rooms alive.
+    this.pool.on('error', () => {
+      console.error('Room database idle connection lost; a later query will reconnect.');
+    });
     this.lastTelemetryCleanupAt = 0;
   }
 
