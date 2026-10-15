@@ -2,6 +2,7 @@ import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react
 import styled, { css } from 'styled-components';
 import { THEME } from './shared/theme';
 import { GAME_CATALOG, gameEvent, roomRules, waitingRole } from './shared/gameCatalog';
+import CatalogGrid from './shared/CatalogGrid';
 import {
   Button,
   Card,
@@ -244,22 +245,6 @@ const MainContent = styled.main`
     `}
 `;
 
-// Game Card Grid Layout
-const GameGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
-  gap: 24px;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  margin-top: 18px;
-
-  > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
-  @media (max-width: 560px) {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-`;
 
 const GameLoadingScreen = styled.div`
   width: min(400px, calc(100% - 32px));
@@ -335,36 +320,6 @@ const LobbySegmentButton = styled.button`
   }
 `;
 
-const GameThumbnail = styled.div`
-  height: 130px;
-  border-radius: ${THEME.radius.md};
-  background: ${({ $bg }) => $bg || '#090d16'};
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(197, 160, 89, 0.3);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
-
-  span.emblem-title {
-    font-family: ${THEME.font.serif};
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    color: ${THEME.goldLight};
-    text-transform: uppercase;
-  }
-
-  span.emblem-sub {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.6);
-    letter-spacing: 0.08em;
-    margin-top: 2px;
-  }
-`;
 
 const ChatWrapper = styled.div`
   display: flex;
@@ -1301,102 +1256,7 @@ export default function App() {
 
             <TabsContent style={{ marginTop: '0', width: '100%' }}>
               {activeTab === 'games' && (
-                <GameGrid>
-                  {/* Game 1: Love Letter (Live) */}
-                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('LOVE_LETTER', event)}>
-                    <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #791a30 0%, #3b0b17 54%, #090d16 100%)">
-                        <span className="emblem-title">LOVE LETTER</span>
-                        <span className="emblem-sub">ROYAL COURT</span>
-                      </GameThumbnail>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <CardTitle>러브레터</CardTitle>
-                        <Badge $variant="emerald">LIVE</Badge>
-                      </div>
-                      <CardDescription>
-                        2~6인 · 15분 · 르네상스 왕실 심리전
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
-                        공주에게 비밀 연애편지를 전달하세요. 상대의 카드를 추리하고 저격하는 클래식 명작 카드 게임.
-                      </p>
-                    </CardContent>
-                    <CardFooter>
-                      <Button $variant="default" $size="sm" $fullWidth>
-                        <Play size={13} />
-                        <span>입장 / 테이블 생성</span>
-                      </Button>
-                    </CardFooter>
-                  </Card>
-
-                  {/* Game 2: The Great Dalmuti */}
-                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('DALMUTI', event)}>
-                    <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #312e81 0%, #090d16 100%)">
-                        <span className="emblem-title">THE DALMUTI</span>
-                        <span className="emblem-sub">CLASS STRUGGLE</span>
-                      </GameThumbnail>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <CardTitle>달무티</CardTitle>
-                        <Badge $variant="emerald">LIVE</Badge>
-                      </div>
-                      <CardDescription>
-                        4~8인 · 30분 · 계급 역전 카드 게임
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
-                        달무티부터 농노까지 치열한 계급 투쟁이 펼쳐지는 명작 보드게임.
-                      </p>
-                    </CardContent>
-                    <CardFooter>
-                      <Button $variant="default" $size="sm" $fullWidth>
-                        <Play size={13} />
-                        입장 / 테이블 생성
-                      </Button>
-                    </CardFooter>
-                  </Card>
-
-                  {Object.entries(GAME_CATALOG).filter(([, game]) => game.cover).map(([key, game]) => (
-                    <Card key={key}>
-                      <CardHeader>
-                        <img src={`/assets/new-games/${game.cover}-cover.png`} alt="" loading="lazy" width="1536" height="1024" style={{ width: '100%', height: 'auto', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: THEME.radius.md }} />
-                        <CardTitle>{game.name}</CardTitle>
-                        <CardDescription style={{ wordBreak: 'keep-all' }}>{game.min}~{game.max}인 · {game.subtitle}</CardDescription>
-                      </CardHeader>
-                      <CardContent><p style={{ fontSize: '14px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.5, wordBreak: 'keep-all' }}>{game.description}</p></CardContent>
-                      <CardFooter><Button $fullWidth onClick={(event) => handleOpenCreateDialog(key, event)} aria-label={`${game.name} 테이블 생성`} style={{ minHeight: '44px' }}><Play size={14} />입장 / 테이블 생성</Button></CardFooter>
-                    </Card>
-                  ))}
-
-                  {/* Game 3: Liar Game (Coming Soon) */}
-                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('LIAR_GAME', event)} style={{ opacity: 0.6 }}>
-                    <CardHeader>
-                      <GameThumbnail $bg="linear-gradient(135deg, #3b0b17 0%, #090d16 100%)">
-                        <span className="emblem-title">THE LIAR</span>
-                        <span className="emblem-sub">DECEPTION</span>
-                      </GameThumbnail>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <CardTitle>라이어 게임</CardTitle>
-                        <Badge $variant="outline">COMING SOON</Badge>
-                      </div>
-                      <CardDescription>
-                        3~8인 · 20분 · 심리 추리
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.5 }}>
-                        단 한 명의 라이어는 제시어를 모릅니다. 정체를 숨기고 자연스럽게 설명하세요.
-                      </p>
-                    </CardContent>
-                    <CardFooter>
-                      <Button $variant="secondary" $size="sm" $fullWidth disabled>
-                        준비 중
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                </GameGrid>
+                <CatalogGrid onSelect={handleOpenCreateDialog} />
               )}
 
               {activeTab === 'join' && (
