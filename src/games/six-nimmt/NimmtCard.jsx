@@ -19,10 +19,10 @@ const Face = styled(motion.div)`
 const Bulls = styled.span`display:block;width:calc(100% - 8px);color:var(--penalty-color);`;
 const bullPath = 'M7 9C3 9 2 4 3 2c2 4 4 4 6 4h6c2 0 4 0 6-4 1 2 0 7-4 7l-1 9-4 4-4-4Z';
 
-export default function NimmtCard({ card, back=false, reduce=false, onComplete }) {
+export default function NimmtCard({ card, back=false, reduce=false, onComplete, style, faceRef, layout=true }) {
   const penalty=back?null:bullheads(card);
-  return <Face layoutId={back?undefined:`card-${card}`} layout $back={back}
-    style={back?undefined:{'--penalty-color':penaltyColors[penalty]}}
+  return <Face ref={faceRef} layoutId={back||!layout?undefined:`card-${card}`} layout={layout} $back={back}
+    style={back?style:{...style,'--penalty-color':penaltyColors[penalty]}}
     transition={{layout:{duration:reduce?0.01:0.38,ease:'easeInOut'}}}
     onLayoutAnimationComplete={onComplete} aria-label={back?'선택 완료 · 뒷면':`${card}, 소머리 ${penalty}개`}>
     {back?<svg viewBox="0 0 24 24" aria-hidden="true"><path d={bullPath}/></svg>:<>
