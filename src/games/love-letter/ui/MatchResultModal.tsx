@@ -1,28 +1,66 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Crown, LogOut, RotateCcw } from 'lucide-react';
-import { PlayerPublic } from '../../../..//packages/love-letter-core/src/types';
+import { PlayerPublic } from '../../../../packages/love-letter-core/src/types';
+import { GameAction, ResultDialog } from '../../../shared/GameSurface';
 import { THEME } from '../../../shared/theme';
 
-interface MatchResultModalProps { isOpen:boolean; championName:string; localUserId:string; targetTokens?:number; reason?:string|null; onPlayAgain?:()=>void; onReturnToLobby:()=>void; players?:PlayerPublic[]; isHost?:boolean; requestError?:string|null; isRequesting?:boolean; }
-export const MatchResultModal: React.FC<MatchResultModalProps> = ({ isOpen, championName, localUserId, targetTokens=4, reason, onPlayAgain, onReturnToLobby, players=[], isHost=false, requestError, isRequesting=false }) => {
+interface MatchResultModalProps {
+  isOpen: boolean;
+  championName: string;
+  localUserId: string;
+  targetTokens?: number;
+  reason?: string | null;
+  onPlayAgain?: () => void;
+  onReturnToLobby: () => void;
+  players?: PlayerPublic[];
+  isHost?: boolean;
+  requestError?: string | null;
+  isRequesting?: boolean;
+}
+export const MatchResultModal: React.FC<MatchResultModalProps> = ({
+  isOpen, championName, localUserId, targetTokens = 4, reason, onPlayAgain,
+  onReturnToLobby, players = [], isHost = false, requestError, isRequesting = false,
+}) => {
+  const [leaving, setLeaving] = useState(false);
+  const leaveRequested = useRef(false);
+  useEffect(() => {
+    setLeaving(false);
+    leaveRequested.current = false;
+  }, [isOpen]);
+  const leave = () => {
+    if (leaveRequested.current) return;
+    leaveRequested.current = true;
+    setLeaving(true);
+    onReturnToLobby();
+  };
   const insufficient = reason === 'INSUFFICIENT_HUMANS';
-  return <AnimatePresence>{isOpen && <Overlay as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><Sheet as={motion.section} initial={{scale:.96,y:20}} animate={{scale:1,y:0}} exit={{scale:.96,y:20}}>
-  <Eyebrow>매치 종료</Eyebrow><Title><Crown size={20}/>{insufficient ? '참가자 부족으로 게임 종료' : `${championName} 최종 우승`}</Title><Description>{insufficient ? '플레이를 계속할 인간 참가자가 부족해 이 매치는 무효로 종료되었습니다. 점수와 우승자는 기록하지 않습니다.' : `목표 호감도 ${targetTokens}점을 가장 먼저 달성했습니다.`}</Description>
-  {!insufficient && <Ranking>{[...players].sort((a,b)=>b.tokens-a.tokens).map((p,index)=><RankRow key={p.id}><span>{index+1}. {p.id === localUserId ? '나' : p.nickname}</span><strong>{p.tokens}점</strong></RankRow>)}</Ranking>}
-  <Buttons>{!insufficient && isHost && onPlayAgain && <Primary type="button" disabled={isRequesting} onClick={onPlayAgain}><RotateCcw size={15}/>{isRequesting ? '서버에 요청 중…' : '같은 멤버로 새 매치'}</Primary>}<Secondary type="button" onClick={onReturnToLobby}><LogOut size={15}/> 살롱 로비로</Secondary></Buttons>{!insufficient && !isHost && <Waiting>방장만 새 매치를 시작할 수 있습니다.</Waiting>}{requestError && <ErrorText>{requestError}</ErrorText>}
-</Sheet></Overlay>}</AnimatePresence>;
+  const standings = [...players].sort((a, b) => b.tokens - a.tokens);
+  return <ResultDialog open={isOpen} eyebrow="매치 종료"
+    title={insufficient ? '참가자 부족으로 게임 종료' : `${championName} 최종 우승`}
+    description={insufficient ? '플레이를 계속할 인간 참가자가 부족해 이 매치는 무효로 종료되었습니다. 점수와 우승자는 기록하지 않습니다.' : `목표 호감도 ${targetTokens}점을 가장 먼저 달성했습니다.`}
+    error={requestError}
+    actions={<>
+      {!insufficient && isHost && onPlayAgain && <GameAction $variant="default" disabled={isRequesting || leaving} aria-busy={isRequesting} onClick={onPlayAgain}>{isRequesting ? '서버에 요청 중…' : '같은 멤버로 새 매치'}</GameAction>}
+      <GameAction $variant="ghost" disabled={leaving} aria-busy={leaving} onClick={leave}>{leaving ? '나가는 중…' : '살롱 로비로'}</GameAction>
+    </>}>
+    {!insufficient && <>
+      <Ranking aria-label="최종 호감도 순위">{standings.map(player => {
+        const rank = standings.findIndex(candidate => candidate.tokens === player.tokens) + 1;
+        const tied = standings.filter(candidate => candidate.tokens === player.tokens).length > 1;
+        return <RankRow key={player.id}>
+          <span><Rank>{tied ? '공동 ' : ''}{rank}위</Rank>{player.id === localUserId ? '나' : player.nickname}</span>
+          <strong>{player.tokens}점</strong>
+        </RankRow>;
+      })}</Ranking>
+      {!isHost && <Waiting>방장만 새 매치를 시작할 수 있습니다.</Waiting>}
+    </>}
+  </ResultDialog>;
 };
-const Overlay=styled.div`position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;background:rgba(9,13,22,.76);backdrop-filter:blur(7px);`;
-const Sheet=styled.div`width:min(440px,100%);max-height:90dvh;overflow:auto;padding:22px;box-sizing:border-box;text-align:center;border:1.5px solid ${THEME.gold};border-radius:16px;background:#fff;background-image:${THEME.gradients.marbleSlab};`;
-const Eyebrow=styled.div`font-size:10px;font-weight:900;letter-spacing:.1em;color:${THEME.goldAntique};`;
-const Title=styled.h2`margin:7px 0 4px;display:flex;justify-content:center;align-items:center;gap:6px;font:900 20px ${THEME.font.serif};color:${THEME.burgundy};`;
-const Description=styled.p`margin:0 0 14px;font-size:12px;color:${THEME.mutedForeground};`;
-const Ranking=styled.div`display:flex;flex-direction:column;gap:4px;margin-bottom:15px;`;
-const RankRow=styled.div`display:flex;justify-content:space-between;padding:8px 10px;border:1px solid ${THEME.border};border-radius:7px;background:rgba(255,255,255,.7);font-size:11px;`;
-const Buttons=styled.div`display:flex;flex-direction:column;gap:7px;`;
-const Primary=styled.button`height:41px;display:flex;gap:6px;align-items:center;justify-content:center;border:1px solid ${THEME.goldAntique};border-radius:8px;background:${THEME.gradients.goldShimmer};font:900 13px ${THEME.font.serif};cursor:pointer;&:disabled{opacity:.6;cursor:wait;}`;
-const Secondary=styled.button`height:38px;display:flex;gap:6px;align-items:center;justify-content:center;border:1px solid ${THEME.border};border-radius:8px;background:#fff;color:${THEME.foreground};font:800 12px ${THEME.font.sans};cursor:pointer;`;
-const Waiting=styled.p`margin:10px 0 0;font-size:11px;color:${THEME.mutedForeground};`;
-const ErrorText=styled.p`margin:8px 0 0;font-size:11px;color:${THEME.destructive};font-weight:700;`;
+const Ranking = styled.ol`list-style:none; margin:0; padding:0; display:grid; gap:8px;`;
+const RankRow = styled.li`
+  display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px;
+  border:1px solid ${THEME.border}; border-radius:8px; background:rgba(255,255,255,.7);
+  > span {min-width:0;} strong {flex-shrink:0; font-variant-numeric:tabular-nums;}
+`;
+const Rank = styled.span`display:block; font-size:${THEME.interaction.caption}; color:${THEME.mutedForeground};`;
+const Waiting = styled.p`margin:12px 0 0; color:${THEME.mutedForeground};`;

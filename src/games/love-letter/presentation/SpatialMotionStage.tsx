@@ -53,11 +53,14 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const steps=buildPhysicalSequence(currentAction?.presentationEvents || []);
   const step=steps[currentAction?.presentationIndex || 0];
   const [geometry,setGeometry]=useState<Record<string,Point>|null>(null);
+  const [geometryStepId,setGeometryStepId]=useState<string|null>(null);
   const [requesting,setRequesting]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const completed=useRef<string|null>(null);
   const groupCompletion=useRef<{stepId:string|null; members:Set<string>}>({stepId:null,members:new Set()});
   const comparisonRoute=useRef<{actionId:string;geometry:Record<string,Point>}|null>(null);
+  const comparisonGeneration=useRef(0);
+  const routeGeneration=comparisonGeneration.current;
   const reviewVisible=useRef<string|null>(null);
   const callback=useRef(onPhaseComplete);callback.current=onPhaseComplete;
   const finish=()=>{if(step && completed.current!==step.id){completed.current=step.id;callback.current?.();}};
@@ -69,7 +72,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
   const targetText=playerCopy(players,step?.targetId,localUserId);
   const returned=returnedActionId===currentAction?.actionId;
   const completeGroup=(member:string,total:number)=>{
-    if(!step)return;
+    if(!step || routeGeneration!==comparisonGeneration.current)return;
     if(groupCompletion.current.stepId!==step.id) groupCompletion.current={stepId:step.id,members:new Set()};
     groupCompletion.current.members.add(member);
     if(groupCompletion.current.members.size>=total) finish();
@@ -86,7 +89,7 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const visibleCard = registered?.querySelector<HTMLElement>('[data-card-id]');
       return point(visibleCard || registered || registry.get(id,count>1?'hand-slot-1':'hand-slot-0'));
     };
-    const measure=()=>{
+    const measure=(viewportResize=false)=>{
       const actorHand=hand(step.actorId,step.kind==='PLAY'?played:undefined);
       const targetHand=step.kind==='DRAW'
         ? point(registry.get(step.targetId!, (step.apply?.handSlot === 0 || step.apply?.handSlot === 1) ? (`hand-slot-${step.apply.handSlot}` as 'hand-slot-0' | 'hand-slot-1') : ((players.find(p => p.id === step.targetId)?.cardCount || 0) > 0 ? 'hand-slot-1' : 'hand-slot-0')))
@@ -120,12 +123,19 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const fallback: Point = {x:0,y:0,width:1,height:1};
       const measured = {...roundHands,actorHand:actorHand || fallback,targetHand:targetHand || actorHand || fallback,play:play || fallback,review:review || fallback,targetReview:targetReview || review || fallback,comparisonLeft:comparisonLeft || fallback,comparisonRight:comparisonRight || fallback,deck:deck || fallback,discard:destination(discard || fallback),targetDiscard:destination(targetDiscard || discard || fallback),comparisonDiscard:destination(comparisonDiscard || targetDiscard || discard || fallback)};
       const isComparison=['COMPARE_GATHER','COMPARE_REVEAL','COMPARE_RESULT','COMPARE_SETTLE'].includes(step.kind);
+      if (viewportResize && !isComparison) comparisonRoute.current=null;
       const frozenRoute = comparisonRoute.current;
-      if (isComparison && frozenRoute && frozenRoute.actionId === currentAction?.actionId) {
+      if (isComparison && !viewportResize && frozenRoute && frozenRoute.actionId === currentAction?.actionId) {
+        setGeometryStepId(step.id);
         setGeometry(frozenRoute.geometry);
         return true;
       }
+      if (isComparison && viewportResize && frozenRoute && JSON.stringify(frozenRoute.geometry)!==JSON.stringify(measured)) {
+        comparisonGeneration.current++;
+        groupCompletion.current={stepId:step.id,members:new Set()};
+      }
       if (isComparison && currentAction) comparisonRoute.current={actionId:currentAction.actionId,geometry:measured};
+      setGeometryStepId(step.id);
       setGeometry(previous => JSON.stringify(previous) === JSON.stringify(measured) ? previous : measured);
       return true;
     };
@@ -137,11 +147,12 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
     }
     // Scroll must not bend an in-flight card route.  The board has its own
     // scroll viewport; real viewport resize is the only geometry invalidator.
-    window.addEventListener('resize',measure);
-    const observer = new window.ResizeObserver(measure);
+    const resize=()=>measure(true);
+    window.addEventListener('resize',resize);
+    const observer = new window.ResizeObserver(()=>measure());
     const controls = registry.get('table','review-controls');
     if (controls?.parentElement) observer.observe(controls.parentElement);
-    return()=>{window.cancelAnimationFrame(frameA);window.cancelAnimationFrame(frameB);observer.disconnect();window.removeEventListener('resize',measure);};
+    return()=>{window.cancelAnimationFrame(frameA);window.cancelAnimationFrame(frameB);observer.disconnect();window.removeEventListener('resize',resize);};
   },[step?.id,registry,players,played?.id,currentAction?.actionId]);
   useEffect(()=>{setRequesting(false);setError(null);},[currentAction?.actionId]);
   useEffect(()=>{if(step?.kind==='REVIEW' && returned) finish();},[step?.id,returned]);
@@ -195,13 +206,13 @@ export const SpatialMotionStage:React.FC<Props>=({currentAction,localUserId,play
       const to=g[`round-destination:${id}`]; const winner=(step.apply?.winnerIds || []).includes(id);
       return <TableCard key={`round:${id}`} identity={`round:${id}`} stepId={step.id} from={step.kind==='ROUND_GATHER'?g[`round:${id}`]:to} to={to} toOffset={step.kind==='ROUND_RESULT'&&winner?{x:0,y:-10,scale:1.06}:undefined} card={card} faceUp={step.kind!=='ROUND_GATHER'} duration={step.duration} onComplete={step.kind==='ROUND_RESULT'?undefined:()=>completeGroup(`round:${id}`,visible.length)}/>;
     }); })()}
-    {comparisonStep && [step.actorId,step.targetId].filter((id):id is string=>Boolean(id)).map((id,index)=>{
+    {comparisonStep && (step.kind!=='COMPARE_GATHER' || geometryStepId===step.id) && [step.actorId,step.targetId].filter((id):id is string=>Boolean(id)).map((id,index)=>{
       const isActor=index===0; const privateCard=isActor?comparisonActorCard:comparisonTargetCard; const card=comparisonCard(id,privateCard);
       const fromHand=isActor?g.actorHand:g.targetHand; const stage=isActor?g.comparisonLeft:g.comparisonRight;
       const isLoser=id===comparisonLoserId; const isWinner=id===comparisonWinnerId;
       const to=step.kind==='COMPARE_SETTLE'?(isLoser?g.comparisonDiscard:(isWinner?(isActor?g.actorHand:g.targetHand):fromHand)):stage;
       const phase=step.kind==='COMPARE_GATHER'?'gather':step.kind==='COMPARE_REVEAL'?'reveal':step.kind==='COMPARE_RESULT'?'result':'settle';
-      return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={step.id} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={step.kind==='COMPARE_RESULT'?undefined:()=>completeGroup(`comparison:${id}`,2)}/>;
+      return <TableCard key={`comparison:${currentAction.actionId}:${id}`} identity={`comparison:${currentAction.actionId}:${id}`} stepId={`${step.id}:${routeGeneration}`} from={step.kind==='COMPARE_GATHER'?fromHand:stage} to={to} card={card} faceUp={comparisonFace(id,phase)} initialFaceUp={id===localUserId} duration={step.duration} onComplete={step.kind==='COMPARE_RESULT'?undefined:()=>completeGroup(`comparison:${id}`,2)}/>;
     })}
     {showPlayed && played && geometry && <TableCard key={`${currentAction.actionId}:played`} identity={`played:${played.id}`} stepId={step.id}
       from={g.actorHand} to={step.kind==='CLEANUP'?g.discard:g.play} toOffset={privatePhase?{x:-5,y:5,scale:.94}:undefined} card={played} faceUp initialFaceUp={localUserId===step.actorId} duration={drivingPlayed?step.duration:0} onComplete={drivingPlayed?finish:undefined}/>}

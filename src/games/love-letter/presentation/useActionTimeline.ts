@@ -127,6 +127,7 @@ export function useActionTimeline() {
   }, [setPresentationPhase, startNext]);
 
   const resetTimeline = useCallback((roundNumber?: number) => {
+    scheduledStartRef.current = false;
     processedEventIdsRef.current.clear();
     completedActionKeysRef.current.clear();
     queueRef.current = [];

@@ -609,7 +609,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       />
 
       <RoundResultModal
-        isOpen={gameState.matchState === 'ROUND_END' && !isActionPlaying}
+        isOpen={gameState.matchState === 'ROUND_END' && !isActionPlaying && !hasPendingPresentation() && !isPaused}
         roundNumber={gameState.roundNumber}
         winnerName={roundWinner?.nickname || '승자'}
         localUserId={activeUserId}
@@ -617,6 +617,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         targetTokens={gameState.config?.targetTokens || 4}
         isHost={me?.isHost || false}
         onNextRound={handleStartNextRound}
+        onLeave={handlePausedLeave}
         players={gameState.players}
         winnerIds={outcomeWinnerIds}
         winnerReason={gameState.roundWinnerReason || gameState.outcome?.reason}
@@ -629,7 +630,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
       />
 
       <MatchResultModal
-        isOpen={gameState.matchState === 'GAME_OVER' && !isActionPlaying}
+        isOpen={gameState.matchState === 'GAME_OVER' && !isActionPlaying && !hasPendingPresentation() && !isPaused}
         championName={matchWinner?.id === activeUserId ? '내가' : (matchWinner?.nickname || '최종 우승자')}
         localUserId={activeUserId}
         targetTokens={gameState.config?.targetTokens || 4}

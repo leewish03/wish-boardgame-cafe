@@ -4,6 +4,10 @@ import { Button } from './components';
 import { THEME } from './theme';
 import { useDialogFocus } from './useDialogFocus';
 
+/** @type {import('styled-components').IStyledComponent<'web', React.ComponentPropsWithRef<'button'> & {
+ * $variant?: 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'emerald' | 'burgundy' | 'gold',
+ * $size?: 'default' | 'sm' | 'lg' | 'icon', $fullWidth?: boolean
+ * }>} */
 export const GameAction = styled(Button).attrs({ type: 'button' })`
   min-width: ${THEME.interaction.touchTarget};
   min-height: ${THEME.interaction.touchTarget};
