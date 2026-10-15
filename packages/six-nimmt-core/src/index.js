@@ -31,14 +31,15 @@ export function createInitialState(players, config = {}, seed = 1) {
   return {
     gameType, matchState: 'LOBBY', playPhase: 'LOBBY', roundNumber: 0, turnNumber: 0, stateVersion: 0, selectionVersion: 0,
     players: players.map(p => ({ id: p.id, nickname: p.nickname || p.id, isHost: !!p.isHost, isBot: !!p.isBot, score: 0, roundScore: 0 })),
-    config: { targetScore: 66 }, outcome: null, seed: String(seed),
+    config: { targetScore: 66, deckSize: players.length * 10 + 4 }, outcome: null, seed: String(seed),
     hands: {}, selections: {}, rows: [], queue: [], taken: {}, unused: [], seenCards: [], pendingRowPlayerId: null,
   };
 }
 function deal(state, events) {
   state.roundNumber++;
   let counter = 0;
-  const deck = Array.from({ length: 104 }, (_, i) => i + 1);
+  // Persisted matches from before the tactics rule retain their original deck.
+  const deck = Array.from({ length: state.config.deckSize ?? 104 }, (_, i) => i + 1);
   for (let i = deck.length - 1; i > 0; i--) {
     const bound = i + 1, limit = Math.floor(4294967296 / bound) * bound;
     let sample;

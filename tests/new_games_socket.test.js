@@ -77,15 +77,28 @@ try {
     artifacts.push({ scenario: 'real chat handler survives rejected save, failure ACK, retry has one durable message and broadcast', passed: true });
     console.log('Chat persistence failure/retry process-survival scenario passed');
   } finally { roomRepository.saveRoom = save; }
+  const sixClient = await connect();
+  const sixRoom = await emit(sixClient, 'room:create', { gameType:'SIX_NIMMT', nickname:'Six player deck', maxPlayers:6, turnTimeLimit:0 });
+  assert.ok(sixRoom.success);
+  for (let i=0;i<5;i++) assert.ok((await emit(sixClient,'room:add-bot',{roomCode:sixRoom.roomCode})).success);
+  assert.ok((await emit(sixClient,'board:start',{roomCode:sixRoom.roomCode})).success);
+  const sixState=rooms[sixRoom.roomCode].gameStateObject;
+  assert.equal(sixState.config.deckSize,64);
+  assert.deepEqual([...Object.values(sixState.hands).flat(),...sixState.rows.flat()].sort((a,b)=>a-b),Array.from({length:64},(_,i)=>i+1));
+  const sixView=service.projectRoomState(rooms[sixRoom.roomCode],sixRoom.userId);
+  assert.equal(sixView.game.config.deckSize,64);
+  assert.ok(sixView.mySecret.hand.every(card=>card<=64));
+  assert.ok((await emit(sixClient,'room:leave',{roomCode:sixRoom.roomCode})).success);
+  artifacts.push({scenario:'six-player socket match with five AI seats uses exactly cards 1 through 64',passed:true});
   const t = await create('SIX_NIMMT');
   const core = boardGameCores.SIX_NIMMT, room = rooms[t.code];
   const openingSeed = room.gameStateObject.seed;
   assert.match(openingSeed, /^[0-9a-f]{64}$/, 'live deals retain 256-bit crypto entropy');
-  const publicRows = JSON.stringify(core.getPublicView(room.gameStateObject).rows);
+  const dealtCards = JSON.stringify(room.gameStateObject.hands);
   const guessedPlayers = room.gameStateObject.players;
   for (let timestamp = room.seed - 1000; timestamp <= room.seed + 1000; timestamp++) {
     const guess = core.executeCommand(core.createInitialState(guessedPlayers, {}, timestamp), { type: 'START_MATCH', playerId: t.ids[0] }).nextState;
-    assert.notEqual(JSON.stringify(guess.rows), publicRows, 'public opening rows must not recover a timestamp seed');
+    assert.notEqual(JSON.stringify(guess.hands), dealtCards, 'timestamp guesses must not recover the complete private deal');
   }
   const version = room.stateVersion;
   assert.equal((await t.command(t.ids[0], { type: 'SELECT_CARD', card: room.gameStateObject.hands[t.ids[0]][0] })).success, false, 'opening gate blocks input');
@@ -116,7 +129,7 @@ try {
   await t.ack(); assert.ok((await emit(t.a, 'board:start', { roomCode: t.code })).success);
   assert.ok(room.stateVersion > finishedVersion, 'rematch preserves monotonic version');
   assert.notEqual(room.gameStateObject.seed, openingSeed, 'rematch gets independent secret entropy');
-  artifacts.push({ scenario: '256-bit live shuffle entropy, 2001 timestamp guesses do not recover public rows, fresh rematch entropy', passed: true });
+  artifacts.push({ scenario: '256-bit live shuffle entropy, 2001 timestamp guesses do not recover complete private deal, fresh rematch entropy', passed: true });
   artifacts.push({ scenario: 'Nimmt real sockets: identity, simultaneous epoch, duplicate, automatic gate, full match, rematch', passed: true, steps, rounds: room.roundNumber });
 
   for (const type of ['WHITECHAPEL', 'WHITEHALL']) {

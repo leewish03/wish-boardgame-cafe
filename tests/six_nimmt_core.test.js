@@ -11,17 +11,18 @@ function started(n = 2, seed = 19) {
 function conservation(state) {
   const pending = state.playPhase === 'SELECTING' ? Object.values(state.selections) : state.queue.map(item => item.card);
   const cards = [...Object.values(state.hands).flat(), ...state.rows.flat(), ...Object.values(state.taken).flat(), ...state.unused, ...pending];
-  assert.equal(cards.length, 104);
-  assert.equal(new Set(cards).size, 104);
-  assert(cards.every(card => card >= 1 && card <= 104));
+  const deckSize = state.config.deckSize ?? 104;
+  assert.equal(cards.length, deckSize);
+  assert.equal(new Set(cards).size, deckSize);
+  assert(cards.every(card => card >= 1 && card <= deckSize));
 }
 check('bullhead values and nearest lower row', () => {
   assert.deepEqual([1, 5, 10, 11, 55, 99, 100, 104].map(core.bullheads), [1, 2, 3, 5, 7, 5, 3, 1]);
   assert.equal(core.nearestRow([[12], [37], [43], [58]], 44), 2);
   assert.equal(core.nearestRow([[12], [37], [43], [58]], 3), -1);
 });
-check('setup 2, 4, 10 players and immutable deterministic commands', () => {
-  for (const n of [2, 4, 10]) {
+check('setup 2 through 10 players uses exactly cards 1 through players times ten plus four', () => {
+  for (let n = 2; n <= 10; n++) {
     const initial = core.createInitialState(players(n), {}, 19);
     const before = structuredClone(initial);
     const state = core.executeCommand(initial, { type: 'START_MATCH', playerId: 'p0' }).nextState;
@@ -29,11 +30,27 @@ check('setup 2, 4, 10 players and immutable deterministic commands', () => {
     assert.deepEqual(state, started(n));
     assert(Object.values(state.hands).every(hand => hand.length === 10));
     assert.equal(state.rows.length, 4);
+    assert.equal(state.config.deckSize, n * 10 + 4);
+    assert.deepEqual([...Object.values(state.hands).flat(), ...state.rows.flat()].sort((a,b)=>a-b),
+      Array.from({length:n*10+4},(_,i)=>i+1));
+    assert.equal(state.unused.length, 0);
     conservation(state);
   }
   assert.throws(() => core.createInitialState(players(1)));
   assert.throws(() => core.createInitialState(players(11)));
   assert.throws(() => core.createInitialState([players(2)[0], players(2)[0]]));
+});
+check('legacy saved matches keep their deck until a new match starts', () => {
+  const legacy = core.createInitialState(players(6));
+  delete legacy.config.deckSize;
+  let state = core.executeCommand(legacy, { type:'START_MATCH', playerId:'p0' }).nextState;
+  conservation(state);
+  assert.equal(state.unused.length, 40);
+  state.matchState = 'ROUND_END';
+  state = core.executeCommand(state, { type:'ADVANCE_ROUND', playerId:'p0' }).nextState;
+  conservation(state);
+  assert.equal(state.unused.length, 40);
+  assert.equal(started(6).config.deckSize, 64);
 });
 check('host, stale, duplicate, wrong-phase and malformed commands rejected', () => {
   const initial = core.createInitialState(players(2));
@@ -116,6 +133,14 @@ check('round ten finishes before threshold end, shared minimum wins', () => {
   assert.deepEqual(state.outcome.winnerIds, ['p1', 'p2']);
   assert.throws(() => core.executeCommand(state, { type: 'ADVANCE_ROUND', playerId: 'p0' }));
 });
+check('tactics AI excludes out-of-game cards when the remaining opponent cards are known', () => {
+  const observation = { playerId:'a', players:[{id:'a'},{id:'b'}], roundNumber:8, turnNumber:9,
+    rows:[[1,2,3,4,7],[5],[6],[12]], config:{deckSize:24},
+    seenCards:Array.from({length:24},(_,i)=>i+1).filter(card=>![8,9,10,11].includes(card)),
+    mySecret:{hand:[8,11],legalActions:[{type:'SELECT_CARD',card:8},{type:'SELECT_CARD',card:11}]} };
+  // Only 9 and 10 can be held by the opponent: 8 takes the full row, 11 is safe.
+  assert.equal(core.chooseBotCommand(observation,'a').card,11);
+});
 check('AI cannot distinguish swapped opponent hands or hidden commitments', () => {
   let state = started(4);
   state = core.executeCommand(state, { type: 'SELECT_CARD', playerId: 'p1', card: state.hands.p1[0] }).nextState;
@@ -145,8 +170,8 @@ check('same-snapshot simultaneous choices accepted, earlier-turn replay rejected
   assert.throws(() => core.executeCommand(state, { type: 'SELECT_CARD', playerId: 'p0', card: state.hands.p0[0], expectedVersion }));
   assert.throws(() => core.executeCommand(state, { type: 'SELECT_CARD', playerId: 'p0', card: state.hands.p0[0], expectedVersion: state.stateVersion + 1 }));
 });
-check('complete 2, 4, 10 player AI matches conserve all cards at every step', () => {
-  for (const n of [2, 4, 10]) {
+check('complete 2, 4, 6, 10 player AI matches conserve the configured deck every turn and round', () => {
+  for (const n of [2, 4, 6, 10]) {
     let state = started(n, 100 + n);
     let steps = 0;
     while (state.matchState !== 'GAME_OVER' && steps < 10000) {
@@ -171,4 +196,4 @@ fs.mkdirSync('.omo/evidence/new-games', { recursive: true });
 const evidence = JSON.stringify({ invocation: 'node tests/six_nimmt_core.test.js', passed: true, checks, matches }, null, 2);
 fs.writeFileSync('output/new-games/six-nimmt-core.json', evidence);
 fs.writeFileSync('.omo/evidence/new-games/six-nimmt-core.json', evidence);
-console.log(`PASS: ${checks.length} Six Nimmt scenarios; full 2/4/10 player matches. Evidence: output/new-games/six-nimmt-core.json`);
+console.log(`PASS: ${checks.length} Six Nimmt scenarios; full 2/4/6/10 player matches. Evidence: output/new-games/six-nimmt-core.json`);

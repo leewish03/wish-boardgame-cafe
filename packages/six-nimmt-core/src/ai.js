@@ -22,7 +22,7 @@ export function chooseBotCommand(observation, playerId = observation.playerId) {
   if (actions[0].type !== 'SELECT_CARD') return { ...base, ...actions[0] };
   const hand = observation.mySecret.hand;
   const known = new Set([...observation.seenCards, ...hand]);
-  const unknown = Array.from({ length: 104 }, (_, i) => i + 1).filter(c => !known.has(c));
+  const unknown = Array.from({ length: observation.config.deckSize ?? 104 }, (_, i) => i + 1).filter(c => !known.has(c));
   const seed = observation.roundNumber * 1009 + observation.turnNumber * 9176 + hand.reduce((sum, card) => sum * 31 + card, 7);
   const random = seededRandom(seed);
   // Common sampled worlds compare every candidate against identical unknown opposition.

@@ -1,10 +1,10 @@
-# 6 nimmt! base rules and engine contract
+# 6 nimmt! tactics deck and engine contract
 
-Source: [AMIGO English rules, version 2.10](https://blog.amigo-spiele.de/content/ap/rule/04910-GB-AmigoRule.pdf), both pages read 2026-10-15. Only the base game is implemented; the optional pro draft and alternative endpoints are excluded.
+Sources rechecked 2026-10-15: [AMIGO English rules, version 2.10](https://blog.amigo-spiele.de/content/ap/rule/04910-GB-AmigoRule.pdf), both pages; [publisher-authored 2005 booklet, archived copy](https://cdn.1j1ju.com/medias/c6/c2/f9-6-nimmt-rulebook.pdf), printed page 8, variant 1, Take 6! Tactics. The base game shuffles 104 cards. This site's requested rule is the tactics variant: shuffle only numbers 1 through player count times 10 plus 4, deal ten each and use the remaining four as row starters. Six players therefore use exactly 1 through 64. The separate face-up draft (Logic / the newer combined Pro variant) is not enabled. The remaining base placement/scoring rules apply.
 
 | Official rule | Implementation | Verification scenario |
 | --- | --- | --- |
-| Page 1 setup: 104 cards, 2–10 players, ten each, four starters | `deal` | setup 2, 4, 10 players |
+| Tactics setup: 1 through N×10+4, ten each, four starters | `createInitialState`, `deal` | every player count 2–10, all used numbers exactly once; six-player full match |
 | Page 1 play: simultaneous secret commitment, ascending reveal | `SELECT_CARD` | secret commitment remains private |
 | Page 1 rules 1–2: increasing, closest lower endpoint | `nearestRow` | bullhead values and nearest lower row |
 | Page 1 rule 3: sixth card takes five, then starts row | `place` | sixth card takes five |
@@ -13,6 +13,8 @@ Source: [AMIGO English rules, version 2.10](https://blog.amigo-spiele.de/content
 | Page 2 endpoint: ten turns per round, 66 threshold checked at round end, tied minimum shares victory | `finishPlacement` | round ten finishes before threshold end |
 
 ## Integration
+
+New games persist `config.deckSize = players.length * 10 + 4`; human and AI seats count equally. Each subsequent round uses the same range and reshuffles it. AI samples only that public range. Older persisted matches without this field retain 104 cards for their remaining rounds, so deployment cannot change their rules halfway through play; a rematch creates the new tactics configuration. The table header shows its actual player count and card range. Lobby copy labels the tactics rule explicitly.
 
 `selectionVersion` is the version at entry to the current simultaneous selection phase. `SELECT_CARD` accepts integer `expectedVersion` between `selectionVersion` and current `stateVersion`, allowing concurrent commits from one snapshot. Old-turn and future versions are rejected; other commands require exact versions. Service version validation must preserve this exception.
 
@@ -38,4 +40,4 @@ Events with a top-level `playerId` also expose the same `actorId` for motion ada
 
 The AI accepts only `getBotObservation`, samples 80 possible opponent plays from cards excluding its hand and all publicly seen cards, and compares expected immediate penalty for each legal candidate in the same sampled worlds. Low-card row choice combines penalty with remaining-hand fit. Sampling is deterministic from round, turn and own hand; the deck seed and actual opponent choices are unavailable. This is a bounded one-turn Monte Carlo policy, not optimal full-game search.
 
-Run `node tests/six_nimmt_core.test.js`. It writes scenario verdicts and full seeded 2/4/10-player match summaries to `output/new-games/six-nimmt-core.json` and `.omo/evidence/new-games/six-nimmt-core.json`. Test manifest, service integration and browser verification belong to the integration task.
+Run `node tests/six_nimmt_core.test.js`. It writes scenario verdicts and full seeded 2/4/6/10-player match summaries to `output/new-games/six-nimmt-core.json` and `.omo/evidence/new-games/six-nimmt-core.json`. Test manifest, service integration and browser verification belong to the integration task.
