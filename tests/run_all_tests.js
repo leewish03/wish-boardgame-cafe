@@ -17,6 +17,7 @@ const testSuites = [
   { name: '2.6 New Games Recovery', file: 'tests/new_games_recovery.test.js' },
   { name: '2.7 Hidden Movement UI Model', file: 'src/games/hidden-movement/model.test.mjs' },
   { name: '2.8 Hidden Movement Input Equivalence', file: 'tests/map_input_equivalence.test.js' },
+  { name: '2.9 Six Nimmt Presentation', file: 'tests/six_nimmt_presentation.test.js' },
   { name: '3. Server Rule Engine Unit Tests', file: 'tests/love_letter_rules.test.js' },
   { name: '3.1 Room Setting Persistence', file: 'tests/room_settings.test.js' },
   { name: '4. AI Bot Memory & Heuristics Tests', file: 'tests/ai_bot_heuristics.test.js' },

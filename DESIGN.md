@@ -173,6 +173,21 @@ Results appear without decorative motion. Action color feedback uses the existin
 150ms timing and becomes immediate under reduced motion; pressed translation is removed.
 The existing single light salon theme also applies under system dark preference.
 
+### Six Nimmt cards and deadlines (UI quality task 7)
+
+The custom salon penalty palette uses existing THEME tokens: one bullhead uses
+mutedForeground, two emerald, three goldAntique, five indigo, and seven burgundy.
+This is an application palette, not a claim about official printed card colors.
+The AMIGO English rules (04910-GB-AmigoRule.pdf, page 2) establish the 1/2/3/5/7
+counts. Render the actual bullhead count and a numeric penalty label, with a neutral
+large card number. Selection keeps its separate outline, lift and check mark.
+Concealed backs show a single brass bull silhouette on burgundy, without a number
+or private card identity. Retain the existing 68/52/44px responsive card widths.
+The existing 380ms card motion is scoped to presentation IDs while rows/seats remain
+mounted through ordinary snapshots. Server-derived card/row deadlines explain the
+automatic choice at expiry; paused, reconnecting, resolving and unlimited states
+are explicit. The browser clock never submits a game command.
+
 Example: `<ResultDialog open={finished} title="라운드 결과" actions={<GameAction
  disabled={pending} aria-busy={pending} onClick={advance}>다음 라운드</GameAction>}
  error={requestError}>{publicStandings}</ResultDialog>`. A nonhost adapter supplies its
