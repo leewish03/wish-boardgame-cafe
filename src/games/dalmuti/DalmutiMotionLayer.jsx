@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { THEME } from '../../shared/theme';
@@ -8,43 +8,66 @@ import { dalmutiPresentationMs } from '../../../packages/protocol/src/dalmutiPre
 
 export function DalmutiMotionLayer({ active, anchors, surfaceRef, myId, finish, reduced, pileSets }) {
   const [paths, setPaths] = useState(null);
+  const travel = useRef(null);
+  const duration = reduced ? 0.12 : active?.event.type === 'ROUND_DEALT' ? 0.65 : 0.42;
   useLayoutEffect(() => {
     if (!active) { setPaths(null); return; }
-    const surface = surfaceRef.current?.getBoundingClientRect();
-    const point = (key) => {
-      const rect = anchors.current.get(key)?.getBoundingClientRect();
-      return anchorPoint(rect, surface, surfaceRef.current?.clientWidth, surfaceRef.current?.clientHeight);
+    const key = `${active.generation}:${active.eventId}`;
+    if (travel.current?.key !== key) travel.current = { key, started: window.performance.now() };
+    const surfaceElement = surfaceRef.current;
+    const measure = () => {
+      const surface = surfaceElement?.getBoundingClientRect();
+      const point = (key) => {
+        const rect = anchors.current.get(key)?.getBoundingClientRect();
+        return anchorPoint(rect, surface, surfaceElement?.clientWidth, surfaceElement?.clientHeight);
+      };
+      const event = active.event;
+      const player = (id, rank) => point(id === myId && rank ? `rank:${rank}` : `player:${id}`) || point(`player:${id}`);
+      const paths = [];
+      const add = (from, to, back = true, count = 1) => { if (from && to) paths.push({ from, to, back, count }); };
+      if (event.type === 'SET_PLAYED') add(player(event.actorId, event.rank), point('pile'), false, event.count);
+      if (event.type === 'TRICK_CLEARED') {
+        add(point('pile'), point('archive'), false);
+        if (paths.length) paths[paths.length - 1].ranks = visibleSetRanks(pileSets.at(-1) || {rank:1,count:0});
+      }
+      if (event.type === 'TAX_COMPLETED') for (const pair of event.pairs) {
+        add(player(pair.peonId), player(pair.dalmutiId), true, pair.count);
+        add(player(pair.dalmutiId), player(pair.peonId), true, pair.count);
+      }
+      if (event.type === 'MERCHANT_EXCHANGED') {
+        add(player(event.actorId), player(event.targetId)); add(player(event.targetId), player(event.actorId));
+      }
+      if (event.type === 'ROUND_DEALT') {
+        for (const [key] of anchors.current) if (key.startsWith('player:')) add(point('pile'), point(key));
+      }
+      setPaths({ eventId: active.eventId, paths, duration: Math.max(0, duration - (window.performance.now() - travel.current.started) / 1000) });
     };
-    const event = active.event;
-    const player = (id, rank) => point(id === myId && rank ? `rank:${rank}` : `player:${id}`) || point(`player:${id}`);
-    const paths = [];
-    const add = (from, to, back = true, count = 1) => { if (from && to) paths.push({ from, to, back, count }); };
-    if (event.type === 'SET_PLAYED') add(player(event.actorId, event.rank), point('pile'), false, event.count);
-    if (event.type === 'TRICK_CLEARED') {
-      add(point('pile'), point('archive'), false);
-      if (paths.length) paths[paths.length - 1].ranks = visibleSetRanks(pileSets.at(-1) || {rank:1,count:0});
-    }
-    if (event.type === 'TAX_COMPLETED') for (const pair of event.pairs) {
-      add(player(pair.peonId), player(pair.dalmutiId), true, pair.count);
-      add(player(pair.dalmutiId), player(pair.peonId), true, pair.count);
-    }
-    if (event.type === 'MERCHANT_EXCHANGED') {
-      add(player(event.actorId), player(event.targetId)); add(player(event.targetId), player(event.actorId));
-    }
-    if (event.type === 'ROUND_DEALT') {
-      for (const [key] of anchors.current) if (key.startsWith('player:')) add(point('pile'), point(key));
-    }
-    setPaths({ eventId: active.eventId, paths });
-  }, [active, anchors, surfaceRef, myId, pileSets]);
+    measure();
+    let frame;
+    const refresh = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measure);
+    };
+    const observer = new window.ResizeObserver(refresh);
+    if (surfaceElement) observer.observe(surfaceElement);
+    for (const element of anchors.current.values()) observer.observe(element);
+    window.addEventListener('resize', refresh);
+    surfaceElement?.addEventListener('scroll', refresh, true);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', refresh);
+      surfaceElement?.removeEventListener('scroll', refresh, true);
+    };
+  }, [active, anchors, surfaceRef, myId, pileSets, duration]);
   if (!active || paths?.eventId !== active.eventId) return null;
   const event = active.event;
   const done = () => finish(active.eventId, active.generation);
-  const duration = reduced ? 0.12 : event.type === 'ROUND_DEALT' ? 0.65 : 0.42;
   return <Layer aria-live="polite">
     {!reduced && paths.paths.map((path, index) => <Flight key={`${active.eventId}:${index}`} as={motion.div}
           initial={{ x: path.from.x, y: path.from.y, opacity: 1, scale: 0.8 }}
           animate={{ x: path.to.x, y: path.to.y, opacity: event.type === 'TRICK_CLEARED' ? 0 : 1, scale: event.type === 'TRICK_CLEARED' ? .3 : 1 }}
-          transition={{ duration, ease: [0.22, 0.61, 0.36, 1] }}>
+          transition={{ duration: paths.duration, ease: [0.22, 0.61, 0.36, 1] }}>
           <FlyingSet>{path.back ? <Back><b>W</b><span>{path.count}장</span></Back> : (path.ranks || visibleSetRanks(event)).map((rank, card) => <Face key={card} $jester={rank === 13}><b>{rank === 13 ? 'J' : rank}</b><span>{DALMUTI_RANKS[rank]}</span></Face>)}</FlyingSet>
         </Flight>)}
     <ReadingBeat key={active.eventId} as={motion.div} aria-hidden="true" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: dalmutiPresentationMs(event.type) / 1000, ease: 'linear' }} onAnimationComplete={done}/>

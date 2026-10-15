@@ -63,9 +63,12 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     if (!socket?.connected || pending.current || busy || roomState?.isPaused) return;
     setError('');
     const version = roomState.stateVersion;
-    pending.current = { version, timer: setTimeout(() => { unlock(); requestSync(); setError('응답을 확인하는 중입니다. 다시 동기화합니다.'); }, 5000) };
+    const request = { version };
+    request.timer = setTimeout(() => { if (pending.current !== request) return; unlock(); requestSync(); setError('응답을 확인하는 중입니다. 다시 동기화합니다.'); }, 5000);
+    pending.current = request;
     setSubmitting(true);
     socket.emit(command.type === 'START_MATCH' ? 'dalmuti:start' : 'dalmuti:command', { roomCode: roomState.code, command: { ...command, expectedStateVersion: version } }, (result) => {
+      if (pending.current !== request) return;
       if (!result?.success) {
         unlock();
         const message = result?.error || '행동을 처리하지 못했습니다.';
@@ -136,7 +139,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
         {opponents.map((player) => <PlayerTile ref={anchor(`player:${player.id}`)} key={player.id} as={motion.article} layout transition={{ duration: reduceMotion ? .12 : .42 }} $turn={player.id === game.currentTurnPlayerId} $finished={!!player.finishedPosition}>
           <RankMedal>{player.roleIndex + 1}</RankMedal>
           <Avatar src={player.avatarUrl} alt=""/>
-          <Identity><strong>{player.nickname}</strong><span>{player.role}</span></Identity>
+          <Identity title={player.nickname}><strong>{player.nickname}</strong><span>{player.role}</span></Identity>
           <Stats><b>{player.handCount}</b><small>패</small><i>{player.score}점</i></Stats>
           {(active?.event.actorId === player.id || (!busy && player.id === game.currentTurnPlayerId)) && <TurnFlag>{busy ? '행동 중' : '차례'}</TurnFlag>}
           {(player.passed || (active?.event.type === 'PASSED' && active.event.actorId === player.id)) && <PassFlag>패스</PassFlag>}
@@ -183,11 +186,13 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
           </HandRail>
           <PlayTray>
             <SelectionText>{selection ? <><b>{selection.count}× {selection.rank === 13 ? 'J' : selection.rank}</b><span>{selection.rank === 13 ? '어릿광대 단독' : selection.jesterCount ? `어릿광대 ${selection.jesterCount}장 포함` : '일반 카드 구성'}</span></> : <span>{isMyTurn ? game.trick.topRank === 1 ? '달무티(1)는 이길 수 없습니다 · 패스하세요' : !legalPlays.length ? '같은 장수의 더 낮은 숫자가 없어 패스만 가능합니다' : '낼 계급 묶음을 선택하세요' : submitting ? '제출 확인 중' : '상대의 행동을 기다리는 중'}</span>}</SelectionText>
+            <PlayOptions aria-label="카드 구성 옵션">
             {selection && countOptions.length > 0 && <OptionRow aria-label="낼 카드 장수 선택">{countOptions.map((count) => <Option disabled={!isMyTurn} key={count} $active={selection.count === count} aria-pressed={selection.count === count} onClick={() => setSelection(legalPlays.find((play) => play.rank === selection.rank && play.count === count && play.jesterCount === selection.jesterCount) || legalPlays.find((play) => play.rank === selection.rank && play.count === count))}>{count}장</Option>)}</OptionRow>}
             {selection && selection.rank !== 13 && handGroups.some((group) => group.rank === 13) && <OptionRow aria-label="어릿광대 조합 선택">{[0,1,2].map((jesterCount) => {
               const play = compositionOptions.find((candidate) => candidate.jesterCount === jesterCount);
               return <Option disabled={!isMyTurn || !play} key={jesterCount} $active={selection.jesterCount === jesterCount} aria-pressed={selection.jesterCount === jesterCount} onClick={() => play && setSelection(play)}>J {jesterCount}</Option>;
             })}</OptionRow>}
+            </PlayOptions>
             <ButtonRow><Secondary disabled={!canPass} onClick={() => send({ type:'PASS' })}>패스</Secondary><Primary disabled={!selection || !isMyTurn} onClick={() => send({ type:'PLAY_SET', ...selection })}>중앙에 내기</Primary></ButtonRow>
           </PlayTray>
         </>}
@@ -195,7 +200,7 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
     </Table>
 
     <DalmutiMotionLayer active={active} anchors={anchors} surfaceRef={surfaceRef} myId={myId} finish={finish} reduced={reduceMotion} pileSets={displayedSets}/>
-    <DalmutiResults game={game} isHost={roomState.hostId === myId} locked={inputLocked} submitting={submitting} error={error} onAdvance={() => send({ type: 'ADVANCE_ROUND' })} onRematch={() => send({ type: 'START_MATCH' })} onLeave={() => onLeave?.()}/>
+    <DalmutiResults game={game} presenting={busy} isHost={roomState.hostId === myId} locked={inputLocked} submitting={submitting} error={error} connectionNotice={roomState.isPaused ? '게임 일시정지 · 플레이어 재접속을 기다립니다. 연결이 돌아오지 않으면 AI가 자리를 이어받습니다.' : socket?.connected === false ? '연결이 끊어졌습니다. 재접속 후 계속할 수 있습니다.' : undefined} onAdvance={() => send({ type: 'ADVANCE_ROUND' })} onRematch={() => send({ type: 'START_MATCH' })} onLeave={onLeave}/>
     <AnimatePresence>{menuOpen && <DrawerShade as={motion.div} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={() => setMenuOpen(false)}><Drawer ref={menuRef} tabIndex={-1} as={motion.aside} role="dialog" aria-modal="true" aria-label="달무티 살롱 메뉴" initial={{x:reduceMotion ? 0 : 320}} animate={{x:0}} exit={{x:reduceMotion ? 0 : 320}} onClick={(event)=>event.stopPropagation()}><DrawerHeader><h3>달무티 살롱</h3><CloseMenu type="button" aria-label="게임 메뉴 닫기" onClick={() => setMenuOpen(false)}><X size={20}/></CloseMenu></DrawerHeader><RoomVoiceControls voice={webrtc} compact/><InfoLine><Users size={14}/>{game.players.length}명 · {game.config.roundCount}라운드</InfoLine><InfoLine><Mic size={14}/>{stt?.isSTTActive ? '자막 사용 중' : '음성 채팅'}</InfoLine><InfoLine><Volume2 size={14}/>턴 제한 {game.config.turnTimeoutSeconds || '없음'}</InfoLine><Danger onClick={() => onLeave?.()}><LogOut size={15}/>게임 나가기</Danger></Drawer></DrawerShade>}</AnimatePresence>
     {roomState.isPaused && <PauseLayer><strong>게임 일시정지</strong><span>연결이 돌아오지 않으면 AI가 자리를 이어받습니다.</span></PauseLayer>}
   </Surface>;
@@ -204,11 +209,11 @@ export default function DalmutiGame({ roomState, currentUser, socket, webrtc, st
 const SocialHeader=styled.div`isolation:isolate;display:flex;align-items:center;flex-shrink:0;background:${THEME.surfaceCard};>header{flex:1;min-width:0;}>button{flex-shrink:0;margin-inline-end:${THEME.interaction.gap};}`;
 const Surface=styled.div`width:100%;height:100%;min-height:0;overflow:hidden;background:${THEME.gradients.marbleTextureUrl},radial-gradient(circle at 50% 42%,#fff 0%,#eef1f4 74%,#dfe4e8 100%);background-size:cover;color:${THEME.foreground};display:flex;flex-direction:column;position:relative;`;
 const Table=styled.main`width:100%;min-width:0;flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(120px,1fr) auto;overflow:auto;@media(min-width:700px) and (max-height:500px) and (orientation:landscape){grid-template-columns:minmax(0,1fr) minmax(320px,44%);grid-template-rows:auto minmax(0,1fr);>section:first-child{grid-column:1;grid-row:1;} >section:nth-child(2){grid-column:1;grid-row:2;overflow:auto;}>section:last-child{grid-column:2;grid-row:1/3;overflow:auto;}}`;
-const OpponentBoard=styled.section`width:min(900px,100%);margin:0 auto;padding:6px 8px 2px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;&[data-count="1"]{grid-template-columns:minmax(0,260px);justify-content:center;}&[data-count="2"],&[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr));}&[data-count="3"],&[data-count="5"],&[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr));}@media(max-width:560px){grid-template-columns:repeat(3,minmax(0,1fr))!important;padding-inline:4px;gap:3px;}`;
+const OpponentBoard=styled.section`width:min(900px,100%);margin:0 auto;padding:6px 8px 2px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;&[data-count="1"]{grid-template-columns:minmax(0,260px);justify-content:center;}&[data-count="2"],&[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr));}&[data-count="3"],&[data-count="5"],&[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr));}@media(max-width:560px){grid-template-columns:repeat(3,minmax(0,1fr))!important;padding-inline:4px;gap:3px;}@media(min-width:700px) and (max-height:500px) and (orientation:landscape){grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px;padding-inline:4px;>article{height:50px;padding:4px;gap:3px;}>article>img{display:none;}}`;
 const PlayerTile=styled.article`min-width:0;height:54px;display:flex;align-items:center;gap:5px;padding:5px 7px;box-sizing:border-box;position:relative;border:1px solid ${p=>p.$turn?THEME.gold:THEME.border};border-radius:8px;background:${p=>p.$turn?'#fffdf2':'rgba(255,255,255,.92)'};box-shadow:${p=>p.$turn?'0 5px 16px rgba(197,160,89,.24)':'0 2px 7px rgba(9,13,22,.06)'};opacity:${p=>p.$finished?.62:1};@media(max-width:560px){height:50px;padding:4px;gap:3px;}`;
 const RankMedal=styled.b`width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:${THEME.primary};color:${THEME.goldLight};font:900 9px ${THEME.font.serif};flex:0 0 18px;`;
 const Avatar=styled.img`width:27px;height:27px;border-radius:50%;object-fit:cover;border:1px solid ${THEME.gold};flex:0 0 27px;@media(max-width:420px){display:none;}`;
-const Identity=styled.div`min-width:0;display:flex;flex-direction:column;flex:1;strong{font-size:${THEME.interaction.caption};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}strong small{font-size:10px;color:${THEME.goldAntique};}span{font-size:11px;color:${THEME.burgundy};font-weight:700;}`;
+const Identity=styled.div`min-width:0;display:flex;flex-direction:column;flex:1;strong{font-size:${THEME.interaction.caption};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}strong small{font-size:10px;color:${THEME.goldAntique};}span{font-size:11px;color:${THEME.burgundy};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}`;
 const Stats=styled.div`display:grid;grid-template-columns:auto auto;align-items:end;b{font:900 18px ${THEME.font.serif};line-height:1;}small{font-size:10px;color:${THEME.mutedForeground};}i{grid-column:1/-1;font-size:10px;font-style:normal;color:${THEME.goldAntique};font-weight:700;}`;
 const badge=css`position:absolute;top:-5px;border-radius:8px;padding:1px 5px;font-size:7px;font-weight:950;letter-spacing:.04em;`;
 const TurnFlag=styled.span`${badge};right:5px;background:${THEME.gold};color:#111;`;
@@ -230,9 +235,10 @@ const RankStack=styled.button`width:72px;height:100px;flex:0 0 72px;border:1px s
 const CardNumber=styled.b`font:900 21px ${THEME.font.serif};line-height:1;`;
 const CardName=styled.span`font-size:11px;font-weight:750;color:${THEME.burgundy};margin-top:6px;`;
 const CountBadge=styled.i`font-size:${THEME.interaction.caption};font-style:normal;font-weight:800;color:${THEME.foreground};margin-top:6px;`;
-const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(110px,1fr) auto;align-items:center;gap:5px;min-height:35px;.options{grid-column:1/-1;display:flex;max-width:100%;overflow-x:auto;padding-bottom:1px;}&>div:last-child{grid-column:2;grid-row:1;}@media(max-width:560px){grid-template-columns:minmax(0,1fr) auto;gap:4px;}`;
-const SelectionText=styled.div`min-width:0;display:flex;flex-direction:column;gap:4px;b{font:900 16px ${THEME.font.serif};}span{font-size:${THEME.interaction.caption};line-height:1.4;color:${THEME.mutedForeground};}`;
-const OptionRow=styled.div.attrs({className:'options'})`display:flex;gap:3px;`;
+const PlayTray=styled.div`width:min(760px,100%);max-width:100%;min-width:0;box-sizing:border-box;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px minmax(44px,auto);align-items:center;gap:${THEME.interaction.gap};>div:last-child{grid-column:2;grid-row:2;}`;
+const PlayOptions=styled.div`grid-column:1/-1;grid-row:1;min-width:0;height:44px;display:flex;align-items:center;gap:12px;overflow-x:auto;overflow-y:hidden;`;
+const SelectionText=styled.div`grid-column:1;grid-row:2;min-width:0;display:flex;flex-direction:column;gap:4px;b{font:900 16px ${THEME.font.serif};}span{font-size:${THEME.interaction.caption};line-height:1.4;color:${THEME.mutedForeground};}`;
+const OptionRow=styled.div`display:flex;gap:3px;flex:0 0 auto;`;
 const Option=styled.button`min-width:44px;height:44px;flex:0 0 auto;padding:0 9px;border:1px solid ${p=>p.$active?THEME.burgundy:THEME.border};border-radius:6px;background:${p=>p.$active?'#fff1f2':'#fff'};color:${THEME.foreground};font-size:11px;font-weight:850;cursor:pointer;&:disabled{opacity:.4;cursor:not-allowed;}`;
 const ButtonRow=styled.div`display:flex;gap:5px;`;
 const FinishedHand=styled.div`width:min(760px,100%);min-height:82px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:9px;color:${THEME.goldAntique};strong{display:block;font:900 13px ${THEME.font.serif};color:${THEME.foreground};}span{display:block;margin-top:3px;font-size:9px;font-weight:750;color:${THEME.mutedForeground};}`;

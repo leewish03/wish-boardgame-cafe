@@ -31,6 +31,7 @@ const testSuites = [
   { name: '6.1.0 Dalmuti Socket Integration', file: 'tests/dalmuti_socket.test.js' },
   { name: '6.1.0.1 Dalmuti Recovery Clocks', file: 'tests/dalmuti_recovery.test.js' },
   { name: '6.1.0.2 Dalmuti Presentation', file: 'tests/dalmuti_presentation.test.js' },
+  { name: '6.1.0.2.1 Dalmuti UI Lifecycle', file: 'tests/dalmuti_ui_lifecycle.test.js' },
   { name: '6.1.0.3 In-game Guidance', file: 'tests/ingame_guidance.test.js' },
   { name: '6.1.0.4 Shared Dialog Focus', file: 'tests/shared_dialog_focus.test.js' },
   { name: '6.1.0.5 Shared Result Dialog', file: 'tests/shared_result_dialog.test.js' },

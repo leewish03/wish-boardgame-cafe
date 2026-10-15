@@ -39,17 +39,14 @@ export function useDalmutiPresentation(socket, roomState) {
       render();
     };
     const onDisconnect = () => { synchronizePresentation(model.current, roomRef.current); render(); };
-    const onResize = () => { requestSync(); };
     socket?.on('dalmuti:event', onEvent);
     socket?.on('room:state', onState);
     socket?.on('connect', requestSync);
     socket?.on('disconnect', onDisconnect);
-    window.addEventListener('resize', onResize);
     requestSync();
     return () => {
       socket?.off('dalmuti:event', onEvent); socket?.off('room:state', onState);
       socket?.off('connect', requestSync); socket?.off('disconnect', onDisconnect);
-      window.removeEventListener('resize', onResize);
     };
   }, [socket, roomState?.code, acknowledge, requestSync]);
 
