@@ -828,6 +828,12 @@ export default function App() {
     setCreateDialogOpen(true);
   };
 
+  const stopRepeatedCreateDialogActivation = (event) => {
+    if (event.detail <= 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   // Submit Room Creation
   const handleCreateRoomSubmit = () => {
     if (roomOperationRef.current.isPending()) return;
@@ -1496,6 +1502,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Create Room Settings */}
       {/* ========================================================= */}
+      <div onMouseDownCapture={stopRepeatedCreateDialogActivation} onClickCapture={stopRepeatedCreateDialogActivation}>
       <Dialog open={createDialogOpen} label={`${GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성`} onClose={() => { if (!pendingRoomOperation) setCreateDialogOpen(false); }}>
         <DialogHeader>
           <DialogTitle>{GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성</DialogTitle>
@@ -1602,6 +1609,7 @@ export default function App() {
           </Button>
         </DialogFooter>
       </Dialog>
+      </div>
 
       {/* ========================================================= */}
       {/* DIALOG: Edit Profile Modal */}
