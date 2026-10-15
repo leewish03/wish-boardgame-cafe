@@ -404,6 +404,12 @@ export async function handlePauseExpired(io, roomCode, userId) {
   }
 }
 
+function acknowledgeRoomEntry(callback, { room, roomCode, userId, player }) {
+  callback?.({ success: true, roomCode, userId, playerId: userId,
+    sessionToken: player.sessionToken, player: { id: userId, nickname: player.nickname, avatarUrl: player.avatarUrl },
+    gameState: getPublicRoomState(room, userId) });
+}
+
 export function initRoomManager(io) {
   io.on('connection', (socket) => {
     socket.on('room:list', (_payload, callback) => {
@@ -415,6 +421,14 @@ export function initRoomManager(io) {
     // 1. Create Room
     socket.on('room:create', (payload, callback) => {
       try {
+        const previous = socket.data.roomEntry;
+        if (payload?.requestId && previous?.event === 'room:create' && previous.requestId === payload.requestId) {
+          const session = resolveRoomAndUser(socket, previous);
+          acknowledgeRoomEntry(callback, session);
+          return;
+        }
+        // Legacy callers may create sequential rooms; acknowledged entry requires an explicit departure.
+        if (payload?.requestId && socketToUser[socket.id]) throw new Error('현재 방에서 나간 뒤 새 방을 만들어 주세요.');
         const {
           gameType: requestedGameType = 'LOVE_LETTER',
           hostRole = 'JACK',
@@ -503,6 +517,7 @@ export function initRoomManager(io) {
           updatedAt: Date.now(),
         };
 
+        socket.data.roomEntry = { event: 'room:create', requestId: payload?.requestId, roomCode, userId };
         rooms[roomCode] = newRoom;
         socketToUser[socket.id] = { roomCode, userId };
         socket.join(roomCode);
@@ -522,7 +537,7 @@ export function initRoomManager(io) {
       } catch (err) {
         console.error('room:create error:', err);
         if (typeof callback === 'function') {
-          callback({ success: false, error: '방 생성 중 오류가 발생했습니다.' });
+          callback(sessionFailure(err));
         }
       }
     });
@@ -532,6 +547,11 @@ export function initRoomManager(io) {
       try {
         const { roomCode, nickname = '플레이어', avatarUrl } = payload || {};
         const code = (roomCode || '').toUpperCase().trim();
+        if (socketToUser[socket.id]) {
+          const session = resolveRoomAndUser(socket, { roomCode: code });
+          acknowledgeRoomEntry(callback, session);
+          return;
+        }
         const room = rooms[code];
 
         if (!room) {
@@ -603,7 +623,7 @@ export function initRoomManager(io) {
       } catch (err) {
         console.error('room:join error:', err);
         if (typeof callback === 'function') {
-          callback({ success: false, error: '방 입장 중 오류가 발생했습니다.' });
+          callback(sessionFailure(err));
         }
       }
     });
@@ -717,6 +737,29 @@ export function initRoomManager(io) {
       }
     });
 
+    socket.on('room:profile', (payload, callback) => {
+      try {
+        const { room, roomCode, userId, player } = resolveRoomAndUser(socket, payload);
+        if (room.gameState !== 'LOBBY') throw new Error('대기실에서만 프로필을 변경할 수 있습니다.');
+        const nickname = typeof payload?.nickname === 'string' ? payload.nickname.trim() : '';
+        if (!nickname || nickname.length > 12) throw new Error('닉네임을 1~12자로 입력해 주세요.');
+        const avatarUrl = payload?.avatarUrl ?? player.avatarUrl;
+        const avatar = new URL(avatarUrl);
+        if (avatar.protocol !== 'https:' || avatar.hostname !== 'api.dicebear.com' || avatar.username || avatar.password) {
+          throw new Error('사용할 수 없는 프로필 이미지입니다.');
+        }
+        player.nickname = nickname;
+        player.avatarUrl = avatarUrl;
+        const enginePlayer = room.gameStateObject?.players?.find(member => member.id === userId);
+        if (enginePlayer) Object.assign(enginePlayer, { nickname, avatarUrl, avatar: avatarUrl });
+        room.stateVersion = (room.stateVersion || 0) + 1;
+        broadcastRoomState(io, roomCode);
+        callback?.({ success: true, player: { id: userId, nickname, avatarUrl } });
+      } catch (error) {
+        callback?.(sessionFailure(error));
+      }
+    });
+
     // 4. Ready Toggle
     socket.on('room:ready', (payload, callback) => {
       try {
@@ -726,6 +769,7 @@ export function initRoomManager(io) {
           return;
         }
 
+        if (payload?.isReady !== undefined && typeof payload.isReady !== 'boolean') throw new Error('준비 상태를 확인해 주세요.');
         const player = room.players.find((p) => p.id === userId);
         if (player && player.id !== room.hostId) {
           player.isReady = payload?.isReady !== undefined ? !!payload.isReady : !player.isReady;

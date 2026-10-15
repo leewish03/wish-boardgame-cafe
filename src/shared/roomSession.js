@@ -55,3 +55,39 @@ export const sessionEndMessages = {
   SEAT_TAKEN_OVER: '재접속 시간이 지나 AI가 자리를 이어받았습니다. 로비로 이동했습니다.',
   SESSION_INVALID: '이전 방의 접속 정보를 확인할 수 없습니다. 다시 입장해 주세요.',
 };
+
+export function createRoomOperationGuard(onPendingChange = () => {}) {
+  let pending = null;
+  return {
+    run(socket, kind, event, payload, callback, timeout = 6000) {
+      if (pending) return false;
+      if (!socket?.connected) {
+        callback({ success: false, error: '연결이 끊겼습니다. 다시 연결된 후 시도해 주세요.' });
+        return false;
+      }
+      const operation = { cancel: null };
+      pending = operation;
+      onPendingChange(kind);
+      const finish = (result) => {
+        if (pending !== operation) return;
+        socket.off('disconnect', disconnected);
+        pending = null;
+        onPendingChange(null);
+        callback(result);
+      };
+      const disconnected = () => finish({ success: false, error: '연결이 끊겨 결과를 확인하지 못했습니다. 다시 연결된 후 확인해 주세요.' });
+      operation.cancel = () => {
+        socket.off('disconnect', disconnected);
+        pending = null;
+        onPendingChange(null);
+      };
+      socket.once('disconnect', disconnected);
+      socket.timeout(timeout).volatile.emit(event, payload, (error, result) => finish(error
+        ? { success: false, error: '응답이 지연되고 있습니다. 상태를 확인한 뒤 다시 시도해 주세요.' }
+        : result || { success: false, error: '처리 결과를 확인하지 못했습니다.' }));
+      return true;
+    },
+    isPending() { return pending !== null; },
+    cancel() { pending?.cancel(); },
+  };
+}

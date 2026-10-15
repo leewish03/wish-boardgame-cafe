@@ -23,6 +23,7 @@ const testSuites = [
   { name: '6. Section 49: Socket Integration Tests (Real Sockets)', file: 'tests/socket_integration.test.js' },
   { name: '6.1 Typed Protocol Controller Integration', file: 'tests/protocol_socket_integration.test.js' },
   { name: '6.1.2 Room Session Security and Races', file: 'tests/room_session_security.test.js' },
+  { name: '6.1.3 Acknowledged Room Controls', file: 'tests/room_controls.test.js' },
   { name: '6.1.0 Dalmuti Socket Integration', file: 'tests/dalmuti_socket.test.js' },
   { name: '6.1.0.1 Dalmuti Recovery Clocks', file: 'tests/dalmuti_recovery.test.js' },
   { name: '6.1.0.2 Dalmuti Presentation', file: 'tests/dalmuti_presentation.test.js' },

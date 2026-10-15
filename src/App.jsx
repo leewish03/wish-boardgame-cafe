@@ -24,7 +24,7 @@ import { useSocket } from './shared/useSocket';
 import { useWebRTC } from './shared/useWebRTC';
 import { useSTT } from './shared/useSTT';
 import { RoomChat } from './shared/RoomChat';
-import { createRoomSessionBoundary, terminalSessionCode, sessionEndMessages } from './shared/roomSession';
+import { createRoomSessionBoundary, createRoomOperationGuard, terminalSessionCode, sessionEndMessages } from './shared/roomSession';
 import { sfx } from './shared/sfx';
 import {
   useSessionGuard,
@@ -186,7 +186,16 @@ const MonogramSeal = styled.div`
   }
 `;
 
-const UserProfileChip = styled.div`
+const UserProfileChip = styled.button`
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 48%;
+  span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  img, svg { flex-shrink: 0; }
+  &:focus-visible { outline: 2px solid ${THEME.gold}; outline-offset: 3px; }
+  &:disabled { cursor: wait; opacity: 0.65; }
   display: flex;
   align-items: center;
   gap: 10px;
@@ -476,10 +485,30 @@ export default function App() {
   useEffect(() => { setLeavePrompt(null); }, [roomState?.code]);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const copyResetRef = useRef(null);
+  const [pendingRoomOperation, setPendingRoomOperation] = useState(null);
+  const roomOperationRef = useRef(createRoomOperationGuard(setPendingRoomOperation));
+  const createRequestIdRef = useRef(null);
+  const [createError, setCreateError] = useState('');
+  const [joinError, setJoinError] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [readyError, setReadyError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+
+  useEffect(() => {
+    const player = roomState?.players?.find(member => member.id === currentUser?.id);
+    if (!player || (player.nickname === currentUser.nickname && player.avatarUrl === currentUser.avatarUrl)) return;
+    const canonicalUser = { ...currentUser, nickname: player.nickname, avatarUrl: player.avatarUrl };
+    setCurrentUser(canonicalUser);
+    setNickname(player.nickname);
+    setAvatarSeed(player.avatarUrl?.split('seed=')[1]?.split('&')[0] || avatarSeed);
+    saveSession({ ...(loadSession() || {}), ...canonicalUser });
+  }, [roomState?.players, currentUser, avatarSeed]);
 
   const roomSessionRef = useRef(createRoomSessionBoundary());
   const invalidateRoomSession = useCallback(() => {
+    roomOperationRef.current.cancel();
     roomSessionRef.current.invalidate();
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     reconnectTimeoutRef.current = null;
@@ -568,9 +597,10 @@ export default function App() {
             const restoredUser = {
               id: session.userId,
               sessionToken: session.sessionToken,
-              nickname: session.nickname || res.player?.nickname || '플레이어',
-              avatarUrl: session.avatarUrl || res.player?.avatarUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${session.userId}&backgroundColor=090d16,1e293b,3b0b17,047857`,
+              nickname: res.player?.nickname || session.nickname || '플레이어',
+              avatarUrl: res.player?.avatarUrl || session.avatarUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${session.userId}&backgroundColor=090d16,1e293b,3b0b17,047857`,
             };
+            saveSession({ roomCode: res.roomCode, ...restoredUser });
             setCurrentUser(restoredUser);
             setRoomState(res.gameState);
             const readyEvent = gameEvent(res.gameState?.gameType, 'view-ready');
@@ -605,6 +635,8 @@ export default function App() {
   );
 
   useEffect(() => () => {
+    roomOperationRef.current.cancel();
+    clearTimeout(copyResetRef.current);
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
   }, []);
 
@@ -776,6 +808,7 @@ export default function App() {
   };
 
   const handleOpenProfileModal = () => {
+    setProfileError('');
     setEditNickname(currentUser?.nickname || nickname || '');
     setEditAvatarSeed(avatarSeed);
     setProfileModalOpen(true);
@@ -799,23 +832,37 @@ export default function App() {
       avatarUrl: newAvatarUrl,
     };
 
-    setNickname(trimmed);
-    setAvatarSeed(editAvatarSeed);
-    setCurrentUser(updatedUser);
-    // Editing a profile must not erase an active room's recovery token.
-    saveSession({ ...(loadSession() || {}), ...updatedUser });
-    setProfileModalOpen(false);
-    setToastMessage('프로필이 성공적으로 변경되었습니다.');
-    sfx.playCardDraw();
+    if (roomOperationRef.current.isPending()) return;
+    setProfileError('');
+    const applyProfile = (profile) => {
+      const canonicalUser = { ...updatedUser, ...profile };
+      setNickname(canonicalUser.nickname);
+      setAvatarSeed(editAvatarSeed);
+      setCurrentUser(canonicalUser);
+      saveSession({ ...(loadSession() || {}), ...canonicalUser });
+      setProfileModalOpen(false);
+      setToastMessage('프로필이 성공적으로 변경되었습니다.');
+      sfx.playCardDraw();
+    };
+    if (roomState?.code) {
+      roomOperationRef.current.run(socket, 'profile', 'room:profile', {
+        roomCode: roomState.code, userId: currentUser.id, nickname: trimmed, avatarUrl: newAvatarUrl,
+      }, (result) => {
+        if (result?.success) applyProfile(result.player);
+        else setProfileError(result?.error || '프로필을 변경하지 못했습니다.');
+      });
+    } else applyProfile({});
   };
 
   // Open Room Creation Dialog
   const handleOpenCreateDialog = (gameKey, event) => {
+    if (roomOperationRef.current.isPending()) return;
     if (event?.detail > 1) return;
     if (!GAME_CATALOG[gameKey]) {
       setToastMessage('해당 게임은 현재 개발 중입니다! 곧 출시됩니다.');
       return;
     }
+    setCreateError('');
     setSelectedGameForCreate(gameKey);
     if (gameKey === 'DALMUTI') {
       setMaxPlayers((value) => value < 4 ? 6 : Math.min(8, value));
@@ -828,7 +875,10 @@ export default function App() {
 
   // Submit Room Creation
   const handleCreateRoomSubmit = () => {
-    if (!socket) return;
+    if (roomOperationRef.current.isPending()) return;
+    setCreateError('');
+    if (!socket?.connected) { setCreateError('연결이 끊겼습니다. 다시 연결된 후 시도해 주세요.'); return; }
+    createRequestIdRef.current ||= window.crypto.randomUUID();
     invalidateRoomSession();
     const request = roomSessionRef.current.begin(null, null);
     sfx.playCardPlay();
@@ -836,9 +886,10 @@ export default function App() {
     const currentNick = currentUser?.nickname || nickname.trim() || '방장';
     const currentAvatar = currentUser?.avatarUrl || avatarUrl;
 
-    socket.emit(
+    roomOperationRef.current.run(socket, 'create',
       'room:create',
       {
+        requestId: createRequestIdRef.current,
         gameType: selectedGameForCreate,
         nickname: currentNick,
         avatarUrl: currentAvatar,
@@ -867,12 +918,13 @@ export default function App() {
           });
           setCurrentUser(updatedUser);
           const buffered = roomSessionRef.current.takeBuffered();
-          if (buffered) setRoomState(buffered);
+          if (res.gameState || buffered) setRoomState(res.gameState || buffered);
           setCreateDialogOpen(false);
+          createRequestIdRef.current = null;
           setScreen('waitingRoom');
         } else {
           roomSessionRef.current.invalidate();
-          setToastMessage(res?.error || '방 생성에 실패했습니다.');
+          setCreateError(res?.error || '방 생성에 실패했습니다.');
         }
       }
     );
@@ -882,7 +934,9 @@ export default function App() {
   const handleJoinRoom = (e) => {
     e?.preventDefault();
     const code = joinCodeInput.trim().toUpperCase();
-    if (!code || !socket) return;
+    if (!code || roomOperationRef.current.isPending()) return;
+    setJoinError('');
+    if (!socket?.connected) { setJoinError('연결이 끊겼습니다. 다시 연결된 후 시도해 주세요.'); return; }
     invalidateRoomSession();
     const request = roomSessionRef.current.begin(code, null);
 
@@ -890,7 +944,7 @@ export default function App() {
     const currentNick = currentUser?.nickname || nickname.trim() || '플레이어';
     const currentAvatar = currentUser?.avatarUrl || avatarUrl;
 
-    socket.emit(
+    roomOperationRef.current.run(socket, 'join',
       'room:join',
       {
         roomCode: code,
@@ -913,11 +967,11 @@ export default function App() {
           });
           setCurrentUser(updatedUser);
           const buffered = roomSessionRef.current.takeBuffered();
-          if (buffered) setRoomState(buffered);
+          if (res.gameState || buffered) setRoomState(res.gameState || buffered);
           setScreen('waitingRoom');
         } else {
           roomSessionRef.current.invalidate();
-          setToastMessage(res?.error || '방 입장에 실패했습니다.');
+          setJoinError(res?.error || '방 입장에 실패했습니다.');
         }
       }
     );
@@ -925,11 +979,13 @@ export default function App() {
 
   // Toggle Ready Status in Waiting Room
   const handleToggleReady = () => {
-    if (!socket) return;
-    sfx.playCardDraw();
-    socket.emit('room:ready', {
-      roomCode: roomState?.code,
-      userId: currentUser?.id,
+    if (roomOperationRef.current.isPending()) return;
+    setReadyError('');
+    roomOperationRef.current.run(socket, 'ready', 'room:ready', {
+      roomCode: roomState?.code, userId: currentUser?.id, isReady: !myPlayer?.isReady,
+    }, (result) => {
+      if (!result?.success) setReadyError(result?.error || '준비 상태를 변경하지 못했습니다.');
+      else sfx.playCardDraw();
     });
   };
 
@@ -1014,12 +1070,20 @@ export default function App() {
   };
 
   // Copy Room Code to Clipboard
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!roomState?.code) return;
-    navigator.clipboard.writeText(roomState.code);
-    setCopiedCode(true);
-    setToastMessage(`방 코드 [${roomState.code}] 가 클립보드에 복사되었습니다.`);
-    setTimeout(() => setCopiedCode(false), 2000);
+    const code = roomState.code;
+    setCopiedCode(false);
+    setCopyError('');
+    clearTimeout(copyResetRef.current);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      setToastMessage(`방 코드 [${code}] 가 클립보드에 복사되었습니다.`);
+      copyResetRef.current = setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      setCopyError('복사하지 못했습니다. 아래 코드를 선택해 직접 복사해 주세요.');
+    }
   };
 
   // Leave Room
@@ -1111,6 +1175,9 @@ export default function App() {
 
           {currentUser?.nickname && screen !== 'entry' && (
             <UserProfileChip
+              type="button"
+              aria-label="프로필 / 닉네임 변경"
+              disabled={!!pendingRoomOperation}
               onClick={handleOpenProfileModal}
               style={{ cursor: 'pointer' }}
               title="프로필 / 닉네임 변경"
@@ -1352,9 +1419,10 @@ export default function App() {
                           style={{ fontSize: '20px', textAlign: 'center', letterSpacing: '6px', fontWeight: 800, fontFamily: THEME.font.mono }}
                           autoFocus
                         />
-                        <Button type="submit" $variant="default" $size="lg" $fullWidth disabled={joinCodeInput.length < 4}>
-                          살롱 입장하기
+                        <Button type="submit" $variant="default" $size="lg" $fullWidth disabled={joinCodeInput.length < 6 || !!pendingRoomOperation}>
+                          {pendingRoomOperation === 'join' ? '입장 확인 중…' : '살롱 입장하기'}
                         </Button>
+                        {joinError && <p role="alert" style={{ color: THEME.destructive }}>{joinError}</p>}
                       </form>
                     </CardContent>
                   </Card>
@@ -1413,6 +1481,7 @@ export default function App() {
             </CardHeader>
 
             <CardContent>
+              {copyError && <div role="alert"><p>{copyError}</p><Input aria-label="직접 복사할 방 코드" value={roomState?.code || ''} readOnly onFocus={event => event.target.select()} /></div>}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ fontFamily: THEME.font.serif, fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em', color: THEME.gold, textTransform: 'uppercase' }}>
                   PLAYERS ({roomState?.players?.length || 0}/{roomState?.maxPlayers || 4}) · 최소 {GAME_CATALOG[roomState?.gameType]?.min || 2}인
@@ -1507,6 +1576,7 @@ export default function App() {
 
               <div style={{ marginTop: '12px' }}><RoomVoiceControls voice={webrtc} compact /></div>
 
+              {readyError && <p role="alert" style={{ color: THEME.destructive }}>{readyError}</p>}
               <RoomChat messages={roomState?.chatMessages || []} onSend={handleSendChat} />
             </CardContent>
 
@@ -1521,8 +1591,10 @@ export default function App() {
                   <Button
                     $variant={myPlayer?.isReady ? 'default' : 'gold'}
                     onClick={handleToggleReady}
+                    disabled={!!pendingRoomOperation || !connected}
+                    aria-busy={pendingRoomOperation === 'ready'}
                   >
-                    {myPlayer?.isReady ? '준비 취소' : '준비 완료'}
+                    {pendingRoomOperation === 'ready' ? '준비 확인 중…' : myPlayer?.isReady ? '준비 취소' : '준비 완료'}
                   </Button>
                 )}
 
@@ -1564,7 +1636,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Create Room Settings */}
       {/* ========================================================= */}
-      <Dialog open={createDialogOpen} label={`${GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성`} onClose={() => setCreateDialogOpen(false)}>
+      <Dialog open={createDialogOpen} label={`${GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성`} onClose={() => { if (!pendingRoomOperation) setCreateDialogOpen(false); }}>
         <DialogHeader>
           <DialogTitle>{GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성</DialogTitle>
           <DialogDescription>{GAME_CATALOG[selectedGameForCreate]?.rules || '게임 목표와 규칙을 설정하세요.'}</DialogDescription>
@@ -1660,12 +1732,13 @@ export default function App() {
           </div>}
         </div>
 
+        {createError && <p role="alert" style={{ color: THEME.destructive }}>{createError}</p>}
         <DialogFooter>
-          <Button $variant="outline" $size="sm" onClick={() => setCreateDialogOpen(false)}>
+          <Button $variant="outline" $size="sm" disabled={!!pendingRoomOperation} onClick={() => setCreateDialogOpen(false)}>
             취소
           </Button>
-          <Button $variant="default" $size="sm" onClick={handleCreateRoomSubmit}>
-            살롱 테이블 개설
+          <Button $variant="default" $size="sm" onClick={handleCreateRoomSubmit} disabled={!!pendingRoomOperation} aria-busy={pendingRoomOperation === 'create'}>
+            {pendingRoomOperation === 'create' ? '개설 확인 중…' : '살롱 테이블 개설'}
           </Button>
         </DialogFooter>
       </Dialog>
@@ -1673,7 +1746,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Edit Profile Modal */}
       {/* ========================================================= */}
-      <Dialog open={profileModalOpen} label="프로필 및 닉네임 설정" onClose={() => setProfileModalOpen(false)}>
+      <Dialog open={profileModalOpen && screen !== 'game'} label="프로필 및 닉네임 설정" onClose={() => { if (!pendingRoomOperation) setProfileModalOpen(false); }}>
         <DialogHeader>
           <DialogTitle>프로필 및 닉네임 설정</DialogTitle>
           <DialogDescription>살롱에서 사용할 닉네임과 문양 씰을 변경하세요.</DialogDescription>
@@ -1718,6 +1791,7 @@ export default function App() {
             <Input
               type="text"
               placeholder="새 닉네임 입력"
+              aria-label="새 닉네임"
               value={editNickname}
               onChange={(e) => setEditNickname(e.target.value)}
               maxLength={12}
@@ -1726,12 +1800,13 @@ export default function App() {
             />
           </div>
 
+          {profileError && <p role="alert" style={{ color: THEME.destructive }}>{profileError}</p>}
           <DialogFooter>
-            <Button type="button" $variant="outline" $size="sm" onClick={() => setProfileModalOpen(false)}>
+            <Button type="button" $variant="outline" $size="sm" disabled={!!pendingRoomOperation} onClick={() => setProfileModalOpen(false)}>
               취소
             </Button>
-            <Button type="submit" $variant="default" $size="sm" disabled={!editNickname.trim()}>
-              저장하기
+            <Button type="submit" $variant="default" $size="sm" disabled={!editNickname.trim() || !!pendingRoomOperation} aria-busy={pendingRoomOperation === 'profile'}>
+              {pendingRoomOperation === 'profile' ? '저장 확인 중…' : '저장하기'}
             </Button>
           </DialogFooter>
         </form>
