@@ -116,3 +116,30 @@ action tray; landscape at widths of at least 600px places a 240–330px tray bes
 The map flexes with min-height:0; header/status/notices remain bounded and safe-area aware.
 Short landscape removes cover art and compresses metadata, without shrinking 44px controls.
 Card tables keep their hand rails and action controls reachable in both orientations.
+
+## 11. Five-game interaction quality goal (2026-10-15)
+
+Preserve sections 1–10 as the established contract. The active implementation plan is
+`.omo/plans/all-games-release-quality.md`; evidence is under `.omo/evidence/all-games-quality/`.
+
+Map actions use one scroll body with persistent turn heading and selection/confirm footer.
+Selection is separate from camera navigation. Coach and ordered double-crime choices expose
+first place → second place → preview → confirm, with undo before submission. Setup preselects
+only forced locations; meaningful secret identities remain the player's choice. Police pieces
+can be selected spatially as well as through named controls. Gestures preserve zoom anchors
+and cancel on interruption; dense nodes retain numbered alternatives.
+
+Love Letter confirmation belongs beside the hand and remains reachable in short landscape.
+Closing the guess dialog preserves the selected card. The dialog traps focus, supports Escape,
+returns focus and honors reduced motion. Dalmuti separates standalone jokers from explicit
+mixed compositions; merchant target selection precedes confirmation. Six Nimmt uses the whole
+row as a selectable target and previews its penalty before confirmation.
+
+Use existing motion tokens for card pipelines; map piece travel stays within 250–650ms.
+Every important motion shows actor, action, target and consequence, while final state converges
+to the authoritative server version. Keep original thematic assets and live game objects.
+No new framework, broad rewrite, ambient particle layer or global palette change.
+
+Verification covers all five games, normal complete matches, interruption, keyboard and
+portrait/landscape viewports. Browser emulation does not certify physical touchscreen/pinch
+or OS orientation behavior. No AAA or release-readiness claim until recorded criteria pass.
