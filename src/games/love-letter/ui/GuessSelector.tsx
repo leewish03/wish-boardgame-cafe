@@ -1,11 +1,12 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { CARD_DEFINITIONS } from '../../../../packages/love-letter-core/src/cards';
 import { CardValue } from '../../../../packages/love-letter-core/src/types';
 import { THEME } from '../../../shared/theme';
 import { getHeraldicIcon } from '../presentation/heraldicIcons';
 import { Crosshair, X } from 'lucide-react';
+import { useDialogFocus } from '../../../shared/useDialogFocus';
 
 interface GuessSelectorProps {
   isOpen: boolean;
@@ -25,6 +26,8 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
   onCancel,
 }) => {
   const guessValues: CardValue[] = [2, 3, 4, 5, 6, 7, 8];
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onCancel);
+  const reduced = useReducedMotion();
 
   return (
     <AnimatePresence>
@@ -38,20 +41,25 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
         >
           <SheetContainer
             as={motion.div}
-            initial={{ y: '100%' }}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="guess-title"
+            tabIndex={-1}
+            initial={{ y: reduced ? 0 : '100%' }}
             animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+            exit={{ y: reduced ? 0 : '100%' }}
+            transition={reduced ? { duration: .01 } : { type: 'spring', stiffness: 320, damping: 28 }}
             onClick={e => e.stopPropagation()}
           >
             <HeaderRow>
               <TitleCluster>
                 <TargetIcon><Crosshair size={16} /></TargetIcon>
-                <SheetTitle>
+                <SheetTitle id="guess-title">
                   <strong>[{targetPlayerName}]</strong> 님의 카드 번호 추측
                 </SheetTitle>
               </TitleCluster>
-              <CloseButton onClick={onCancel} aria-label="추측 취소"><X size={16} /></CloseButton>
+              <CloseButton onClick={onCancel} aria-label="대상 선택으로 돌아가기"><X size={20} /></CloseButton>
             </HeaderRow>
 
             <HelperNotice>
@@ -68,11 +76,12 @@ export const GuessSelector: React.FC<GuessSelectorProps> = ({
                   <GuessChip
                     key={v}
                     as={motion.button}
-                    whileHover={!isZero ? { scale: 1.03 } : undefined}
-                    whileTap={!isZero ? { scale: 0.95 } : undefined}
+                    whileHover={!isZero && !reduced ? { scale: 1.03 } : undefined}
+                    whileTap={!isZero && !reduced ? { scale: 0.95 } : undefined}
                     $isZero={isZero}
                     disabled={isZero}
                     $selected={selectedGuessValue === v}
+                    aria-pressed={selectedGuessValue === v}
                     onClick={() => onSelectGuess(v)}
                   >
                     <ChipHeader>
@@ -108,11 +117,14 @@ const Overlay = styled.div`
 const SheetContainer = styled.div`
   width: 100%;
   max-width: 480px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background-color: #ffffff;
   background-image: ${THEME.gradients.marbleSlab};
   border-top: 2px solid ${THEME.gold};
   border-radius: 20px 20px 0 0;
-  padding: 16px 18px 24px;
+  padding: 16px 18px max(24px, env(safe-area-inset-bottom));
   box-shadow: 0 -8px 32px rgba(9, 13, 22, 0.3);
   box-sizing: border-box;
 `;
@@ -136,7 +148,7 @@ const TargetIcon = styled.span`
 
 const SheetTitle = styled.h3`
   margin: 0;
-  font-size: 13.5px;
+  font-size: 16px;
   font-weight: 800;
   color: ${THEME.foreground};
 
@@ -149,8 +161,9 @@ const CloseButton = styled.button`
   background: #f1f5f9;
   border: 1px solid ${THEME.border};
   color: ${THEME.mutedForeground};
-  width: 26px;
-  height: 26px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -167,7 +180,7 @@ const CloseButton = styled.button`
 
 const HelperNotice = styled.p`
   margin: 0 0 12px;
-  font-size: 11px;
+  font-size: 13px;
   color: ${THEME.mutedForeground};
   line-height: 1.4;
 `;
@@ -194,7 +207,8 @@ const GuessChip = styled.button<{ $isZero: boolean; $selected: boolean }>`
   box-shadow: ${props => (props.$isZero ? 'none' : props.$selected ? '0 4px 14px rgba(127, 29, 47, 0.24)' : '0 2px 8px rgba(9, 13, 22, 0.06)')};
   cursor: ${props => (props.$isZero ? 'not-allowed' : 'pointer')};
   opacity: ${props => (props.$isZero ? 0.45 : 1)};
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  &:focus-visible { outline: 3px solid ${THEME.burgundy}; outline-offset: 2px; }
 
   &:hover {
     ${props =>
@@ -225,14 +239,14 @@ const EmblemMini = styled.span`
 `;
 
 const ChipName = styled.span`
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   color: ${THEME.foreground};
   margin-bottom: 2px;
 `;
 
 const ChipCount = styled.span<{ $isZero: boolean }>`
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 700;
   color: ${props => (props.$isZero ? THEME.destructive : THEME.mutedForeground)};
 `;

@@ -85,7 +85,7 @@ export const PublicDiscardShelf: React.FC<{playerId:string; cards:CardInstance[]
     <Pile $local={local} $hasLanding={hasLanding}>
       {settledCards.map((card,index)=><DiscardCard ref={index===settledCards.length-1 ? latestCardAnchor : undefined} key={card.id} $local={local}>{local ? <CardArtwork value={card.value} name={card.name}/> : <MiniFace><b>{card.value}</b><span>{card.name}</span></MiniFace>}</DiscardCard>)}
       <DiscardInsertion ref={nextCardAnchor} $local={local} $ordinal={settledCards.length}/>
-      {settledCards.length===0 && <><DiscardLanding $local={local}/><NoCards>아직 없음</NoCards></>}
+      {settledCards.length===0 && <>{(!local || hasLanding) && <DiscardLanding $local={local}/>}<NoCards>아직 없음</NoCards></>}
     </Pile>
   </Shelf>;
 };
@@ -104,11 +104,12 @@ export const OpponentZone: React.FC<OpponentZoneProps> = ({presentationAction,..
 };
 
 interface LocalZoneProps extends IdentityProps {
+  readonly decisionControls?: React.ReactNode;
   hand:CardInstance[]; selectedCardId:string|null; interactionState:string; isMyTurn:boolean; canSelectCards:boolean;
   onSelectCard:(card:CardInstance)=>void; onCancelSelection?:()=>void; onInspect?:()=>void; presentationAction?:PresentationAction; presentationMessage?: string | null;
   chatMessages?:any[]; onSendChat?:(text:string)=>void; onChatOpenChange?:(open:boolean)=>void;
 }
-export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,presentationMessage,chatMessages,onSendChat,onChatOpenChange,...identity}) => {
+export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,interactionState,isMyTurn,canSelectCards,onSelectCard,onCancelSelection,onInspect,presentationAction,presentationMessage,chatMessages,onSendChat,onChatOpenChange,decisionControls,...identity}) => {
   const projected = projectedObjects(identity.player, presentationAction || null);
   const event:any = presentationAction?.event;
   const visualHand = (() => {
@@ -137,6 +138,7 @@ export const LocalPlayerZone: React.FC<LocalZoneProps> = ({hand,selectedCardId,i
         <PlayPlace playerId={identity.player.id} local/>
       </SelfTarget>
     )}/></LocalHand>
+    {decisionControls}
   </LocalZoneRoot>;
 };
 
@@ -151,7 +153,7 @@ const PlaySpace=styled.div`position:absolute;inset:0;box-sizing:border-box;`;
 const OpponentZoneRoot=styled.section`width:100%; min-width:0; display:grid; grid-template-rows:44px 67px auto; gap:3px; @media(max-height:650px){grid-template-rows:44px 58px auto;}`;
 const LocalZoneRoot=styled.section`
   --local-decision-card:clamp(106px,29vw,154px);--local-decision-gap:clamp(4px,2vw,12px);
-  width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr);gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;
+  width:100%;height:100%;min-width:0;min-height:0;max-width:100%;display:grid;grid-template-rows:auto minmax(min-content,1fr) auto;gap:3px;align-items:end;padding:0 8px;box-sizing:border-box;
   @media(max-width:340px){--local-decision-card:96px;} @media(max-height:650px){--local-decision-card:96px;}
 `;
 const LocalDiscard=styled.div`position:relative;width:100%;min-width:0;`;

@@ -20,9 +20,6 @@ interface ActionStageProps {
   activeCard?: CardInstance | null;
   targetPlayerId?: string | null;
   selectedGuessName?: string | null;
-  canConfirm?: boolean;
-  onConfirmAction?: () => void;
-  onCancelAction?: () => void;
   presentationAction?: PresentationAction | null;
   presentationPhase?: PresentationPhase;
   isMyTurn?: boolean;
@@ -43,9 +40,6 @@ export const ActionStage: React.FC<ActionStageProps> = ({
   activeCard,
   targetPlayerId,
   selectedGuessName,
-  canConfirm = false,
-  onConfirmAction,
-  onCancelAction,
   isMyTurn = false,
   turnPlayerName = '상대',
 }) => {
@@ -56,15 +50,14 @@ export const ActionStage: React.FC<ActionStageProps> = ({
     ? '2장 중 1장을 사용하고, 남은 1장을 지키세요'
     : `${turnPlayerName}의 차례 · 행동을 기다리는 중`;
 
-  return <StageContainer aria-label={`덱 ${deckCount}장 남음`} $hasControls={Boolean(activeCard)}>
+  return <StageContainer aria-label={`덱 ${deckCount}장 남음`}>
     <TableObjects><DeckDock><DeckSlot count={deckCount} setAsideCount={setAsideCount} /></DeckDock></TableObjects>
     <Narration aria-live="polite" aria-hidden={hideNarration} style={{ visibility: hideNarration ? 'hidden' : 'visible' }}>{actionError ? <em>{actionError}</em> : (selection && <><strong>{selection}</strong><span>{activeDescription}</span>{targetPlayerId && <em>{playerCopy(players, targetPlayerId, localUserId).name} 대상 {selectedGuessName && `· ${selectedGuessName} 추측`}</em>}</>) || (narrative ? <><strong>{narrative.title}</strong>{narrative.detail && <span>{narrative.detail}</span>}{narrative.result && <em>{narrative.result}</em>}</> : <span>{idleMessage}</span>)}</Narration>
-    {activeCard && <ActionControls><CancelButton type="button" onClick={onCancelAction} disabled={interactionState === 'SUBMITTING'}>취소</CancelButton><ConfirmButton type="button" disabled={!canConfirm} onClick={onConfirmAction}>{interactionState === 'SUBMITTING' ? '전달 중…' : '이 카드 사용'}</ConfirmButton></ActionControls>}
   </StageContainer>;
 };
 
-const StageContainer = styled.section<{$hasControls:boolean}>`
-  position:relative;width:100%; min-width:0; min-height:${p=>p.$hasControls?'234px':'164px'}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
+const StageContainer = styled.section`
+  position:relative;width:100%; min-width:0; min-height:164px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; box-sizing:border-box;
   @media (max-height:650px){min-height:0;display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px;padding-block:4px;}
 `;
 const DeckDock = styled.div`min-width:0;display:grid;place-items:center;`;
@@ -78,11 +71,3 @@ const Narration = styled.div`
   @media(max-width:360px){min-height:48px;padding:8px 10px;font-size:10px;border-radius:10px;}
   @media(max-height:650px){min-height:44px;padding:7px 10px;}
 `;
-const SelectionCard = styled.div`
-  width:min(460px, 100%); padding:9px 12px; box-sizing:border-box; display:flex; flex-direction:column; gap:3px; text-align:center;
-  background:rgba(255,253,247,.96); border:1px solid ${THEME.gold}; border-radius:12px; color:${THEME.foreground};
-  strong{font-family:${THEME.font.serif}; font-size:14px;} span{font-size:11px; line-height:1.35; color:${THEME.mutedForeground};} b{font-size:11px; color:${THEME.burgundy};}
-`;
-const ActionControls = styled.div`width:min(460px, 100%); display:grid; grid-template-columns:1fr 2fr; gap:8px;grid-column:1/-1;`;
-const CancelButton = styled.button`height:42px; border:1px solid ${THEME.border}; border-radius:9px; background:#fff; color:${THEME.foreground}; font:800 12px ${THEME.font.sans}; cursor:pointer; &:disabled{opacity:.55;cursor:wait;}`;
-const ConfirmButton = styled.button`height:42px; border:1px solid ${THEME.goldAntique}; border-radius:9px; background:${THEME.gradients.obsidianButton}; color:#fff; font:900 13px ${THEME.font.serif}; cursor:pointer; &:disabled{opacity:.45;cursor:not-allowed;}`;

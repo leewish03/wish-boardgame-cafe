@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { GameHud } from './GameHud';
 import { OpponentRail } from './OpponentRail';
 import { ActionStage } from './ActionStage';
+import { ActionConfirmation } from './ActionConfirmation';
 import { LocalPlayerZone } from './PlayerZone';
 import { GuessSelector } from './GuessSelector';
 import { DiscardHistoryModal } from './DiscardHistoryModal';
@@ -362,6 +363,11 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
     executePlayCard(selectedCard.id, selectedTargetId || undefined, selectedGuessValue || undefined);
   };
 
+  const handleBackFromGuess = () => {
+    setIsGuessOpen(false);
+    setInteractionState(selectedGuessValue ? 'READY' : 'TARGETING');
+  };
+
   const handleCancelAction = () => {
     setSelectedCardId(null);
     setSelectedTargetId(null);
@@ -557,9 +563,6 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         selectedGuessName={selectedGuessName}
         isMyTurn={isMyTurn}
         turnPlayerName={playerCopy(gameState.players, turnPlayer?.id, activeUserId).name}
-        canConfirm={canConfirmAction}
-        onConfirmAction={handleConfirmAction}
-        onCancelAction={handleCancelAction}
       />
       </TableViewport>
       <PresentationStagePlane
@@ -589,6 +592,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
             chatMessages={chatMessages}
             onSendChat={onSendChat}
             onChatOpenChange={handleChatOpenChange}
+            decisionControls={<ActionConfirmation cardName={!isActionPlaying && selectedCard ? selectedCard.name : isMyTurn ? '손패에서 사용할 카드를 선택하세요' : '상대의 행동을 기다립니다'} targetName={targetPlayer?.nickname} guessName={selectedGuessName} hasSelection={Boolean(selectedCard) && !isActionPlaying} submitting={interactionState === 'SUBMITTING'} canConfirm={canConfirmAction} onCancel={handleCancelAction} onConfirm={handleConfirmAction} onEditGuess={!isActionPlaying && selectedCard?.value === 1 && selectedTargetId ? () => {setInteractionState('GUESSING');setIsGuessOpen(true);} : undefined}/>}
           />
       )}
 
@@ -599,7 +603,7 @@ export const LoveLetterGame: React.FC<LoveLetterGameProps> = ({
         remainingCounts={remainingCounts}
         selectedGuessValue={selectedGuessValue}
         onSelectGuess={handleConfirmGuess}
-        onCancel={handleCancelAction}
+        onCancel={handleBackFromGuess}
       />
 
       <DiscardHistoryModal
