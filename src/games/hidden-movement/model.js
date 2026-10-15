@@ -4,6 +4,62 @@ import * as hall from '../../../packages/whitehall-core/src/map.js';
 export const ink = { paper: '#efe5cf', text: '#302b24', road: '#a99a7d', river: '#b9cdd0', water: '#315c64', crime: '#8c3439', blue: '#345d8e', yellow: '#a27b24', red: '#a93e3e', brown: '#79573b', green: '#417254' };
 export const colorName = { blue: '파랑', yellow: '노랑', red: '빨강', brown: '갈색', green: '초록' };
 export const modeName = { normal: '도보', WALK: '도보', coach: '마차', COACH: '마차', alley: '골목', ALLEY: '골목', BOAT: '배' };
+
+export function initialSetupDraft(secret) {
+  const legal = secret?.legal ?? {};
+  const patrolChoices = [...new Set([...(legal.patrolRequired ?? []), ...(legal.patrolStarts ?? [])])];
+  const values = Array.isArray(legal.womanNumbers) && legal.womanNumbers.length === legal.women ? [...legal.womanNumbers]
+    : legal.patrolStarts ? (patrolChoices.length === 7 ? patrolChoices : [...new Set(legal.patrolRequired ?? [])]) : [];
+  return { values, real: [], assignments: {} };
+}
+
+export function commandVia(command) {
+  return command.via ?? (command.path?.length === 2 ? command.path[0] : command.victims?.length === 2 ? command.victims[0] : null);
+}
+
+export function placePatrol(draft, position, color) {
+  if (!draft.values?.includes(position) || !Object.hasOwn(colorName, color)) return draft;
+  const assignments = { ...draft.assignments };
+  const previous = Object.keys(assignments).find(key => assignments[key] === color);
+  const displaced = assignments[position];
+  if (previous != null) delete assignments[previous];
+  if (String(previous) !== String(position)) {
+    assignments[position] = color;
+    if (previous != null && displaced) assignments[previous] = displaced;
+  }
+  return { ...draft, assignments };
+}
+
+export function patrolHitRadius(point, points, screenUnit) {
+  const nearest = Math.min(...points.filter(other => other.key !== point.key).map(other => Math.hypot(other.x-point.x, other.y-point.y)));
+  return Math.min(22*screenUnit, nearest*.45);
+}
+
+export function setupSubmission(secret, draft) {
+  const legal=secret?.legal??{}, values=draft.values??[], real=draft.real??[];
+  if(legal.discoveryQuadrants) return {label:'비밀 목적지 4곳 확정',ready:values.length===4,command:{type:'SET_DISCOVERIES',locations:values}};
+  if(legal.womanNumbers) return {label:'여성 토큰 배치 확정',ready:values.length===legal.women&&real.length===legal.real,command:{type:'PLACE_WOMEN',positions:values,real}};
+  if(legal.patrolStarts) {
+    const patrols=values.map(position=>({position,officerId:draft.assignments[position]||null}));
+    const officers=patrols.map(p=>p.officerId).filter(Boolean);
+    return {label:'비밀 순찰 배치 확정',ready:values.length===7&&officers.length===5&&new Set(officers).size===5,command:{type:'PLACE_PATROLS',patrols}};
+  }
+  return null;
+}
+
+export function previewKeys(game, secret, command) {
+  if (!command) return [];
+  const target = commandTarget(command);
+  if (command.type === 'JACK_MOVE') {
+    if (secret.role !== 'JACK') return [];
+    return [secret.position, ...(command.path ?? [command.via, command.to])].filter(n => n != null).map(n => `n:${n}`);
+  }
+  if (command.type === 'MURDER') return secret.role === 'JACK' ? command.victims.map(n=>`n:${n}`) : [];
+  const actor = game.police?.find(p => p.id === (command.officerId ?? command.pawnId));
+  if (actor && command.type === 'POLICE_MOVE') return [`c:${actor.position}`, target];
+  if (command.type === 'MOVE_WRETCHED') return [`n:${command.from}`, target];
+  return target ? [target] : [];
+}
 const chapelNodes = chapel.nodes.map(n => ({ ...n, key: `${n.kind === 'location' ? 'n' : 'c'}:${n.kind === 'location' ? n.number : n.id}`, value: n.kind === 'location' ? n.number : n.id }));
 const hallNodes = [...hall.circles.map(n => ({ ...n, kind: 'location', value: n.id, number: n.id, key: `n:${n.id}` })), ...hall.crossings.map(n => ({ ...n, kind: 'crossing', value: n.id, key: `c:${n.id}`, isPoliceStart: n.starting }))];
 function board(nodes, edges, width, height) {

@@ -15,6 +15,7 @@ const testSuites = [
   { name: '2.4 Whitehall Core Rules & Simulation', file: 'tests/whitehall_core.test.js' },
   { name: '2.5 New Games Authenticated Sockets', file: 'tests/new_games_socket.test.js' },
   { name: '2.6 New Games Recovery', file: 'tests/new_games_recovery.test.js' },
+  { name: '2.7 Hidden Movement UI Model', file: 'src/games/hidden-movement/model.test.mjs' },
   { name: '3. Server Rule Engine Unit Tests', file: 'tests/love_letter_rules.test.js' },
   { name: '3.1 Room Setting Persistence', file: 'tests/room_settings.test.js' },
   { name: '4. AI Bot Memory & Heuristics Tests', file: 'tests/ai_bot_heuristics.test.js' },

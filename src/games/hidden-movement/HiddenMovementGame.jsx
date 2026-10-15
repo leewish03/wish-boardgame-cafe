@@ -7,7 +7,7 @@ import { RoomVoiceControls } from '../love-letter/ui/GameMenuDrawer';
 import MapViewport from './MapViewport';
 import GameScreenControls from '../../shared/GameScreenControls';
 import SetupTray, { initialDraft, setupTargets, updateSetup } from './SetupTray';
-import { boards, ink, colorName, modeName, phaseNames, phaseHelp, legalCommands, commandTarget, commandLabel, eventLabel, publicEventTarget } from './model';
+import { ink, colorName, modeName, phaseNames, phaseHelp, legalCommands, commandTarget, commandLabel, commandVia, previewKeys, setupSubmission, eventLabel } from './model';
 
 const Shell=styled.main`height:100dvh;width:100%;min-width:0;box-sizing:border-box;min-height:0;display:flex;flex-direction:column;background:${THEME.background};color:${THEME.foreground};font-family:${THEME.font.sans};word-break:keep-all;overflow:hidden;button,select,input{font:inherit;}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid ${THEME.gold};outline-offset:2px;}`;
 const Header=styled.header`display:flex;flex-shrink:0;align-items:center;gap:8px;padding:8px;border-bottom:1px solid ${THEME.border};background:${THEME.surfaceCard};img{width:64px;height:48px;object-fit:cover;border-radius:4px;}h1{font:700 clamp(17px,2.3vw,24px) ${THEME.font.serif};margin:0;}p{margin:4px 0 0;font-size:12px;color:${THEME.mutedForeground};}.title{flex:1;min-width:0;}@media(max-width:600px),(max-height:500px){img{display:none;}}@media(orientation:landscape) and (max-height:500px){padding-block:4px;.title{display:flex;align-items:center;gap:12px;}h1{font-size:17px;}p{margin:0;}}@media(max-width:600px){flex-wrap:wrap;justify-content:flex-end;.title{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;}p{margin:0;}}`;
@@ -17,6 +17,9 @@ const BoardArea=styled.section`min-height:0;display:flex;flex-direction:column;g
 const Status=styled.div`display:flex;gap:12px;flex:0 0 auto;overflow-x:auto;align-items:center;font-size:13px;min-height:32px;strong{color:${THEME.burgundy};white-space:nowrap;}span{white-space:nowrap;}`;
 const Tray=styled.aside`min-height:0;overflow:auto;overscroll-behavior:contain;background:${THEME.surfaceCard};padding:16px;border:1px solid ${THEME.border};border-radius:${THEME.radius.lg};h2{font:700 20px ${THEME.font.serif};margin:0 0 8px;}h3{font-size:14px;margin:12px 0 6px;}p{font-size:14px;line-height:1.65;margin:8px 0;}select,input{min-height:44px;min-width:0;border:1px solid ${THEME.input};border-radius:6px;padding:6px;background:#fff;color:${THEME.foreground};}select{max-width:100%;}details{font-size:13px;line-height:1.7;margin-top:12px;}summary{min-height:44px;cursor:pointer;padding:12px 0;}@media(max-width:850px){padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom));}`;
 const Row=styled.div`display:flex;flex-wrap:wrap;gap:8px;align-items:center;`;
+const ActionPanel=styled.div`min-height:0;display:flex;flex-direction:column;overflow:hidden;background:${THEME.surfaceCard};border-radius:${THEME.radius.lg};>aside{flex:1;border:0;border-radius:0;}`;
+const TurnHeading=styled.div`flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;padding:10px 12px;border-bottom:1px solid ${THEME.border};h2{font:700 17px ${THEME.font.serif};margin:0;}strong{font-size:13px;color:${THEME.burgundy};}span{font-size:12px;}@media(max-height:500px){padding:6px 8px;}`;
+const ActionDock=styled.div`flex:0 0 auto;padding:12px;border-top:1px solid ${THEME.border};background:${THEME.gradients.marbleSlab};box-shadow:0 -4px 16px #090d1608;display:grid;gap:8px;font-size:14px;strong{overflow-wrap:anywhere;} .actions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;}@media(max-height:500px){padding:8px;gap:4px;}`;
 const CommandList=styled.div`display:flex;flex-wrap:wrap;gap:6px;padding:4px 2px;margin:8px 0;`;
 const Notice=styled(motion.div)`flex:0 0 auto;max-height:72px;overflow:auto;box-sizing:border-box;padding:8px 12px;border-radius:6px;background:${ink.text};color:#fffdf5;font-size:14px;line-height:1.5;@media(orientation:landscape) and (max-height:500px){max-height:44px;padding:4px 8px;}`;
 const Seats=styled.div`display:flex;gap:8px;overflow:auto;flex:0 0 auto;padding:0 8px max(4px,env(safe-area-inset-bottom));font-size:12px;>span{padding:4px 8px;background:${THEME.surfaceCard};border-radius:6px;white-space:nowrap;}b{color:${THEME.burgundy};}`;
@@ -51,7 +54,7 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
   const events=useMemo(()=>(presentation?.events??[]).filter(e=>e.type!=='JACK_ROUTE'),[presentation?.events]);
   useEffect(()=>{if(events.length)setLastMessage(events.map(e=>eventLabel(e,game.gameType)).join(' · '));},[events,game?.gameType]);
   const pending=Boolean(presentation?.pending&&completed!==batchId);
-  useEffect(()=>{setSelected(null);setOrigin('');setVia('');setQuery('');setDraft(initialDraft(secret));setSending(false);inFlight.current=false;},[game?.stateVersion]);
+  useEffect(()=>{setSelected(null);setFilter('');setOrigin('');setVia('');setQuery('');setDraft(initialDraft(secret));setSending(false);inFlight.current=false;},[game?.stateVersion]);
   useEffect(()=>{if(trayRef.current)trayRef.current.scrollTop=0;},[game?.stateVersion]);
   useEffect(()=>{
     const ready=()=>socket?.emit('board:view-ready',{roomCode:roomState.code,userId:me});
@@ -84,22 +87,29 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
   const activeFilter=modes.includes(filter)?filter:modes[0];
   const activeOrigin=origins.some(n=>String(n)===origin)?Number(origin):origins[0];
   const modeCommands=actorCommands.filter(c=>(!activeFilter||(c.mode??c.type)===activeFilter)&&(!origins.length||c.from===activeOrigin));
-  const vias=[...new Set(modeCommands.map(c=>c.via??(c.path?.length===2?c.path[0]:null)).filter(n=>n!=null))];
-  const activeVia=vias.some(n=>String(n)===via)?Number(via):vias[0];
-  const filtered=modeCommands.filter(c=>!vias.length||(c.via??c.path?.[0])===activeVia);
+  const vias=[...new Set(modeCommands.map(commandVia).filter(n=>n!=null))];
+  const activeVia=vias.find(n=>String(n)===String(via));
+  const choosingVia=vias.length>0&&activeVia==null;
+  const viaLabel=game?.playPhase==='KILL_OR_WAIT'?'첫 범행 장소':'경유지';
+  const filtered=modeCommands.filter(c=>!vias.length||commandVia(c)===activeVia);
   const visible=filtered.filter(c=>!query||commandLabel(c,game.gameType).includes(query.trim()));
-  const targets=setup??new Set(filtered.map(commandTarget).filter(Boolean));
+  const targets=setup??new Set(choosingVia?vias.map(n=>`n:${n}`):filtered.map(commandTarget).filter(Boolean));
   const disabled=sending||pending||roomState.isPaused||socket?.connected===false;
   const ownTurn=Boolean(setup||commands.length);
-  const selectedKeys=setup?(draft.values??[]).map(n=>`${secret.legal.patrolStarts?'c':'n'}:${n}`):[commandTarget(selected)].filter(Boolean);
+  const forcedWomen=Array.isArray(secret.legal?.womanNumbers)&&secret.legal.womanNumbers.length===secret.legal.women;
+  const placingPatrols=Boolean(secret.legal?.patrolStarts&&draft.values.length===7&&!draft.editPositions);
+  const draftPatrols=placingPatrols?draft.values.map(position=>({position,officerId:draft.assignments[position]??null})):[];
+  const selectedKeys=setup?(forcedWomen?draft.real:draft.values??[]).map(n=>`${secret.legal.patrolStarts?'c':'n'}:${n}`):[commandTarget(selected)].filter(Boolean);
   const onPick=key=>{
     if(disabled)return;
     if(setup){setDraft(updateSetup(game,secret,draft,key));return;}
+    if(choosingVia){setVia(key.slice(2));setSelected(null);return;}
     const candidates=filtered.filter(c=>commandTarget(c)===key);
     setSelected(candidates[0]??null);
   };
-  const publicMotionTarget=publicEventTarget(events);
-  const focusKey=selected?commandTarget(selected):pending&&publicMotionTarget?publicMotionTarget:activeOfficer?`c:${game?.police?.find(p=>p.id===activeOfficer)?.position}`:secret.role==='JACK'&&secret.position!=null?`n:${secret.position}`:null;
+  const submission=setupSubmission(secret,draft);
+  const focusKey=activeOfficer?`c:${game?.police?.find(p=>p.id===activeOfficer)?.position}`:secret.role==='JACK'&&secret.position!=null?`n:${secret.position}`:null;
+  const preview=previewKeys(game,secret,selected);
   const actors=(game?.pendingActors??(hall&&['DEPLOY','POLICE_MOVE','POLICE_ACTION'].includes(game.playPhase)?[game.police[game.pawnIndex]?.controllerId]:[game?.jackPlayerId])).map(id=>game?.players.find(p=>p.id===id)?.nickname).filter(Boolean);
   if(!game)return <Shell><p>사건 지도를 준비하고 있습니다.</p><Button onClick={onLeave}>방 나가기</Button></Shell>;
   const ending=game.matchState==='GAME_OVER'||game.matchState==='ROUND_END',host=game.players.some(p=>p.id===me&&p.isHost);
@@ -107,30 +117,36 @@ export default function HiddenMovementGame({roomState,currentUser,socket,webrtc,
   return <Shell style={{paddingLeft:'env(safe-area-inset-left)',paddingRight:'env(safe-area-inset-right)'}}>
     <Header><img src={`/assets/new-games/${hall?'whitehall':'whitechapel'}-cover.png`} alt=""/><div className="title"><h1>{title}</h1><p>{secret.role==='JACK'?'잭 · 비밀 경로':'수사관 · 공동 수사'} · 방 {roomState.code}</p></div><GameScreenControls/><Button onClick={()=>setShowHelp(v=>!v)} aria-expanded={showHelp}>안내</Button><Button onClick={()=>game.matchState==='GAME_OVER'?onLeave({immediate:true}):setLeaving(true)}>나가기</Button><RoomChat mode="sheet" launcherPlacement="inline" messages={chatMessages} onSend={onSendChat} currentUserId={me}/></Header>
     <Layout><BoardArea>
-      <Status><strong>{hall?`${game.roundNumber}번째 추적`:`제${game.roundNumber}야`}</strong><span>이동 {game.moveCount??game.track??0} / 15</span>{Object.entries(game.specials??{}).map(([k,v])=><span key={k}>{modeName[k]} {v}</span>)}{!hall&&<span>기다림 {game.wait}/5</span>}{(hall?game.revealed:game.nightCrimes)?.length>0&&<span>{hall?'공개된 발견 장소':'이번 밤 사건'}: {(hall?game.revealed:game.nightCrimes).join(' · ')}번</span>}<TurnClock expiresAt={roomState.turnExpiresAt} serverTime={roomState.serverTime} paused={roomState.isPaused}/></Status>
-      <MapViewport game={game} secret={secret} targets={targets} selectedKeys={selectedKeys} onPick={onPick} focusKey={focusKey} events={presentation?.events??[]} batchId={batchId} disabled={disabled}/>
+      <Status><strong>{hall?`${game.roundNumber}번째 추적`:`제${game.roundNumber}야`}</strong><span>{hall?`이동 ${game.moveCount??0} / 15`:`남은 이동 ${Math.max(0,15-(game.track??0))}칸`}</span>{Object.entries(game.specials??{}).map(([k,v])=><span key={k}>{modeName[k]} {v}</span>)}{!hall&&<span>기다림 {game.wait}/5</span>}{(hall?game.revealed:game.nightCrimes)?.length>0&&<span>{hall?'공개된 발견 장소':'이번 밤 사건'}: {(hall?game.revealed:game.nightCrimes).join(' · ')}번</span>}<TurnClock expiresAt={roomState.turnExpiresAt} serverTime={roomState.serverTime} paused={roomState.isPaused}/></Status>
+      <MapViewport game={game} secret={secret} targets={targets} selectedKeys={selectedKeys} onPick={onPick} focusKey={focusKey} preview={preview} draftPatrols={draftPatrols} activeOfficer={activeOfficer} selectableOfficers={figures} onSelectOfficer={id=>{setOfficer(id);setSelected(null);setVia('');}} events={presentation?.events??[]} batchId={batchId} disabled={disabled}/>
       <Notice key={batchId??'initial'} role="status" aria-live="polite" initial={{opacity:.65}} animate={{opacity:1}} transition={{duration:reduced ? .12 : 1.1}} onAnimationComplete={acknowledge}>{events.length?events.map(e=>eventLabel(e,game.gameType)).join(' · '):lastMessage}</Notice>
-    </BoardArea><Tray ref={trayRef} aria-label="현재 행동">
+    </BoardArea><ActionPanel><TurnHeading><h2>{phaseNames[game.playPhase]??'사건 진행'}</h2><strong>{ownTurn&&!ending?`내 차례${activeOfficer?` · ${colorName[activeOfficer.toLowerCase()]} 경찰`:''}`:ending?'':`${actors.join(' · ')||'상대'}의 차례`}</strong>{pending&&<span>테이블 정리 중</span>}{sending&&<span>전달 중…</span>}</TurnHeading><Tray ref={trayRef} aria-label="현재 행동">
       {ending&&<Result><h2>{game.matchState==='ROUND_END'?'잭이 귀환했습니다':game.outcome?.winner==='JACK'?'잭의 승리':'수사관의 승리'}</h2><p>{game.matchState==='ROUND_END'?`${game.roundNumber}번째 밤 종료. 다음 밤에는 순찰을 다시 배치합니다.`:({ARREST:'잭을 현장에서 검거했습니다.',TIME_EXPIRED:'제한 시간 안에 목적지에 도착하지 못했습니다.',TRAPPED:'모든 도주로가 막혔습니다.',BLOCKED:'모든 도주로가 막혔습니다.',FOUR_ESCAPES:'잭이 네 번의 밤 모두 은신처로 돌아갔습니다.',ALL_DISCOVERIES:'잭이 모든 발견 장소에 도착했습니다.'}[game.outcome?.reason]??'수사가 끝났습니다.')}</p>{host&&<Button disabled={disabled} onClick={()=>game.matchState==='ROUND_END'?send({type:'ADVANCE_ROUND'}):send({},true)}>{game.matchState==='ROUND_END'?'다음 밤 시작':'다시 플레이'}</Button>}</Result>}
-      <h2>{phaseNames[game.playPhase]??'사건 진행'}</h2>
-      <Row><strong>{ownTurn&&!ending?'내 차례':ending?'':`${actors.join(' · ')||'상대'}의 차례`}</strong>{pending&&<span>테이블 정리 중</span>}{sending&&<span>전달 중…</span>}</Row>
       {socket?.connected===false&&<ErrorText role="alert">연결이 끊겼습니다. 다시 연결되면 이어집니다.</ErrorText>}
       {roomState.isPaused&&<ErrorText role="status">참가자의 재접속을 기다립니다.</ErrorText>}
       {error&&<ErrorText role="alert">{error}</ErrorText>}
       {showHelp&&<section aria-label="살롱 안내"><h3>음성 대화</h3><RoomVoiceControls voice={webrtc} compact/><Help hall={hall} role={secret.role}/></section>}
-      {!ending&&<p>{phaseHelp[game.playPhase]??'다음 행동을 기다려 주세요.'}</p>}
-      {setup?<SetupTray game={game} secret={secret} draft={draft} setDraft={setDraft} send={send} disabled={disabled} Button={Button} Row={Row}/>:!ending&&ownTurn?<>
+      {!ending&&!placingPatrols&&<p>{forcedWomen?`배치 장소는 정해져 있습니다. 지도에서 실제 여성 ${secret.legal.real}곳을 고르세요.`:choosingVia?`지도에서 ${viaLabel}를 고르세요.`:vias.length?`${activeVia}번 → 지도에서 두 번째 장소를 고르세요.`:game.playPhase==='JACK_MOVE'?'지도에서 도착할 번호를 고르세요.':phaseHelp[game.playPhase]??'다음 행동을 기다려 주세요.'}</p>}
+      {setup?<SetupTray game={game} secret={secret} draft={draft} setDraft={setDraft} disabled={disabled} Button={Button} Row={Row}/>:!ending&&ownTurn?<>
         {figures.length>1&&<Row>{figures.map(id=><Button key={id} $active={id===activeOfficer} aria-pressed={id===activeOfficer} onClick={()=>{setOfficer(id);setSelected(null);}}>{colorName[id.toLowerCase()]} 경찰</Button>)}</Row>}
         {origins.length>1&&<label>이동할 여성 <select value={activeOrigin} onChange={e=>{setOrigin(e.target.value);setSelected(null);}}>{origins.map(n=><option key={n} value={n}>{n}번 여성</option>)}</select></label>}
-        {modes.length>1&&<Row>{modes.map(m=><Button key={m} $active={m===activeFilter} aria-pressed={m===activeFilter} onClick={()=>{setFilter(m);setSelected(null);}}>{modeName[m]??({SEARCH:'수색',ARREST:'체포',PASS:'마치기',END_ACTION:'마치기',WAIT:'기다리기',MURDER:'범행'}[m]??m)}</Button>)}</Row>}
-        {vias.length>0&&<label>마차 첫 경유지 <select aria-label="마차 첫 경유지" value={activeVia} onChange={e=>{setVia(e.target.value);setSelected(null);}}>{vias.map(n=><option key={n} value={n}>{n}번 경유</option>)}</select></label>}
-        {filtered.length>15&&<label>목적지 찾기 <input aria-label="목적지 번호 찾기" inputMode="numeric" value={query} onChange={e=>setQuery(e.target.value)} placeholder="번호" style={{width:90}}/></label>}
-        <CommandList aria-label="가능한 행동">{visible.map(c=><Button key={JSON.stringify(c)} disabled={disabled} $active={JSON.stringify(c)===JSON.stringify(selected)} aria-pressed={JSON.stringify(c)===JSON.stringify(selected)} onClick={()=>setSelected(c)}>{commandLabel(c,game.gameType)}</Button>)}</CommandList>
-        {selected&&<><p><strong>{commandLabel(selected,game.gameType)}</strong></p>{canEscape&&<label style={{display:'flex',alignItems:'center',gap:8,minHeight:44}}><input type="checkbox" checked={escape} onChange={e=>setEscape(e.target.checked)}/>도착 후 탈출 선언</label>}<Button $active disabled={disabled} onClick={()=>send(canEscape?{...selected,escape}:selected)}>선택한 행동 확정</Button></>}
+        {modes.length>1&&<Row>{modes.map(m=><Button key={m} $active={m===activeFilter} aria-pressed={m===activeFilter} onClick={()=>{setFilter(m);setSelected(null);setVia('');}}>{modeName[m]??({SEARCH:'수색',ARREST:'체포',PASS:'마치기',END_ACTION:'마치기',WAIT:'기다리기',MURDER:'범행'}[m]??m)}</Button>)}</Row>}
+        {choosingVia&&<Row>{vias.map(n=><Button key={n} disabled={disabled} onClick={()=>setVia(String(n))}>{n}번 {viaLabel}</Button>)}</Row>}
+        {!choosingVia&&<details key={`${game.playPhase}-${activeOfficer}-${activeFilter}`} open={filtered.every(c=>!commandTarget(c))?true:undefined}><summary>번호 목록에서 선택 ({visible.length})</summary>
+          {filtered.length>15&&<label>번호로 찾기 <input aria-label="목적지 번호 찾기" inputMode="numeric" value={query} onChange={e=>setQuery(e.target.value)} placeholder="번호" style={{width:90}}/></label>}
+          <CommandList aria-label="가능한 행동">{visible.map(c=><Button key={JSON.stringify(c)} disabled={disabled} $active={JSON.stringify(c)===JSON.stringify(selected)} aria-pressed={JSON.stringify(c)===JSON.stringify(selected)} onClick={()=>setSelected(c)}>{commandLabel(c,game.gameType)}</Button>)}</CommandList>
+        </details>}
       </>:!ending&&<p>상대가 행동하고 있습니다. 공개된 흔적과 수사관의 위치를 살펴보세요.</p>}
       {!showHelp&&<Help hall={hall} role={secret.role}/>}
       {secret.role==='JACK'&&<details><summary>나만 보는 수첩</summary>{secret.hideout!=null&&<p>은신처: {secret.hideout}번</p>}{secret.discoveries&&<p>목적지: {secret.discoveries.join(' · ')}</p>}<p>이동 기록: {(secret.route??secret.trail??[]).join(' → ')||'아직 출발하지 않았습니다.'}</p></details>}
-    </Tray></Layout>
+    </Tray>
+      {setup&&submission&&<ActionDock aria-label="배치 확정"><Button $active disabled={disabled||!submission.ready} onClick={()=>send(submission.command)}>{sending?'전달 중…':submission.label}</Button></ActionDock>}
+      {!setup&&(!ending||pending)&&<ActionDock aria-label="행동 확정">
+        <strong aria-live="polite">{!ownTurn?'상대의 행동을 기다립니다':selected?commandLabel(selected,game.gameType):choosingVia?`① ${viaLabel} 선택`:vias.length?`① ${activeVia}번 → ② 두 번째 장소 선택`:filtered.every(c=>!commandTarget(c))?'위에서 행동을 선택하세요':'지도에서 행동할 곳을 선택하세요'}</strong>
+        {canEscape&&<label><input type="checkbox" checked={escape} onChange={e=>setEscape(e.target.checked)}/> 도착 후 탈출 선언</label>}
+        <div className="actions"><Button disabled={disabled||!ownTurn||(!selected&&activeVia==null)} onClick={()=>{if(selected)setSelected(null);else setVia('');}}>되돌리기</Button><Button $active disabled={disabled||!ownTurn||!selected} onClick={()=>send(canEscape?{...selected,escape}:selected)}>{sending?'전달 중…':'선택한 행동 확정'}</Button></div>
+      </ActionDock>}
+    </ActionPanel></Layout>
     <Seats aria-label="참가자">{game.players.map(p=><span key={p.id}><b>{p.id===me?'나 · ':''}{p.nickname}</b> · {p.id===game.jackPlayerId?'잭':(game.police??[]).filter(o=>(o.ownerId??o.controllerId)===p.id).map(o=>colorName[o.id.toLowerCase()]).join(' · ')}{p.isBot?' · AI':''}</span>)}</Seats>
     <ExitDialog ref={exitRef} aria-labelledby="map-exit-title" onCancel={()=>setLeaving(false)} onClose={()=>setLeaving(false)}><h2 id="map-exit-title">게임을 나갈까요?</h2><p>진행 중인 게임에서는 AI가 내 자리를 이어받습니다.</p><footer><Button autoFocus onClick={()=>setLeaving(false)}>계속 플레이</Button><Button $active style={{background:THEME.destructive,borderColor:THEME.destructive}} onClick={()=>{setLeaving(false);onLeave({immediate:true});}}>기권하고 나가기</Button></footer></ExitDialog>
   </Shell>;
