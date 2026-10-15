@@ -18,10 +18,6 @@ class ErrorBoundary extends React.Component {
   }
 
   handleReset = () => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch (e) {}
     window.location.reload();
   };
 
@@ -52,6 +48,7 @@ class ErrorBoundary extends React.Component {
           <button
             onClick={this.handleReset}
             style={{
+              minHeight: '44px',
               padding: '10px 20px',
               backgroundColor: '#f59e0b',
               color: '#000',
@@ -62,7 +59,7 @@ class ErrorBoundary extends React.Component {
               cursor: 'pointer',
             }}
           >
-            🔄 카페 메인으로 초기화 및 다시 접속
+            화면 다시 불러오기
           </button>
         </div>
       );

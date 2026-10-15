@@ -472,6 +472,8 @@ export default function App() {
 
   // Room State from Server
   const [roomState, setRoomState] = useState(null);
+  const [leavePrompt, setLeavePrompt] = useState(null);
+  useEffect(() => { setLeavePrompt(null); }, [roomState?.code]);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -808,7 +810,8 @@ export default function App() {
   };
 
   // Open Room Creation Dialog
-  const handleOpenCreateDialog = (gameKey) => {
+  const handleOpenCreateDialog = (gameKey, event) => {
+    if (event?.detail > 1) return;
     if (!GAME_CATALOG[gameKey]) {
       setToastMessage('해당 게임은 현재 개발 중입니다! 곧 출시됩니다.');
       return;
@@ -1021,8 +1024,13 @@ export default function App() {
 
   // Leave Room
   const handleLeaveRoom = ({ immediate = false } = {}) => {
+    if (leavePrompt?.pending) return;
     const isPlaying = ['PLAYING', 'ROUND_END'].includes(roomState?.gameState);
-    if (isPlaying && !immediate && !window.confirm('진행 중인 게임에서 나가면 기권 처리됩니다. 나갈까요?')) return;
+    if (isPlaying && !immediate) {
+      setLeavePrompt({ roomCode: roomState.code, pending: false });
+      return;
+    }
+    setLeavePrompt(previous => previous ? { ...previous, pending: true } : null);
     const departingSession = loadSession();
     invalidateRoomSession();
     const departureGeneration = roomSessionRef.current.version();
@@ -1036,6 +1044,7 @@ export default function App() {
       setReconnectOffer(null);
       setCurrentUser(previous => previous ? { ...previous, sessionToken: null } : previous);
       setRoomState(null);
+      setLeavePrompt(null);
       setScreen('lobby');
     };
 
@@ -1072,11 +1081,19 @@ export default function App() {
       {/* Global Toast */}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
-      <Dialog open={!!reconnectOffer}>
+      <Dialog open={!!reconnectOffer} label="진행 중인 방 복구">
         <DialogHeader><DialogTitle>진행 중인 방을 찾았습니다</DialogTitle><DialogDescription>이전 방에 다시 접속할지, 이 방에서 나갈지 선택해 주세요.</DialogDescription></DialogHeader>
         <DialogFooter>
           <Button $variant="secondary" onClick={handleDeclineReconnect}>방에서 나가기</Button>
           <Button $variant="gold" onClick={() => { const saved = reconnectOffer; setReconnectOffer(null); handleReconnectRequest(saved); }}>재접속</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={Boolean(leavePrompt && leavePrompt.roomCode === roomState?.code)} label="게임을 나갈까요?" onClose={leavePrompt?.pending ? undefined : () => setLeavePrompt(null)}>
+        <DialogHeader><DialogTitle>게임을 나갈까요?</DialogTitle><DialogDescription>진행 중인 게임에서 나가면 기권 처리됩니다.</DialogDescription></DialogHeader>
+        <DialogFooter>
+          <Button style={{ minHeight: 44 }} disabled={leavePrompt?.pending} $variant="secondary" onClick={() => setLeavePrompt(null)}>취소</Button>
+          <Button style={{ minHeight: 44 }} disabled={leavePrompt?.pending} $variant="destructive" onClick={() => { if (leavePrompt?.roomCode === roomState?.code) handleLeaveRoom({ immediate: true }); }}>{leavePrompt?.pending ? '나가는 중…' : '기권하고 나가기'}</Button>
         </DialogFooter>
       </Dialog>
 
@@ -1219,7 +1236,7 @@ export default function App() {
               {activeTab === 'games' && (
                 <GameGrid>
                   {/* Game 1: Love Letter (Live) */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('LOVE_LETTER')}>
+                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('LOVE_LETTER', event)}>
                     <CardHeader>
                       <GameThumbnail $bg="linear-gradient(135deg, #791a30 0%, #3b0b17 54%, #090d16 100%)">
                         <span className="emblem-title">LOVE LETTER</span>
@@ -1247,7 +1264,7 @@ export default function App() {
                   </Card>
 
                   {/* Game 2: The Great Dalmuti */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('DALMUTI')}>
+                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('DALMUTI', event)}>
                     <CardHeader>
                       <GameThumbnail $bg="linear-gradient(135deg, #312e81 0%, #090d16 100%)">
                         <span className="emblem-title">THE DALMUTI</span>
@@ -1282,12 +1299,12 @@ export default function App() {
                         <CardDescription style={{ wordBreak: 'keep-all' }}>{game.min}~{game.max}인 · {game.subtitle}</CardDescription>
                       </CardHeader>
                       <CardContent><p style={{ fontSize: '14px', color: THEME.mutedForeground, margin: 0, lineHeight: 1.5, wordBreak: 'keep-all' }}>{game.description}</p></CardContent>
-                      <CardFooter><Button $fullWidth onClick={() => handleOpenCreateDialog(key)} aria-label={`${game.name} 테이블 생성`} style={{ minHeight: '44px' }}><Play size={14} />입장 / 테이블 생성</Button></CardFooter>
+                      <CardFooter><Button $fullWidth onClick={(event) => handleOpenCreateDialog(key, event)} aria-label={`${game.name} 테이블 생성`} style={{ minHeight: '44px' }}><Play size={14} />입장 / 테이블 생성</Button></CardFooter>
                     </Card>
                   ))}
 
                   {/* Game 3: Liar Game (Coming Soon) */}
-                  <Card $hoverable onClick={() => handleOpenCreateDialog('LIAR_GAME')} style={{ opacity: 0.6 }}>
+                  <Card $hoverable onClick={(event) => handleOpenCreateDialog('LIAR_GAME', event)} style={{ opacity: 0.6 }}>
                     <CardHeader>
                       <GameThumbnail $bg="linear-gradient(135deg, #3b0b17 0%, #090d16 100%)">
                         <span className="emblem-title">THE LIAR</span>
@@ -1547,7 +1564,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Create Room Settings */}
       {/* ========================================================= */}
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
+      <Dialog open={createDialogOpen} label={`${GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성`} onClose={() => setCreateDialogOpen(false)}>
         <DialogHeader>
           <DialogTitle>{GAME_CATALOG[selectedGameForCreate]?.name} 테이블 생성</DialogTitle>
           <DialogDescription>{GAME_CATALOG[selectedGameForCreate]?.rules || '게임 목표와 규칙을 설정하세요.'}</DialogDescription>
@@ -1636,7 +1653,7 @@ export default function App() {
             {[
               ['4·5인 축소 덱', useStrippedDeck, setUseStrippedDeck],
               ['자선 점수', philanthropicScoring, setPhilanthropicScoring],
-              ['상인 무작위 교환', merchantExchange, setMerchantExchange],
+              ['상인 무작위 교환 (6인 이상)', merchantExchange, setMerchantExchange],
             ].map(([label, checked, setter]) => <label key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '9px 11px', border: `1px solid ${checked ? THEME.gold : THEME.border}`, borderRadius: THEME.radius.md, background: checked ? '#fffdf3' : '#fff', fontSize: '12px', fontWeight: 750, cursor: 'pointer' }}>
               <span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => setter(event.target.checked)}/>
             </label>)}
@@ -1656,7 +1673,7 @@ export default function App() {
       {/* ========================================================= */}
       {/* DIALOG: Edit Profile Modal */}
       {/* ========================================================= */}
-      <Dialog open={profileModalOpen} onClose={() => setProfileModalOpen(false)}>
+      <Dialog open={profileModalOpen} label="프로필 및 닉네임 설정" onClose={() => setProfileModalOpen(false)}>
         <DialogHeader>
           <DialogTitle>프로필 및 닉네임 설정</DialogTitle>
           <DialogDescription>살롱에서 사용할 닉네임과 문양 씰을 변경하세요.</DialogDescription>

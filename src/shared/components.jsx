@@ -2,6 +2,7 @@ import React from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import { THEME } from './theme';
 import { X } from 'lucide-react';
+import { useDialogFocus } from './useDialogFocus';
 
 // =========================================================================
 // Keyframe Animations
@@ -343,6 +344,8 @@ const DialogContentWrapper = styled.div`
 `;
 
 const CloseButton = styled.button`
+  min-width: 44px;
+  min-height: 44px;
   position: absolute;
   right: 18px;
   top: 18px;
@@ -355,7 +358,7 @@ const CloseButton = styled.button`
   justify-content: center;
   padding: 6px;
   border-radius: ${THEME.radius.sm};
-  transition: all 0.15s;
+  transition: color 0.15s, background-color 0.15s;
   z-index: 10;
 
   &:hover {
@@ -401,11 +404,12 @@ export const DialogFooter = styled.div`
   z-index: 2;
 `;
 
-export function Dialog({ open, onClose, children, maxWidth = '480px' }) {
+export function Dialog({ open, onClose, children, maxWidth = '480px', label = '안내' }) {
+  const dialogRef = useDialogFocus(open, onClose);
   if (!open) return null;
   return (
     <DialogOverlayWrapper onClick={onClose}>
-      <DialogContentWrapper $maxWidth={maxWidth} onClick={(e) => e.stopPropagation()}>
+      <DialogContentWrapper ref={dialogRef} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} $maxWidth={maxWidth} onClick={(e) => e.stopPropagation()}>
         {onClose && (
           <CloseButton onClick={onClose} aria-label="Close">
             <X size={18} />
