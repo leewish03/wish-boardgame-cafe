@@ -17,6 +17,9 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose?: (
     });
     const handleKey = (event: KeyboardEvent) => {
       if (openDialogs[openDialogs.length - 1] !== panel) return;
+      const nativeModal = document.activeElement?.closest('dialog:modal');
+      // Native top-layer dialogs own their keyboard handling, even above a custom panel.
+      if (nativeModal && (nativeModal === panel || !nativeModal.contains(panel))) return;
       if (event.key === 'Escape' && close.current) {
         event.preventDefault();
         close.current();

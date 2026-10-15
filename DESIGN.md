@@ -143,3 +143,38 @@ No new framework, broad rewrite, ambient particle layer or global palette change
 Verification covers all five games, normal complete matches, interruption, keyboard and
 portrait/landscape viewports. Browser emulation does not certify physical touchscreen/pinch
 or OS orientation behavior. No AAA or release-readiness claim until recorded criteria pass.
+
+## 12. Opt-in game surface contracts (UI quality task 2)
+
+`src/shared/GameSurface.jsx` exports these primitives for game-owned adapters:
+
+- `GameShell({header, children, actions, ...sectionProps})`: fills an already bounded parent
+  (`height:100%`, `min-height:0`). Header/actions keep intrinsic height; the middle region
+  owns vertical scrolling. Do not place another viewport-height owner inside it. A standalone
+  adapter may set `style={{height:'100dvh'}}`; an App-owned viewport should pass its height down.
+- `GameAction`: existing shared Button with native `type="button"`, minimum 44px target,
+  wrapping labels, explicit transitions, visible pressed/focus/disabled states. Pass ordinary
+  `disabled`, `aria-pressed`, `aria-busy`, `onClick` and Button variant props. The adapter owns
+  pending locks and its explanatory label; the button never sends a command itself.
+- `ResultDialog({open, title, eyebrow, description, children, actions, error, onClose})`:
+  native modal with optional close callback. Omit `onClose` for mandatory round/match results;
+  Escape then has no effect. `title` is required; remaining slots are optional. `children`
+  contains already-authorized standings or other public results; `actions` contains the
+  adapter's legal buttons and nonhost waiting explanation. `error` renders an alert.
+  Stable heading/footer surround one scrolling body. Focus returns on close. Keep the same
+  component mounted while changing `open`; do not key it by network version.
+
+The result width is at most 680px; outer inset is 12px plus device safe-area insets.
+Heading uses the existing serif at 20px, body/control 14px; panel gaps/padding reuse 8/12px.
+At heights below 320px (including browser zoom), the entire panel becomes one scroll region
+so a long heading or stacked controls cannot clip content. No scores, winner calculations,
+server requests, deadlines, card data or game-specific artwork belong to these primitives.
+Results appear without decorative motion. Action color feedback uses the existing micro
+150ms timing and becomes immediate under reduced motion; pressed translation is removed.
+The existing single light salon theme also applies under system dark preference.
+
+Example: `<ResultDialog open={finished} title="라운드 결과" actions={<GameAction
+ disabled={pending} aria-busy={pending} onClick={advance}>다음 라운드</GameAction>}
+ error={requestError}>{publicStandings}</ResultDialog>`. A nonhost adapter supplies its
+ waiting explanation and permitted leave action instead. Focus/native-dialog stacking,
+ scrolling and 200% zoom are verified in `output/ui-ux/shared-contracts.html`.

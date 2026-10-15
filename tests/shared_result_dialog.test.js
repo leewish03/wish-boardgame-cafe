@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { buildSync } from 'esbuild';
+import React from 'react';
+
+const require = createRequire(import.meta.url);
+const code = buildSync({ entryPoints: ['src/shared/GameSurface.jsx'], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external' }).outputFiles[0].text;
+const module = { exports: {} };
+const styledModule = require('styled-components');
+const styled = Object.assign(styledModule.default, styledModule);
+const react = { ...React, useId: () => 'result-title', useEffect: () => {}, useRef: () => ({ current: null }) };
+new Function('require', 'module', 'exports', code)(name => name === 'react' ? react : name === 'styled-components' ? styled : require(name), module, module.exports);
+let closed = 0;
+const result = module.exports.ResultDialog({ open: true, title: 'Round result', onClose: () => closed++ });
+const parent = {}, child = {};
+let prevented = false;
+result.props.onCancel({ target: child, currentTarget: parent, preventDefault() { prevented = true; } });
+assert.equal(closed, 0, 'nested native cancel must not dismiss the result');
+assert.equal(prevented, false, 'nested dialog retains its native Escape behavior');
+result.props.onCancel({ target: parent, currentTarget: parent, preventDefault() { prevented = true; } });
+assert.equal(closed, 1, 'direct Escape invokes optional close');
+assert.equal(prevented, true, 'controlled result cancels native uncontrolled close');
+const mandatory = module.exports.ResultDialog({ open: true, title: 'Required result' });
+prevented = false;
+mandatory.props.onCancel({ target: parent, currentTarget: parent, preventDefault() { prevented = true; } });
+assert.equal(prevented, true, 'mandatory result stays open on Escape');
+assert.equal(closed, 1);
+console.log('PASS result cancellation: nested Escape, controlled close, mandatory result');
